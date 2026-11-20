@@ -45,7 +45,12 @@ type resolver struct {
 
 	kits    []*kitState
 	kitArgs []ArgValue
-	lost    []lostRef
+	// net holds every network-policy entry of every expanded kit.
+	net []*netEntry
+	// skippedItems are items of capabilities the host would not select;
+	// they get no boundaries.
+	skippedItems map[string]bool
+	lost         []lostRef
 
 	itemIndex map[string]int
 }
@@ -66,6 +71,8 @@ type argDecl struct {
 	pattern     string
 	description string
 	origin      Origin
+	// export, buildArg, and buildSecret are kit-arg delivery mechanisms.
+	export, buildArg, buildSecret string
 }
 
 // Resolve merges layers in order and analyses the result.
@@ -74,11 +81,12 @@ func Resolve(layers []LayerInput, opts ResolveOptions) (*Plan, error) {
 		return nil, ErrNoLayers
 	}
 	rs := &resolver{
-		opts:      opts,
-		r:         newRedactor(opts.Redaction, opts.HomeDir, opts.HomeAliases),
-		argDecls:  map[string]*argDecl{},
-		argValues: map[string]*ArgValue{},
-		itemIndex: map[string]int{},
+		opts:         opts,
+		r:            newRedactor(opts.Redaction, opts.HomeDir, opts.HomeAliases),
+		argDecls:     map[string]*argDecl{},
+		argValues:    map[string]*ArgValue{},
+		itemIndex:    map[string]int{},
+		skippedItems: map[string]bool{},
 	}
 	if err := rs.parseLayers(layers); err != nil {
 		return nil, err

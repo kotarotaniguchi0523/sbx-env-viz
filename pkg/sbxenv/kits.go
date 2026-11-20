@@ -51,6 +51,15 @@ type capState struct {
 	config      *vnode
 	origin      Origin
 	index       string
+	// block is 0 for top-level entries and the 1-based group number for
+	// group members; singleton and duplicate rules apply per block.
+	block int
+	// skipped marks a capability the host would not select (an unbound
+	// optional credential, or any member of an optional group with one).
+	skipped    bool
+	skipReason string
+	// itemID is the plan item that represents this capability.
+	itemID string
 }
 
 // via returns the provenance chain for a kit-derived origin.
@@ -223,6 +232,22 @@ func (rs *resolver) loadLocalKit(k *kitState) {
 				if x := v.Get("pattern"); x != nil {
 					d.pattern = x.Value
 				}
+				n := 0
+				for field, dst := range map[string]*string{"env": &d.export, "buildArg": &d.buildArg, "buildSecret": &d.buildSecret} {
+					if x := v.Get(field); x != nil {
+						*dst = x.Value
+						n++
+					}
+				}
+				if n > 1 {
+					rs.diag("KIT_ARG_DECL_INVALID", LevelError, "args", fmt.Sprintf("kit %s argument %q sets more than one of env, buildArg, buildSecret; an argument has one delivery mechanism", k.handleShown, kv.Key), "", d.origin)
+				}
+				if d.def != nil && d.required {
+					rs.diag("KIT_ARG_DECL_INVALID", LevelError, "args", fmt.Sprintf("kit %s argument %q sets both default and required", k.handleShown, kv.Key), "", d.origin)
+				}
+			}
+			if !kitArgNameRe.MatchString(kv.Key) {
+				rs.diag("KIT_ARG_DECL_INVALID", LevelError, "args", fmt.Sprintf("kit %s argument name %q must match [A-Za-z_][A-Za-z0-9_]*", k.handleShown, kv.Key), "", d.origin)
 			}
 			k.argDecls[kv.Key] = d
 		}
@@ -427,11 +452,17 @@ func (rs *resolver) expandKitDescriptor(k *kitState) {
 	if caps == nil {
 		return
 	}
-	add := func(entry *parser.Node, idx string, groupOptional *bool) {
+	add := func(entry *parser.Node, idx string, groupOptional *bool, block int) {
 		if entry.Kind != parser.Map {
 			return
 		}
-		c := &capState{kit: k, index: idx, origin: Origin{SourceID: k.srcID, Line: entry.Pos.Line, Col: entry.Pos.Col, Via: k.via()}}
+		c := &capState{kit: k, index: idx, block: block, origin: Origin{SourceID: k.srcID, Line: entry.Pos.Line, Col: entry.Pos.Col, Via: k.via()}}
+		if entry.Get("group") != nil {
+			rs.diag("KIT_CAP_GRAMMAR", LevelError, "kits", fmt.Sprintf("kit %s: %s mixes a group with an ordinary request or nests groups; the grammar rejects both", k.handleShown, idx), "", c.origin)
+			if entry.Get("type") == nil {
+				return
+			}
+		}
 		if t := entry.Get("type"); t != nil {
 			c.typ = t.Value
 		}
@@ -473,9 +504,11 @@ func (rs *resolver) expandKitDescriptor(k *kitState) {
 		}
 		k.caps = append(k.caps, c)
 	}
+	groups := 0
 	for i, entry := range caps.Items {
 		idx := fmt.Sprintf("capabilities[%d]", i)
-		if g := entry.Get("group"); g != nil {
+		if g := entry.Get("group"); g != nil && entry.Get("type") == nil {
+			groups++
 			opt := g.Get("optional") != nil && g.Get("optional").Value == "true"
 			members := g.Get("capabilities")
 			if members == nil || len(members.Items) == 0 {
@@ -483,11 +516,17 @@ func (rs *resolver) expandKitDescriptor(k *kitState) {
 				continue
 			}
 			for j, m := range members.Items {
-				add(m, fmt.Sprintf("%s.group.capabilities[%d]", idx, j), &opt)
+				add(m, fmt.Sprintf("%s.group.capabilities[%d]", idx, j), &opt, groups)
 			}
 			continue
 		}
-		add(entry, idx, nil)
+		add(entry, idx, nil, 0)
+	}
+	rs.markSkippedGroups(k)
+	for _, c := range k.caps {
+		if c.short == "network-policy@1" || c.short == "network-policy@2" {
+			rs.net = append(rs.net, parseNetPolicy(c)...)
+		}
 	}
 }
 

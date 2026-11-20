@@ -270,7 +270,7 @@ capabilities:
 	if !has(tel.Badges, sbxenv.BadgeUnknown) {
 		t.Error("unknown capability needs the [UNKNOWN] badge")
 	}
-	requireDiag(t, p, "UNKNOWN_CAPABILITY_REQUIRED", sbxenv.LevelWarning)
+	requireDiag(t, p, "UNKNOWN_CAPABILITY_REQUIRED", sbxenv.LevelError)
 	if len(coverage(p, sbxenv.CoverageUnknownCap)) != 1 || len(coverage(p, sbxenv.CoverageUnmodeledCap)) != 1 {
 		t.Errorf("coverage = %+v", p.Coverage)
 	}

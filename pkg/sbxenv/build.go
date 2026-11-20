@@ -70,7 +70,14 @@ func (rs *resolver) addItem(it Item, v *vnode, f fmtFn) *Item {
 	return &rs.items[len(rs.items)-1]
 }
 
-func (rs *resolver) bound(b Boundary) { rs.bounds = append(rs.bounds, b) }
+// bound records a boundary unless its item belongs to a capability the
+// host would skip, which grants nothing.
+func (rs *resolver) bound(b Boundary) {
+	if rs.skippedItems[b.ItemID] {
+		return
+	}
+	rs.bounds = append(rs.bounds, b)
+}
 
 // formatters
 
@@ -608,6 +615,11 @@ func (rs *resolver) buildKitEntries() {
 			a := k.args[name]
 			it.Fields = append(it.Fields, Field{"arg " + name, rs.r.value(a.Value) + " (" + a.From + ")"})
 		}
+		for _, name := range sortedKeys(k.argDecls) {
+			if d := k.argDecls[name]; d.export != "" {
+				it.Fields = append(it.Fields, Field{"exports " + d.export, name})
+			}
+		}
 	}
 }
 
@@ -642,7 +654,19 @@ func (rs *resolver) capItem(c *capState, suffix string, v *vnode, value string, 
 	if c.description != "" {
 		it.Fields = append(it.Fields, Field{"description", rs.r.text(c.description)})
 	}
-	return rs.addItem(it, nil, nil)
+	if c.skipped {
+		it.Risk = SeverityInfo
+		it.Badges = []string{BadgeSkip}
+		it.Fields = append(it.Fields, Field{"skipped", c.skipReason})
+	}
+	added := rs.addItem(it, nil, nil)
+	if c.itemID == "" {
+		c.itemID = added.ID
+	}
+	if c.skipped {
+		rs.skippedItems[added.ID] = true
+	}
+	return added
 }
 
 func (rs *resolver) buildCapability(c *capState) {
@@ -652,27 +676,12 @@ func (rs *resolver) buildCapability(c *capState) {
 		return
 	}
 	switch c.short {
-	case "network-policy@1":
-		for _, ph := range []string{"install", "runtime"} {
-			for _, list := range []string{"allow", "deny"} {
-				for _, e := range cfg.get(ph).get(list).list() {
-					pat := e.val
-					shown := rs.r.text(e.disp)
-					risk, badges := SeverityLow, []string{BadgeNet}
-					if list == "deny" {
-						risk, badges = SeverityInfo, nil
-					} else if pat == "*" || pat == "**" {
-						risk = SeverityHigh
-					} else if strings.Contains(pat, "*") && ph == "runtime" {
-						risk = SeverityMedium
-					}
-					it := rs.capItem(c, ph+"."+list+"/"+shown, e, ph+" "+list+" "+shown, risk, badges...)
-					if list == "allow" {
-						rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryNetwork, Where: "sandbox", Lifetime: lifetimeForPhase(ph),
-							Reason: phaseReason(ph) + " egress to " + shown + " is allowed through the host proxy"})
-					}
-				}
+	case "network-policy@1", "network-policy@2":
+		for _, e := range rs.net {
+			if e.cap != c {
+				continue
 			}
+			rs.buildNetEntry(c, e)
 		}
 	case "credential@1":
 		svc := rs.r.text(cfg.dstr("service"))
@@ -721,13 +730,13 @@ func (rs *resolver) buildCapability(c *capState) {
 		if m := cfg.str("mode"); m != "" {
 			it.Fields = append(it.Fields, Field{"mode", m})
 		}
-		bound := rs.root.get("mounts").get(cfg.str("path"))
-		reason := "a runtime-owned host directory shared by every sandbox that composes this kit; it survives sandbox removal"
-		if bound != nil {
-			reason = "bound to " + rs.fmtPath(bound) + " by mounts:; data survives sandbox removal"
+		if bound := rs.root.get("mounts").get(cfg.str("path")); bound != nil {
+			// The mounts: item already carries this directory's boundary.
 			it.Fields = append(it.Fields, Field{"host directory", rs.fmtPath(bound)})
+		} else {
+			rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryHostMount, Where: "host", Lifetime: "host-persistent", Access: "rw",
+				Reason: "a runtime-owned host directory shared by every sandbox that composes this kit; it survives sandbox removal"})
 		}
-		rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryHostMount, Where: "host", Lifetime: "host-persistent", Access: "rw", Reason: reason})
 	case "ssh-agent@1":
 		ph := phases(cfg.get("phase"))
 		unrestricted := cfg == nil || cfg.str("unrestricted") != "false"
@@ -788,6 +797,49 @@ func (rs *resolver) buildCapability(c *capState) {
 		}
 	default:
 		rs.buildOpaqueCap(c, false)
+	}
+}
+
+// buildNetEntry renders one network-policy entry. An allowed host that an
+// unbounded deny covers, in any kit, grants nothing: deny wins.
+func (rs *resolver) buildNetEntry(c *capState, e *netEntry) {
+	shown := rs.r.text(e.host.disp)
+	value := e.phase + " " + e.list + " " + shown
+	if e.bounded() {
+		value += " [" + strings.Join(e.methods, ",") + "]"
+		if len(e.paths) > 0 {
+			value += " " + strings.Join(e.paths, " ")
+		}
+	}
+	risk, badges := SeverityLow, []string{BadgeNet}
+	pat := e.host.val
+	switch {
+	case e.list == "deny":
+		risk, badges = SeverityInfo, nil
+	case (pat == "*" || pat == "**") && !e.bounded():
+		risk = SeverityHigh
+	case strings.Contains(pat, "*") && e.phase == "runtime":
+		risk = SeverityMedium
+	}
+	var deny *netEntry
+	if e.list == "allow" {
+		deny = rs.deniedBy(e.phase, pat)
+		if deny != nil {
+			risk, badges = SeverityInfo, nil
+		}
+	}
+	it := rs.capItem(c, e.phase+"."+e.list+"/"+shown, e.host, value, risk, badges...)
+	e.itemID = it.ID
+	if deny != nil {
+		it.Fields = append(it.Fields, Field{"denied by", "kit " + deny.cap.kit.handleShown + " " + deny.phase + " deny " + rs.r.text(deny.host.disp)})
+		return
+	}
+	if e.list == "allow" {
+		reason := phaseReason(e.phase) + " egress to " + shown + " is allowed through the host proxy"
+		if e.bounded() {
+			reason += ", limited to the listed methods and paths"
+		}
+		rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryNetwork, Where: "sandbox", Lifetime: lifetimeForPhase(e.phase), Reason: reason})
 	}
 }
 

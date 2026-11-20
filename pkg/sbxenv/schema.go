@@ -115,7 +115,16 @@ var kitSchema = sMap(map[string]*shape{
 
 // capConfigSchemas are strict config shapes for the capability types this
 // tool models in depth.
+func netPolicyV2() *shape {
+	entry := sSeq(sEither(sScalar(), sMap(map[string]*shape{
+		"hosts": sScalarList(), "methods": sScalarList(), "paths": sScalarList(),
+	})))
+	phase := sMap(map[string]*shape{"allow": entry, "deny": entry})
+	return sMap(map[string]*shape{"install": phase, "runtime": phase})
+}
+
 var capConfigSchemas = map[string]*shape{
+	"network-policy@2": netPolicyV2(),
 	"network-policy@1": sMap(map[string]*shape{
 		"install": sMap(map[string]*shape{"allow": sScalarList(), "deny": sScalarList()}),
 		"runtime": sMap(map[string]*shape{"allow": sScalarList(), "deny": sScalarList()}),

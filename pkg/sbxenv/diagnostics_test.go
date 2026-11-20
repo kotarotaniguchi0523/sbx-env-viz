@@ -53,14 +53,14 @@ bindings:
 			notWant: []string{"CREDENTIAL_UNBOUND", "BINDING_DOMAIN_MISSING", "SECRET_NOT_DECLARED", "SECRET_UNUSED", "BINDING_UNUSED"},
 		},
 		{
-			name: "required unbound fails create, optional unbound is skipped",
+			name: "unbound credentials are warnings because credentials.yaml may approve them",
 			env:  "",
-			want: map[string]sbxenv.DiagLevel{"CREDENTIAL_UNBOUND": sbxenv.LevelError, "SECRET_NOT_DECLARED": sbxenv.LevelInfo},
+			want: map[string]sbxenv.DiagLevel{"CREDENTIAL_UNBOUND": sbxenv.LevelWarning, "SECRET_NOT_DECLARED": sbxenv.LevelInfo},
 		},
 		{
 			name: "binding for the wrong mechanism",
 			env:  "bindings:\n  example: {oauth: {domains: [api.example.com]}}\n",
-			want: map[string]sbxenv.DiagLevel{"CREDENTIAL_UNBOUND": sbxenv.LevelError},
+			want: map[string]sbxenv.DiagLevel{"CREDENTIAL_UNBOUND": sbxenv.LevelWarning},
 		},
 		{
 			name: "binding misses an inject domain",
@@ -114,7 +114,7 @@ func TestOptionalUnboundCredentialIsOnlyAWarning(t *testing.T) {
 		t.Errorf("the optional credential is the one reported: %s", d.Message)
 	}
 	for _, x := range diags(p, "CREDENTIAL_UNBOUND") {
-		if x.Level == sbxenv.LevelError {
+		if strings.Contains(x.Message, "credential example") {
 			t.Errorf("bound required credential reported: %s", x.Message)
 		}
 	}
