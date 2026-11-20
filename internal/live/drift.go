@@ -324,13 +324,26 @@ func samePath(a, b string) bool {
 	if a == "" || b == "" {
 		return false
 	}
-	a, b = filepath.Clean(a), filepath.Clean(b)
-	if a == b {
-		return true
+	return Canonical(a) == Canonical(b)
+}
+
+// Canonical cleans p and resolves symbolic links in its longest existing
+// prefix, so /var/x and /private/var/x (macOS) compare equal even when x
+// itself does not exist.
+func Canonical(p string) string {
+	p = filepath.Clean(p)
+	rest := ""
+	for cur := p; ; {
+		if r, err := filepath.EvalSymlinks(cur); err == nil {
+			return filepath.Join(r, rest)
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return p
+		}
+		rest = filepath.Join(filepath.Base(cur), rest)
+		cur = parent
 	}
-	ra, ea := filepath.EvalSymlinks(a)
-	rb, eb := filepath.EvalSymlinks(b)
-	return ea == nil && eb == nil && ra == rb
 }
 
 func baseProto(p string) string {

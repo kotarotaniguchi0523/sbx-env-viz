@@ -577,3 +577,37 @@ func TestDriftSkipsWhatSbxDidNotReport(t *testing.T) {
 		t.Errorf("skipped = %v", c.Skipped)
 	}
 }
+
+func TestDiscoverTreatsSymlinkedAndMissingPathsAsTheSame(t *testing.T) {
+	t.Parallel()
+	// Arrange: sbx reports the workspace through a symlinked parent (as
+	// macOS does for /var → /private/var), and the workspace directory
+	// itself does not exist.
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	env := "schemaVersion: \"1\"\nagent: claude\nworkspace: ./missing-ws\n"
+	if err := os.WriteFile(filepath.Join(real, "sbxenv.yaml"), []byte(env), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := &fakeSbx{out: map[string]string{
+		"ls --json":                    `[{"name": "s", "agent": "claude", "status": "running", "workspaces": [{"path": "` + filepath.Join(link, "missing-ws") + `", "read_only": false}]}]`,
+		"policy ls s --json":           "[]",
+		"secret ls --sandbox s --json": "[]",
+		"mcp ls --json":                "[]",
+	}}
+	w := &world{dir: real}
+
+	// Act
+	targets, _ := live.Discover(context.Background(), live.DiscoverRequest{WorkDir: real, Runner: r, Resolve: w.resolve})
+
+	// Assert
+	if len(targets) != 1 || targets[0].Sandbox == nil || targets[0].Plan == nil {
+		t.Fatalf("one paired target expected, got %v", names(targets))
+	}
+	if n := targets[0].Drifts(); n != 0 {
+		t.Errorf("the same directory reported as drift: %+v", targets[0].Comparison.Drifts)
+	}
+}

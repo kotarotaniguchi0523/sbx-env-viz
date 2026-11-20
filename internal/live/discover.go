@@ -81,11 +81,10 @@ func Discover(ctx context.Context, req DiscoverRequest) ([]Target, Snapshot) {
 	var groups []Group
 	seenDir := map[string]bool{}
 	for _, d := range dirs {
-		d = filepath.Clean(d)
-		if d == "" || seenDir[d] {
+		if d == "" || seenDir[Canonical(d)] {
 			continue
 		}
-		seenDir[d] = true
+		seenDir[Canonical(d)] = true
 		groups = append(groups, FileGroups(d)...)
 	}
 
