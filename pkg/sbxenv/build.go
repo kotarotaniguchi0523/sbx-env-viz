@@ -175,8 +175,11 @@ func (rs *resolver) fmtPort(v *vnode) string {
 		host = "ephemeral"
 	}
 	ip := v.dstr("hostIP")
-	if ip == "" {
+	switch {
+	case ip == "":
 		ip = "loopback"
+	case strings.Contains(ip, ":") && !strings.HasPrefix(ip, "["):
+		ip = "[" + ip + "]"
 	}
 	return fmt.Sprintf("%s:%s -> sandbox:%s", ip, host, rs.portKey(v))
 }
@@ -291,8 +294,14 @@ func (rs *resolver) buildArgs() {
 		d := rs.argDecls[name]
 		it := Item{ID: "args." + name, Path: "args." + name, Section: SectionArgs, Risk: SeverityInfo}
 		var hist []HistoryEntry
-		if d.def != nil {
-			hist = append(hist, HistoryEntry{Op: OpDefault, Value: rs.r.value(*d.def), Origin: d.defOrigin})
+		if d.defNode != nil {
+			for _, h := range d.defNode.hist {
+				op := h.op
+				if op == OpSet {
+					op = OpDefault
+				}
+				hist = append(hist, HistoryEntry{Op: op, Value: rs.r.value(h.node.val), Origin: h.node.origin()})
+			}
 		}
 		val := ""
 		if v, ok := rs.argValues[name]; ok {

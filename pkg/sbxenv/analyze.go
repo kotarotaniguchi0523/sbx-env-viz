@@ -58,7 +58,7 @@ func (rs *resolver) checkEnvArgUse() {
 				where = append(where, fmt.Sprintf("%s (%s:%d)", l.path, l.overridden.SourceID, l.overridden.Line))
 			}
 			rs.diag("ENV_ARG_INEFFECTIVE", LevelWarning, "args",
-				fmt.Sprintf("%s %s has no effect: every field that referenced it is overridden by a later layer with a fixed value at %s", flag, a.Name, strings.Join(where, ", ")),
+				fmt.Sprintf("%s %s has no effect: every field that referenced it is overridden by a later layer whose value does not reference it, at %s", flag, a.Name, strings.Join(where, ", ")),
 				"args."+a.Name, origins...)
 			continue
 		}

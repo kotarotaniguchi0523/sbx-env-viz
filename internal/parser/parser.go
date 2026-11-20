@@ -218,8 +218,13 @@ func (c *converter) convert(y *yaml.Node, path string, depth int) *Node {
 	case yaml.MappingNode:
 		n := &Node{Kind: Map, Pos: pos}
 		seen := map[string]Pos{}
+		var merged []*yaml.Node
 		for i := 0; i+1 < len(y.Content); i += 2 {
 			k, v := y.Content[i], y.Content[i+1]
+			if k.ShortTag() == "!!merge" {
+				merged = append(merged, v)
+				continue
+			}
 			key := k.Value
 			kp := Pos{Line: k.Line, Col: k.Column}
 			childPath := joinPath(path, key)
@@ -230,6 +235,24 @@ func (c *converter) convert(y *yaml.Node, path string, depth int) *Node {
 			}
 			n.Keys = append(n.Keys, KeyValue{Key: key, KeyPos: kp, Value: c.convert(v, childPath, depth)})
 		}
+		// A merge key (<<) adds the keys of the referenced mapping, or of each
+		// mapping in a sequence with earlier ones first, that the mapping does
+		// not set itself. Explicit keys win wherever they appear.
+		for _, src := range merged {
+			sources := []*yaml.Node{src}
+			if deref(src).Kind == yaml.SequenceNode {
+				sources = deref(src).Content
+			}
+			for _, m := range sources {
+				mn := c.convert(m, path, depth+1)
+				for _, kv := range mn.Keys {
+					if _, ok := seen[kv.Key]; !ok {
+						seen[kv.Key] = kv.KeyPos
+						n.Keys = append(n.Keys, kv)
+					}
+				}
+			}
+		}
 		return n
 	case yaml.SequenceNode:
 		n := &Node{Kind: Seq, Pos: pos}
@@ -239,6 +262,13 @@ func (c *converter) convert(y *yaml.Node, path string, depth int) *Node {
 		return n
 	}
 	return &Node{Kind: Null, Pos: pos}
+}
+
+func deref(y *yaml.Node) *yaml.Node {
+	for i := 0; y.Kind == yaml.AliasNode && y.Alias != nil && i < maxAliasDepth; i++ {
+		y = y.Alias
+	}
+	return y
 }
 
 func joinPath(parent, key string) string {

@@ -249,16 +249,15 @@ func (m *merger) mergeInto(dst, src *vnode, path string) *vnode {
 	case dst.kind == parser.Seq && src.kind == parser.Seq && listStrategy(path) != "replace":
 		return m.mergeList(dst, src, path)
 	}
-	// Scalar override, kind change, or a replace-strategy list.
+	// Scalar override, kind change, or a replace-strategy list. The new
+	// value goes through the same path as a first appearance, so keyed
+	// lists inside it are deduplicated exactly as in a single file.
 	m.recordLost(dst, src, path)
 	hist := shadowAll(dst.hist)
-	src.hist = append(hist, hent{op: OpReplace, node: src.clone()})
-	if src.kind == parser.Seq {
-		for _, it := range src.items {
-			m.stampSet(it)
-		}
-	}
-	return src
+	snapshot := shallow(src)
+	norm := m.mergeInto(nil, src, path)
+	norm.hist = append(hist, hent{op: OpReplace, node: snapshot})
+	return norm
 }
 
 func (m *merger) mergeList(dst, src *vnode, path string) *vnode {

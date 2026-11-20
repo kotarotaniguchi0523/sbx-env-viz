@@ -71,6 +71,8 @@ type argDecl struct {
 	pattern     string
 	description string
 	origin      Origin
+	// defNode carries the default's merge history across layers.
+	defNode *vnode
 	// export, buildArg, and buildSecret are kit-arg delivery mechanisms.
 	export, buildArg, buildSecret string
 }
@@ -244,6 +246,10 @@ func containsExpr(n *parser.Node) bool {
 }
 
 func (rs *resolver) collectArgDecls() {
+	// Each file must be valid on its own; the declarations then merge with
+	// the ordinary rules (maps by key, lists appended, scalars replaced).
+	m := &merger{}
+	var merged *vnode
 	for _, ls := range rs.layers {
 		args := ls.tree.Get("args")
 		if args == nil || args.Kind != parser.Map {
@@ -254,51 +260,43 @@ func (rs *resolver) collectArgDecls() {
 			if !envArgNameRe.MatchString(kv.Key) {
 				rs.diag("ARG_NAME_INVALID", LevelError, "args", fmt.Sprintf("argument name %q must start with a letter or underscore and contain only letters, digits, underscores, and hyphens", kv.Key), "", o)
 			}
-			d, ok := rs.argDecls[kv.Key]
-			if !ok {
-				d = &argDecl{name: kv.Key}
-				rs.argDecls[kv.Key] = d
+			if _, ok := rs.argDecls[kv.Key]; !ok {
+				rs.argDecls[kv.Key] = &argDecl{name: kv.Key}
 				rs.argOrder = append(rs.argOrder, kv.Key)
 			}
-			d.origin = o
+			rs.argDecls[kv.Key].origin = o
 			v := kv.Value
 			if v == nil || v.Kind != parser.Map {
 				continue
 			}
-			if x := v.Get("default"); x != nil && x.Kind == parser.Scalar {
-				s := x.Value
-				d.def = &s
-				d.required = false
-				d.defOrigin = Origin{SourceID: ls.id, Line: x.Pos.Line, Col: x.Pos.Col}
-			}
-			if x := v.Get("required"); x != nil && x.Kind == parser.Scalar {
-				d.required = x.Value == "true"
-				if d.required {
-					d.def = nil
-				}
-			}
-			if v.Get("default") != nil && v.Get("required") != nil && v.Get("required").Value == "true" {
+			required := v.Get("required") != nil && v.Get("required").Value == "true"
+			if v.Get("default") != nil && required {
 				rs.diag("ARG_DECL_INVALID", LevelError, "args", fmt.Sprintf("argument %q sets both default and required: true; exactly one is allowed", kv.Key), "args."+kv.Key, o)
 			}
-			if v.Get("default") == nil && (v.Get("required") == nil || v.Get("required").Value != "true") {
+			if v.Get("default") == nil && !required {
 				rs.diag("ARG_DECL_INVALID", LevelError, "args", fmt.Sprintf("argument %q must set exactly one of default or required: true", kv.Key), "args."+kv.Key, o)
-			}
-			if x := v.Get("enum"); x != nil {
-				d.enum = nil
-				for _, it := range x.Items {
-					d.enum = append(d.enum, it.Value)
-				}
-			}
-			if x := v.Get("pattern"); x != nil {
-				d.pattern = x.Value
-			}
-			if x := v.Get("description"); x != nil {
-				d.description = x.Value
 			}
 			if v.Get("enum") != nil && v.Get("pattern") != nil {
 				rs.diag("ARG_DECL_INVALID", LevelError, "args", fmt.Sprintf("argument %q sets both enum and pattern; they cannot be combined", kv.Key), "args."+kv.Key, o)
 			}
 		}
+		merged = m.mergeInto(merged, rs.convert(args, ls, "args", false), "args")
+	}
+	for _, name := range rs.argOrder {
+		d, v := rs.argDecls[name], merged.get(name)
+		def, req := v.get("default"), v.get("required")
+		// When layers set both, the later one decides.
+		useDefault := def != nil && def.kind == parser.Scalar && (req == nil || req.val != "true" || def.layer >= req.layer)
+		if useDefault {
+			s := def.val
+			d.def, d.defNode = &s, def
+			d.defOrigin = def.origin()
+		} else {
+			d.required = req != nil && req.val == "true"
+		}
+		d.enum = v.get("enum").scalars()
+		d.pattern = v.str("pattern")
+		d.description = v.str("description")
 	}
 }
 
