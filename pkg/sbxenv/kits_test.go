@@ -76,7 +76,7 @@ func TestKitArgFlagsOverrideEntryArgs(t *testing.T) {
 			}
 
 			// Act
-			p := f.resolve(t, run{paths: []string{"."}, kitArgsFiles: files, opts: sbxenv.ResolveOptions{KitArgs: tc.flags}})
+			p := f.resolve(t, run{paths: []string{"."}, kitArgsFiles: files, opts: sbxenv.ResolveOptions{KitArgs: tc.flags, Redaction: sbxenv.RedactHome}})
 
 			// Assert
 			if !hasItem(p, "kit:net/network-policy@1/runtime.allow/"+tc.wantAllow) {
@@ -153,7 +153,7 @@ func TestNetworkPolicyIsSplitByPhaseAndRated(t *testing.T) {
 	f.write(t, "sbxenv.yaml", minimal+"kits: [./kits/net]\n")
 
 	// Act
-	p := f.resolve(t, run{paths: []string{"."}})
+	p := f.resolve(t, run{paths: []string{"."}, opts: sbxenv.ResolveOptions{Redaction: sbxenv.RedactHome}})
 
 	// Assert
 	cases := map[string]sbxenv.Severity{

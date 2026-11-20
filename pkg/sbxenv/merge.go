@@ -9,9 +9,12 @@ import (
 
 // vnode is a merged value with provenance. It never leaves this package.
 type vnode struct {
-	kind   parser.Kind
-	raw    string // scalar text before expansion
-	val    string // scalar text after expansion
+	kind parser.Kind
+	raw  string // scalar text before expansion
+	val  string // scalar text after expansion, used for logic
+	// disp is val as it may be shown: in strict mode every substituted
+	// argument value is replaced by <redacted>.
+	disp   string
 	quoted bool
 	pos    parser.Pos // key position for map values, item position for list entries
 	src    string     // source ID
@@ -44,6 +47,28 @@ func (v *vnode) str(key string) string {
 		return ""
 	}
 	return c.val
+}
+
+// show returns the display text of a scalar.
+func (v *vnode) show() string {
+	if v == nil || v.kind != parser.Scalar {
+		return ""
+	}
+	return v.disp
+}
+
+// dstr returns the display text of a scalar child.
+func (v *vnode) dstr(key string) string { return v.get(key).show() }
+
+// dscalars returns the display texts of a scalar list.
+func (v *vnode) dscalars() []string {
+	var out []string
+	for _, it := range v.list() {
+		if it.kind == parser.Scalar {
+			out = append(out, it.disp)
+		}
+	}
+	return out
 }
 
 func (v *vnode) has(key string) bool { return v.get(key) != nil && v.get(key).kind != parser.Null }

@@ -402,23 +402,32 @@ func (rs *resolver) convert(n *parser.Node, ls *layerState, path string, expandO
 	v := &vnode{kind: n.Kind, pos: n.Pos, src: ls.id, layer: indexOf(rs.layers, ls) + 1, fileDir: ls.dir, quoted: n.Quoted}
 	switch n.Kind {
 	case parser.Scalar:
-		v.raw, v.val = n.Value, n.Value
+		v.raw, v.val, v.disp = n.Value, n.Value, n.Value
 		if expandOn && hasExpr(n.Value) {
-			e := expandString(n.Value, func(body string) exprResult {
-				switch body {
-				case "env.projectDir":
-					return exprResult{value: rs.opts.ProjectDir, ok: rs.opts.ProjectDir != ""}
-				case "env.fileDir":
-					return exprResult{value: ls.dir, ok: true}
-				}
-				if name, ok := envArgRef(body); ok {
-					if av, ok := rs.argValues[name]; ok {
-						return exprResult{value: av.Value, ok: true}
+			resolve := func(hide bool) func(string) exprResult {
+				return func(body string) exprResult {
+					switch body {
+					case "env.projectDir":
+						return exprResult{value: rs.opts.ProjectDir, ok: rs.opts.ProjectDir != ""}
+					case "env.fileDir":
+						return exprResult{value: ls.dir, ok: true}
 					}
+					if name, ok := envArgRef(body); ok {
+						if av, ok := rs.argValues[name]; ok {
+							if hide {
+								return exprResult{value: redactedText, ok: true}
+							}
+							return exprResult{value: av.Value, ok: true}
+						}
+					}
+					return exprResult{}
 				}
-				return exprResult{}
-			})
-			v.val = e.out
+			}
+			e := expandString(n.Value, resolve(false))
+			v.val, v.disp = e.out, e.out
+			if rs.r.strict() {
+				v.disp = expandString(n.Value, resolve(true)).out
+			}
 			for _, ref := range e.refs {
 				if name, ok := envArgRef(ref); ok {
 					v.argRefs = append(v.argRefs, name)

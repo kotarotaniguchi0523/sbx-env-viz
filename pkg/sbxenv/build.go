@@ -77,7 +77,7 @@ func (rs *resolver) bound(b Boundary) { rs.bounds = append(rs.bounds, b) }
 func (rs *resolver) fmtPlain(v *vnode) string {
 	switch v.kind {
 	case parser.Scalar:
-		return rs.r.text(v.val)
+		return rs.r.text(v.disp)
 	case parser.Seq:
 		var parts []string
 		for _, it := range v.items {
@@ -97,7 +97,7 @@ func (rs *resolver) fmtPlain(v *vnode) string {
 func (rs *resolver) fmtValue(v *vnode) string {
 	switch v.kind {
 	case parser.Scalar:
-		return rs.r.value(v.val)
+		return rs.r.value(v.disp)
 	case parser.Seq:
 		var parts []string
 		for _, it := range v.items {
@@ -118,19 +118,16 @@ func (rs *resolver) fmtPath(v *vnode) string {
 	if v.kind != parser.Scalar {
 		return rs.fmtPlain(v)
 	}
-	return rs.r.path(resolveHostPath(v.fileDir, v.val))
+	return rs.r.path(resolveHostPath(v.fileDir, v.disp))
 }
 
 func (rs *resolver) url(s string) string {
 	if !rs.r.strict() {
-		return rs.r.text(s)
+		return rs.kitRef(s)
 	}
 	u, err := url.Parse(s)
 	if err != nil || u.Host == "" {
-		if strings.Contains(s, "://") {
-			return "<redacted url>"
-		}
-		return rs.r.text(s)
+		return "<redacted url>"
 	}
 	out := u.Scheme + "://" + u.Host
 	if u.Path != "" || u.RawQuery != "" {
@@ -141,21 +138,22 @@ func (rs *resolver) url(s string) string {
 
 func (rs *resolver) fmtSecretSource(v *vnode) string {
 	if v == nil || v.kind != parser.Map {
-		return rs.fmtValue(v)
+		// A scalar written where a source map belongs is still a secret.
+		return rs.r.literalSecret()
 	}
 	var parts []string
 	if v.has("value") {
 		parts = append(parts, "value: "+rs.r.literalSecret())
 	}
 	if v.has("ref") {
-		parts = append(parts, "ref: "+rs.r.secretRef(v.str("ref")))
+		parts = append(parts, "ref: "+rs.r.secretRef(v.dstr("ref")))
 	}
 	if v.has("command") {
-		parts = append(parts, "command: "+rs.r.command(v.str("command")))
+		parts = append(parts, "command: "+rs.r.command(v.dstr("command")))
 	}
 	for _, k := range []string{"snapshot", "refresh", "backend", "noVerify"} {
 		if v.has(k) {
-			parts = append(parts, k+": "+rs.r.text(v.str(k)))
+			parts = append(parts, k+": "+rs.r.text(v.dstr(k)))
 		}
 	}
 	return strings.Join(parts, ", ")
@@ -165,15 +163,15 @@ func (rs *resolver) fmtPort(v *vnode) string {
 	if v.kind != parser.Map {
 		return rs.fmtPlain(v)
 	}
-	host := v.str("host")
+	host := v.dstr("host")
 	if host == "" {
 		host = "ephemeral"
 	}
-	ip := v.str("hostIP")
+	ip := v.dstr("hostIP")
 	if ip == "" {
 		ip = "loopback"
 	}
-	return fmt.Sprintf("%s:%s -> sandbox:%s/%s", ip, host, v.str("sandbox"), effectiveProtocol(v))
+	return fmt.Sprintf("%s:%s -> sandbox:%s", ip, host, rs.portKey(v))
 }
 
 func (rs *resolver) fmtMCP(v *vnode) string {
@@ -181,11 +179,11 @@ func (rs *resolver) fmtMCP(v *vnode) string {
 		return rs.fmtPlain(v)
 	}
 	if v.has("url") {
-		return "url: " + rs.url(v.str("url"))
+		return "url: " + rs.url(v.dstr("url"))
 	}
-	cmd := v.str("command")
+	cmd := v.dstr("command")
 	if args := v.get("args"); args != nil {
-		cmd += " " + strings.Join(args.scalars(), " ")
+		cmd += " " + strings.Join(args.dscalars(), " ")
 	}
 	return "command: " + rs.r.command(strings.TrimSpace(cmd))
 }
@@ -194,7 +192,7 @@ func (rs *resolver) fmtLifecycle(v *vnode) string {
 	if v.kind != parser.Map {
 		return rs.r.command(rs.fmtPlain(v))
 	}
-	return rs.r.command(v.str("command"))
+	return rs.r.command(v.dstr("command"))
 }
 
 func (rs *resolver) fmtWorkspaceEntry(v *vnode) string {
@@ -206,7 +204,7 @@ func (rs *resolver) fmtWorkspaceEntry(v *vnode) string {
 	if p != nil {
 		out = rs.fmtPath(p)
 	}
-	if t := v.str("target"); t != "" {
+	if t := v.dstr("target"); t != "" {
 		out += " -> " + rs.r.path(t)
 	}
 	if v.str("readOnly") == "true" {
@@ -219,12 +217,11 @@ func (rs *resolver) fmtWorkspaceEntry(v *vnode) string {
 }
 
 func (rs *resolver) fmtKitEntry(v *vnode) string {
-	src := kitSource(v)
-	out := rs.r.path(src)
+	out := rs.kitRef(kitSourceDisplay(v))
 	if args := v.get("args"); args != nil && len(args.keys) > 0 {
 		var parts []string
 		for _, k := range args.keys {
-			parts = append(parts, k+"="+rs.r.value(args.kv[k].val))
+			parts = append(parts, k+"="+rs.r.value(args.kv[k].disp))
 		}
 		out += " {" + strings.Join(parts, ", ") + "}"
 	}
@@ -351,8 +348,11 @@ func (rs *resolver) buildWorkspace() {
 		rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryHostMount, Where: "host", Lifetime: "host-persistent", Access: access, Reason: reason})
 	}
 	for _, e := range rs.root.get("additionalWorkspaces").list() {
-		key := listKey("additionalWorkspaces", e)
-		id := "additionalWorkspaces[" + rs.r.path(strings.TrimPrefix(key, "target:")) + "]"
+		target := rs.r.path(e.dstr("target"))
+		if target == "" {
+			target = rs.fmtPath(e.get("path"))
+		}
+		id := "additionalWorkspaces[" + target + "]"
 		it := rs.addItem(Item{ID: id, Path: "additionalWorkspaces[]", Section: SectionWorkspace}, e, rs.fmtWorkspaceEntry)
 		access := "rw"
 		it.Risk, it.Badges = SeverityMedium, []string{BadgeRW}
@@ -395,7 +395,11 @@ func (rs *resolver) buildSandboxOptions() {
 	}
 	for _, k := range so.keys {
 		v := so.kv[k]
-		it := rs.addItem(Item{ID: "sandboxOptions." + k, Path: "sandboxOptions." + k, Section: SectionSandbox}, v, rs.fmtPlain)
+		f := rs.fmtPlain
+		if k == "template" {
+			f = func(n *vnode) string { return rs.kitRef(n.disp) }
+		}
+		it := rs.addItem(Item{ID: "sandboxOptions." + k, Path: "sandboxOptions." + k, Section: SectionSandbox}, v, f)
 		val := v.val
 		switch k {
 		case "writableEnvFiles":
@@ -436,7 +440,7 @@ func (rs *resolver) buildSecrets() {
 		it := rs.addItem(Item{ID: "secrets." + svc, Path: "secrets." + svc, Section: SectionSecrets, Risk: SeverityMedium, Badges: []string{BadgeCred}}, v, rs.fmtSecretSource)
 		for _, k := range []string{"snapshot", "refresh", "backend", "noVerify"} {
 			if v.has(k) {
-				it.Fields = append(it.Fields, Field{k, rs.r.text(v.str(k))})
+				it.Fields = append(it.Fields, Field{k, rs.r.text(v.dstr(k))})
 			}
 		}
 		switch {
@@ -470,13 +474,13 @@ func (rs *resolver) buildBindings() {
 			id := "bindings." + svc + "." + mech
 			f := func(n *vnode) string {
 				if d := n.get("domains"); d != nil {
-					return strings.Join(d.scalars(), ", ")
+					return strings.Join(d.dscalars(), ", ")
 				}
 				return rs.fmtPlain(n)
 			}
 			it := rs.addItem(Item{ID: id, Path: id, Section: SectionBindings, Risk: SeverityMedium, Badges: []string{BadgeCred, BadgePersist}}, mv, f)
 			if dom != nil {
-				it.Fields = append(it.Fields, Field{"domains", strings.Join(dom.scalars(), ", ")})
+				it.Fields = append(it.Fields, Field{"domains", strings.Join(dom.dscalars(), ", ")})
 			}
 			rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryHostGlobal, Where: "host", Lifetime: "host-persistent",
 				Reason: "merged into the global credentials.yaml; it survives sbx env rm unless --prune-bindings is given and is shared with other sandboxes"})
@@ -516,7 +520,7 @@ func (rs *resolver) buildRegistries() {
 
 func (rs *resolver) buildMCP() {
 	for _, e := range rs.root.get("mcp").get("servers").list() {
-		name := e.str("name")
+		name := rs.r.text(e.dstr("name"))
 		it := rs.addItem(Item{ID: "mcp.servers[" + name + "]", Path: "mcp.servers[]", Section: SectionMCP}, e, rs.fmtMCP)
 		if e.has("command") {
 			it.Risk = SeverityHigh
@@ -541,8 +545,7 @@ func (rs *resolver) buildMCP() {
 
 func (rs *resolver) buildPorts() {
 	for _, e := range rs.root.get("ports").list() {
-		key := listKey("ports", e)
-		it := rs.addItem(Item{ID: "ports[" + key + "]", Path: "ports[]", Section: SectionPorts, Risk: SeverityLow}, e, rs.fmtPort)
+		it := rs.addItem(Item{ID: "ports[" + rs.portKey(e) + "]", Path: "ports[]", Section: SectionPorts, Risk: SeverityLow}, e, rs.fmtPort)
 		ip := e.str("hostIP")
 		reason := "publishes a sandbox port on the host loopback interface"
 		if ip == "0.0.0.0" || ip == "::" || ip == "[::]" {
@@ -562,13 +565,13 @@ func (rs *resolver) buildLifecycle() {
 		for i, e := range lc.get(phase).list() {
 			id := fmt.Sprintf("lifecycle.%s[%d]", phase, i)
 			it := rs.addItem(Item{ID: id, Path: "lifecycle." + phase + "[]", Section: SectionLifecycle, Risk: SeverityHigh, Badges: []string{BadgeHost, BadgeOpaque}}, e, rs.fmtLifecycle)
-			if n := e.str("name"); n != "" {
+			if n := e.dstr("name"); n != "" {
 				it.Fields = append(it.Fields, Field{"name", rs.r.text(n)})
 			}
 			if w := e.get("workdir"); w != nil {
 				it.Fields = append(it.Fields, Field{"workdir", rs.fmtPath(w)})
 			}
-			if t := e.str("timeout"); t != "" {
+			if t := e.dstr("timeout"); t != "" {
 				it.Fields = append(it.Fields, Field{"timeout", t})
 			}
 			b := Boundary{ItemID: it.ID, Kind: BoundaryHostExec, Where: "host", Lifetime: "invocation", Opaque: true,
@@ -586,15 +589,15 @@ func (rs *resolver) buildLifecycle() {
 
 func (rs *resolver) buildKitEntries() {
 	for _, k := range rs.kits {
-		id := "kits[" + rs.r.path(k.source) + "]"
-		it := rs.addItem(Item{ID: id, Path: "kits[]", Section: SectionKits, Kit: k.handle, Risk: SeverityLow}, k.entry, rs.fmtKitEntry)
+		id := "kits[" + k.shown + "]"
+		it := rs.addItem(Item{ID: id, Path: "kits[]", Section: SectionKits, Kit: k.handleShown, Risk: SeverityLow}, k.entry, rs.fmtKitEntry)
 		status := "expanded"
 		if !k.expanded {
 			status = "not expanded"
 			it.Risk = SeverityMedium
 			it.Badges = append(it.Badges, BadgeUnknown)
 		}
-		it.Fields = append(it.Fields, Field{"kind", k.kind}, Field{"handle", k.handle}, Field{"status", status})
+		it.Fields = append(it.Fields, Field{"kind", k.kind}, Field{"handle", k.handleShown}, Field{"status", status})
 		if k.descKind != "" {
 			it.Fields = append(it.Fields, Field{"descriptor kind", k.descKind})
 		}
@@ -619,11 +622,11 @@ func phases(v *vnode) []string {
 }
 
 func (rs *resolver) capItem(c *capState, suffix string, v *vnode, value string, risk Severity, badges ...string) *Item {
-	id := "kit:" + c.kit.handle + "/" + c.short
+	id := "kit:" + c.kit.handleShown + "/" + c.short
 	if suffix != "" {
 		id += "/" + suffix
 	}
-	it := Item{ID: id, Path: "cap:" + c.short, Section: SectionCapabilities, Kit: c.kit.handle, Value: value, Risk: risk, Badges: badges}
+	it := Item{ID: id, Path: "cap:" + c.short, Section: SectionCapabilities, Kit: c.kit.handleShown, Value: value, Risk: risk, Badges: badges}
 	o := c.origin
 	if v != nil {
 		o = Origin{SourceID: v.src, Line: v.pos.Line, Col: v.pos.Col, Via: c.kit.via()}
@@ -654,6 +657,7 @@ func (rs *resolver) buildCapability(c *capState) {
 			for _, list := range []string{"allow", "deny"} {
 				for _, e := range cfg.get(ph).get(list).list() {
 					pat := e.val
+					shown := rs.r.text(e.disp)
 					risk, badges := SeverityLow, []string{BadgeNet}
 					if list == "deny" {
 						risk, badges = SeverityInfo, nil
@@ -662,27 +666,27 @@ func (rs *resolver) buildCapability(c *capState) {
 					} else if strings.Contains(pat, "*") && ph == "runtime" {
 						risk = SeverityMedium
 					}
-					it := rs.capItem(c, ph+"."+list+"/"+pat, e, ph+" "+list+" "+pat, risk, badges...)
+					it := rs.capItem(c, ph+"."+list+"/"+shown, e, ph+" "+list+" "+shown, risk, badges...)
 					if list == "allow" {
 						rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryNetwork, Where: "sandbox", Lifetime: lifetimeForPhase(ph),
-							Reason: phaseReason(ph) + " egress to " + pat + " is allowed through the host proxy"})
+							Reason: phaseReason(ph) + " egress to " + shown + " is allowed through the host proxy"})
 					}
 				}
 			}
 		}
 	case "credential@1":
-		svc := cfg.str("service")
+		svc := rs.r.text(cfg.dstr("service"))
 		ph := phases(cfg.get("phase"))
 		var parts []string
 		parts = append(parts, "service="+svc, "phase="+strings.Join(ph, ","))
 		ak := cfg.get("apiKey")
 		if ak != nil {
-			if n := ak.str("name"); n != "" {
+			if n := rs.r.text(ak.dstr("name")); n != "" {
 				parts = append(parts, "env="+n)
 			}
 			var doms []string
 			for _, inj := range ak.get("inject").list() {
-				doms = append(doms, inj.str("domain"))
+				doms = append(doms, rs.r.text(inj.dstr("domain")))
 			}
 			if len(doms) > 0 {
 				parts = append(parts, "inject="+strings.Join(doms, ","))
@@ -702,7 +706,7 @@ func (rs *resolver) buildCapability(c *capState) {
 			it.Fields = append(it.Fields, Field{"proxyManaged", orDefault(ak.str("proxyManaged"), "false")})
 		}
 		if oa != nil {
-			it.Fields = append(it.Fields, Field{"oauth.resourceHosts", strings.Join(oa.get("resourceHosts").scalars(), ", ")})
+			it.Fields = append(it.Fields, Field{"oauth.resourceHosts", strings.Join(oa.get("resourceHosts").dscalars(), ", ")})
 		}
 		where := "host"
 		reason := "the host proxy injects the " + svc + " credential on matching requests; the real value stays on the host"
@@ -712,12 +716,12 @@ func (rs *resolver) buildCapability(c *capState) {
 		}
 		rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryProxyRoute, Where: where, Lifetime: "sandbox-scoped", Reason: reason})
 	case "host-mount@1":
-		p := cfg.str("path")
+		p := rs.r.text(cfg.dstr("path"))
 		it := rs.capItem(c, p, cfg.get("path"), p, SeverityHigh, BadgeRW, BadgePersist)
 		if m := cfg.str("mode"); m != "" {
 			it.Fields = append(it.Fields, Field{"mode", m})
 		}
-		bound := rs.root.get("mounts").get(p)
+		bound := rs.root.get("mounts").get(cfg.str("path"))
 		reason := "a runtime-owned host directory shared by every sandbox that composes this kit; it survives sandbox removal"
 		if bound != nil {
 			reason = "bound to " + rs.fmtPath(bound) + " by mounts:; data survives sandbox removal"
@@ -733,10 +737,10 @@ func (rs *resolver) buildCapability(c *capState) {
 			value += " unrestricted"
 			risk = SeverityHigh
 		} else {
-			if s := cfg.get("sign").scalars(); len(s) > 0 {
+			if s := cfg.get("sign").dscalars(); len(s) > 0 {
 				value += " sign=" + strings.Join(s, ",")
 			}
-			if a := cfg.get("authenticate").scalars(); len(a) > 0 {
+			if a := cfg.get("authenticate").dscalars(); len(a) > 0 {
 				value += " authenticate=" + strings.Join(a, ",")
 			}
 		}
@@ -754,16 +758,19 @@ func (rs *resolver) buildCapability(c *capState) {
 				text := ""
 				if cmd != nil {
 					if cmd.kind == parser.Seq {
-						text = strings.Join(cmd.scalars(), " ")
+						text = strings.Join(cmd.dscalars(), " ")
 					} else {
-						text = cmd.val
+						text = cmd.disp
 					}
 				}
 				it := rs.capItem(c, fmt.Sprintf("%s[%d]", ph, i), h, rs.r.command(text), SeverityLow, BadgeOpaque)
-				if u := h.str("user"); u != "" {
+				if u := h.dstr("user"); u != "" {
 					it.Fields = append(it.Fields, Field{"user", u})
 				}
-				if env := h.get("env").scalars(); len(env) > 0 {
+				if env := h.get("env").dscalars(); len(env) > 0 {
+					for i, e := range env {
+						env[i], _, _ = strings.Cut(e, "=")
+					}
 					it.Fields = append(it.Fields, Field{"env", strings.Join(env, ", ")})
 				}
 				rs.bound(Boundary{ItemID: it.ID, Kind: BoundarySandboxExec, Where: "sandbox", Lifetime: "sandbox-scoped", Opaque: true,
@@ -771,13 +778,13 @@ func (rs *resolver) buildCapability(c *capState) {
 			}
 		}
 		for i, f := range cfg.get("files").list() {
-			it := rs.capItem(c, fmt.Sprintf("files[%d]", i), f, f.str("path"), SeverityInfo)
+			it := rs.capItem(c, fmt.Sprintf("files[%d]", i), f, rs.r.text(f.dstr("path")), SeverityInfo)
 			if m := f.str("mode"); m != "" {
 				it.Fields = append(it.Fields, Field{"mode", m})
 			}
 		}
 		if inter := cfg.get("interactive"); inter != nil {
-			rs.capItem(c, "interactive", inter, rs.r.command(strings.Join(inter.scalars(), " ")), SeverityInfo)
+			rs.capItem(c, "interactive", inter, rs.r.command(strings.Join(inter.dscalars(), " ")), SeverityInfo)
 		}
 	default:
 		rs.buildOpaqueCap(c, false)
@@ -803,7 +810,7 @@ func (rs *resolver) buildOpaqueCap(c *capState, unknownNS bool) {
 		kind = CoverageUnknownCap
 		reason = "capability type outside the com.docker.sandbox namespace; sbx refuses it if required and skips it if optional"
 	}
-	rs.coverage(kind, c.kit.handle+": "+c.typ, reason, c.origin)
+	rs.coverage(kind, c.kit.handleShown+": "+c.typ, reason, c.origin)
 	switch c.short {
 	case "privileged@1", "dockerd@1":
 		rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryDevice, Where: "sandbox", Lifetime: "sandbox-scoped", Reason: "requests elevated privileges inside the sandbox VM"})
@@ -820,7 +827,7 @@ func flattenFields(v *vnode, prefix string, rs *resolver, out *[]Field) {
 	}
 	switch v.kind {
 	case parser.Scalar:
-		*out = append(*out, Field{prefix, rs.r.value(v.val)})
+		*out = append(*out, Field{prefix, rs.r.value(v.disp)})
 	case parser.Map:
 		for _, k := range v.keys {
 			flattenFields(v.kv[k], joinKey(prefix, k), rs, out)
@@ -852,6 +859,28 @@ func phaseReason(ph string) string {
 	}
 	return "while the agent runs,"
 }
+
+// portKey is the display form of a port's identity: sandbox port and
+// effective protocol.
+func (rs *resolver) portKey(v *vnode) string {
+	proto := strings.ToLower(v.dstr("protocol"))
+	if proto == "" {
+		proto = effectiveProtocol(v)
+	}
+	return rs.r.text(v.dstr("sandbox")) + "/" + rs.r.text(proto)
+}
+
+// kitSourceDisplay returns a kit entry's source as it may be shown.
+func kitSourceDisplay(e *vnode) string {
+	if e.kind == parser.Scalar {
+		return e.disp
+	}
+	return e.dstr("source")
+}
+
+// kitRef formats a kit or image reference: $HOME shortened and any
+// credentials in a URL authority removed, in every mode.
+func (rs *resolver) kitRef(s string) string { return rs.r.path(stripUserinfo(s)) }
 
 // sortItems orders items by section, then ID.
 func sortItems(items []Item) {

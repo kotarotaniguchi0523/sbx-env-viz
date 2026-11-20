@@ -35,6 +35,10 @@ type kitState struct {
 	origin   Origin
 	// raw is the parsed descriptor between loading and expansion.
 	raw *parser.Node
+	// shown and handleShown are source and handle as they may be displayed:
+	// redacted, home-shortened, and without URL credentials.
+	shown       string
+	handleShown string
 }
 
 type capState struct {
@@ -51,7 +55,7 @@ type capState struct {
 
 // via returns the provenance chain for a kit-derived origin.
 func (k *kitState) via() []string {
-	return []string{fmt.Sprintf("%s:%d kits[%s]", k.origin.SourceID, k.origin.Line, k.source)}
+	return []string{fmt.Sprintf("%s:%d kits[%s]", k.origin.SourceID, k.origin.Line, k.shown)}
 }
 
 func classifyKitSource(src string) string {
@@ -116,24 +120,27 @@ func (rs *resolver) expandKits() {
 			k.dir = resolveHostPath(srcNode.fileDir, src)
 		}
 		k.handle = kitHandle(k.kind, src, k.dir)
+		shown := kitSourceDisplay(e)
+		k.shown = rs.kitRef(shown)
+		k.handleShown = kitHandle(k.kind, stripUserinfo(shown), resolveHostPath(srcNode.fileDir, shown))
 		rs.kits = append(rs.kits, k)
 		switch k.kind {
 		case kitLocal:
 			rs.loadLocalKit(k)
 		case kitZip:
-			rs.coverage(CoverageRemoteKit, src, "ZIP kit archives are not unpacked by this tool; its capabilities (network, credentials, host mounts, hooks) are not shown", k.origin)
+			rs.coverage(CoverageRemoteKit, k.shown, "ZIP kit archives are not unpacked by this tool; its capabilities (network, credentials, host mounts, hooks) are not shown", k.origin)
 		case kitGit:
 			reason := "Git kits are fetched and built by sbx at create time; their capabilities are not shown"
 			if !strings.Contains(src, "ref=") {
 				reason += ". The reference has no ref= pin, so its content can change between creates"
 			}
-			rs.coverage(CoverageRemoteKit, src, reason, k.origin)
+			rs.coverage(CoverageRemoteKit, k.shown, reason, k.origin)
 		case kitOCI:
 			reason := "OCI kits are pulled by sbx at create time; their capabilities (network, credentials, host mounts, hooks) are not shown"
 			if !strings.Contains(src, "@sha256:") {
 				reason += ". The tag is not digest-pinned, so a republished tag changes what is installed"
 			}
-			rs.coverage(CoverageRemoteKit, src, reason, k.origin)
+			rs.coverage(CoverageRemoteKit, k.shown, reason, k.origin)
 		}
 	}
 	rs.applyKitArgs()
@@ -147,20 +154,20 @@ func (rs *resolver) expandKits() {
 
 func (rs *resolver) loadLocalKit(k *kitState) {
 	if rs.opts.Kits == nil {
-		rs.coverage(CoverageNoKitResolver, k.source, "no kit loader was configured, so this local kit is not expanded", k.origin)
+		rs.coverage(CoverageNoKitResolver, k.shown, "no kit loader was configured, so this local kit is not expanded", k.origin)
 		return
 	}
 	in, err := rs.opts.Kits.LoadKit(k.dir)
 	if err != nil {
-		rs.coverage(CoverageKitLoadFailed, k.source, "the kit directory could not be read: "+rs.r.text(err.Error()), k.origin)
-		rs.diag("KIT_UNREADABLE", LevelError, "kits", fmt.Sprintf("local kit %s could not be read; sbx would fail to build it", k.source), "kits["+rs.r.path(k.source)+"]", k.origin)
+		rs.coverage(CoverageKitLoadFailed, k.shown, "the kit directory could not be read: "+rs.r.text(err.Error()), k.origin)
+		rs.diag("KIT_UNREADABLE", LevelError, "kits", fmt.Sprintf("local kit %s could not be read; sbx would fail to build it", k.shown), "kits["+k.shown+"]", k.origin)
 		return
 	}
 	k.srcID = rs.addSource(Source{Kind: SourceKit, Path: rs.r.path(in.DescriptorPath), SHA256: digest(in.Content), Expanded: true})
 	res, err := parser.Parse(in.Content)
 	if err != nil {
 		rs.markSource(k.srcID, false, "parse error")
-		rs.diag("KIT_PARSE", LevelError, "kits", fmt.Sprintf("kit descriptor for %s: %s", k.source, err.Error()), "", Origin{SourceID: k.srcID})
+		rs.diag("KIT_PARSE", LevelError, "kits", fmt.Sprintf("kit descriptor for %s: %s", k.shown, err.Error()), "", Origin{SourceID: k.srcID})
 		return
 	}
 	for _, d := range res.Duplicates {
@@ -179,7 +186,7 @@ func (rs *resolver) loadLocalKit(k *kitState) {
 			v = sv.Value
 		}
 		rs.markSource(k.srcID, false, "legacy or unknown kit schema")
-		rs.coverage(CoverageLegacyKit, k.source, fmt.Sprintf("kit descriptor schemaVersion %q is not the v3 grammar this tool reads; it is not expanded", v), Origin{SourceID: k.srcID})
+		rs.coverage(CoverageLegacyKit, k.shown, fmt.Sprintf("kit descriptor schemaVersion %q is not the v3 grammar this tool reads; it is not expanded", v), Origin{SourceID: k.srcID})
 		return
 	}
 	var issues []schemaIssue
@@ -195,7 +202,7 @@ func (rs *resolver) loadLocalKit(k *kitState) {
 		k.descKind = kind.Value
 	}
 	if k.descKind == "set" || root.Get("kits") != nil {
-		rs.coverage(CoverageRemoteKit, k.source, "kit sets are composed from other kits at build time; members are not expanded", Origin{SourceID: k.srcID})
+		rs.coverage(CoverageRemoteKit, k.shown, "kit sets are composed from other kits at build time; members are not expanded", Origin{SourceID: k.srcID})
 	}
 	k.argDecls = map[string]*argDecl{}
 	if args := root.Get("args"); args != nil {
@@ -283,7 +290,7 @@ func (rs *resolver) applyKitArgs() {
 		if k.expanded {
 			for name, d := range k.argDecls {
 				if d.def != nil {
-					k.args[name] = &ArgValue{Kit: k.handle, Name: name, Value: *d.def, From: "default", Origin: d.defOrigin}
+					k.args[name] = &ArgValue{Kit: k.handleShown, Name: name, Value: *d.def, From: "default", Origin: d.defOrigin}
 				}
 			}
 		}
@@ -292,11 +299,11 @@ func (rs *resolver) applyKitArgs() {
 				v := args.kv[key]
 				if k.expanded {
 					if _, ok := k.argDecls[key]; !ok {
-						rs.diag("KIT_ARG_UNDECLARED", LevelError, "args", fmt.Sprintf("kit %s does not declare argument %q", k.handle, key), "kits["+rs.r.path(k.source)+"]", v.origin())
+						rs.diag("KIT_ARG_UNDECLARED", LevelError, "args", fmt.Sprintf("kit %s does not declare argument %q", k.handleShown, key), "kits["+k.shown+"]", v.origin())
 						continue
 					}
 				}
-				k.args[key] = &ArgValue{Kit: k.handle, Name: key, Value: v.val, From: "kit-entry", Origin: v.origin()}
+				k.args[key] = &ArgValue{Kit: k.handleShown, Name: key, Value: v.val, From: "kit-entry", Origin: v.origin()}
 			}
 		}
 	}
@@ -314,7 +321,7 @@ func (rs *resolver) applyKitArgs() {
 				continue
 			}
 			matched = true
-			k.args[s.name] = &ArgValue{Kit: k.handle, Name: s.name, Value: s.value, From: s.from, Origin: s.origin}
+			k.args[s.name] = &ArgValue{Kit: k.handleShown, Name: s.name, Value: s.value, From: s.from, Origin: s.origin}
 		}
 		if !matched {
 			level := LevelWarning
@@ -340,16 +347,16 @@ func (rs *resolver) applyKitArgs() {
 			v, ok := k.args[name]
 			if !ok {
 				if d.required {
-					rs.diag("KIT_ARG_REQUIRED", LevelError, "args", fmt.Sprintf("kit %s requires argument %q", k.handle, name), "kits["+rs.r.path(k.source)+"]", d.origin)
+					rs.diag("KIT_ARG_REQUIRED", LevelError, "args", fmt.Sprintf("kit %s requires argument %q", k.handleShown, name), "kits["+k.shown+"]", d.origin)
 				}
 				continue
 			}
 			if len(d.enum) > 0 && !contains(d.enum, v.Value) {
-				rs.diag("KIT_ARG_INVALID", LevelError, "args", fmt.Sprintf("kit %s argument %q is not one of its enum values", k.handle, name), "", v.Origin, d.origin)
+				rs.diag("KIT_ARG_INVALID", LevelError, "args", fmt.Sprintf("kit %s argument %q is not one of its enum values", k.handleShown, name), "", v.Origin, d.origin)
 			}
 			if d.pattern != "" {
 				if re, err := regexp.Compile("^(?:" + d.pattern + ")$"); err == nil && !re.MatchString(v.Value) {
-					rs.diag("KIT_ARG_INVALID", LevelError, "args", fmt.Sprintf("kit %s argument %q does not match its pattern", k.handle, name), "", v.Origin, d.origin)
+					rs.diag("KIT_ARG_INVALID", LevelError, "args", fmt.Sprintf("kit %s argument %q does not match its pattern", k.handleShown, name), "", v.Origin, d.origin)
 				}
 			}
 			av := *v
@@ -364,29 +371,35 @@ func (rs *resolver) kitVnode(n *parser.Node, k *kitState, p string) *vnode {
 	v := &vnode{kind: n.Kind, pos: n.Pos, src: k.srcID, fileDir: k.dir, quoted: n.Quoted}
 	switch n.Kind {
 	case parser.Scalar:
-		v.raw, v.val = n.Value, n.Value
+		v.raw, v.val, v.disp = n.Value, n.Value, n.Value
 		if hasExpr(n.Value) {
-			e := expandString(n.Value, func(body string) exprResult {
-				if name, ok := kitArgRef(body); ok {
-					if av, ok := k.args[name]; ok {
-						return exprResult{value: av.Value, ok: true}
-					}
-					if _, declared := k.argDecls[name]; declared {
+			resolve := func(hide bool) func(string) exprResult {
+				return func(body string) exprResult {
+					if name, ok := kitArgRef(body); ok {
+						if av, ok := k.args[name]; ok {
+							if hide {
+								return exprResult{value: redactedText, ok: true}
+							}
+							return exprResult{value: av.Value, ok: true}
+						}
 						return exprResult{}
+					}
+					if strings.HasPrefix(body, "kit.env.") {
+						return exprResult{keep: true}
 					}
 					return exprResult{}
 				}
-				if strings.HasPrefix(body, "kit.env.") {
-					return exprResult{keep: true}
-				}
-				return exprResult{}
-			})
-			v.val = e.out
+			}
+			e := expandString(n.Value, resolve(false))
+			v.val, v.disp = e.out, e.out
+			if rs.r.strict() {
+				v.disp = expandString(n.Value, resolve(true)).out
+			}
 			for _, kept := range e.kept {
-				rs.coverage(CoverageKitEnvRef, k.handle+": ${{ "+rs.r.expr(kept)+" }}", "final container environment references are resolved by sbx at create time; the value is shown unexpanded", Origin{SourceID: k.srcID, Line: n.Pos.Line, Via: k.via()})
+				rs.coverage(CoverageKitEnvRef, k.handleShown+": ${{ "+rs.r.expr(kept)+" }}", "final container environment references are resolved by sbx at create time; the value is shown unexpanded", Origin{SourceID: k.srcID, Line: n.Pos.Line, Via: k.via()})
 			}
 			for _, u := range e.unresolved {
-				rs.diag("KIT_UNRESOLVED_EXPR", LevelError, "expression", fmt.Sprintf("kit %s: expression ${{ %s }} at %s cannot be resolved (only declared kit.args and kit.env references expand)", k.handle, rs.r.expr(u), p), "", Origin{SourceID: k.srcID, Line: n.Pos.Line, Col: n.Pos.Col, Via: k.via()})
+				rs.diag("KIT_UNRESOLVED_EXPR", LevelError, "expression", fmt.Sprintf("kit %s: expression ${{ %s }} at %s cannot be resolved (only declared kit.args and kit.env references expand)", k.handleShown, rs.r.expr(u), p), "", Origin{SourceID: k.srcID, Line: n.Pos.Line, Col: n.Pos.Col, Via: k.via()})
 			}
 		}
 	case parser.Map:
@@ -426,7 +439,7 @@ func (rs *resolver) expandKitDescriptor(k *kitState) {
 		if groupOptional != nil {
 			c.optional = *groupOptional
 			if entry.Get("optional") != nil {
-				rs.diag("KIT_GROUP_MEMBER_OPTIONAL", LevelError, "kits", fmt.Sprintf("kit %s: group members cannot set optional; put it on the group", k.handle), "", c.origin)
+				rs.diag("KIT_GROUP_MEMBER_OPTIONAL", LevelError, "kits", fmt.Sprintf("kit %s: group members cannot set optional; put it on the group", k.handleShown), "", c.origin)
 			}
 		} else if o := entry.Get("optional"); o != nil {
 			c.optional = o.Value == "true"
@@ -447,15 +460,15 @@ func (rs *resolver) expandKitDescriptor(k *kitState) {
 					if is.unknown {
 						code = "KIT_UNKNOWN_FIELD"
 					}
-					rs.diag(code, LevelError, "kits", fmt.Sprintf("kit %s (%s): %s", k.handle, c.short, is.message()), "", Origin{SourceID: k.srcID, Line: is.pos.Line, Col: is.pos.Col, Via: k.via()})
+					rs.diag(code, LevelError, "kits", fmt.Sprintf("kit %s (%s): %s", k.handleShown, c.short, is.message()), "", Origin{SourceID: k.srcID, Line: is.pos.Line, Col: is.pos.Col, Via: k.via()})
 				}
 			}
 		}
 		if c.short == "git-identity@1" && entry.Get("config") != nil {
-			rs.diag("KIT_CONFIG_NOT_ALLOWED", LevelError, "kits", fmt.Sprintf("kit %s: git-identity@1 must not carry config, not even an empty one", k.handle), "", c.origin)
+			rs.diag("KIT_CONFIG_NOT_ALLOWED", LevelError, "kits", fmt.Sprintf("kit %s: git-identity@1 must not carry config, not even an empty one", k.handleShown), "", c.origin)
 		}
 		if c.typ == "" {
-			rs.diag("KIT_CAP_TYPE_MISSING", LevelError, "kits", fmt.Sprintf("kit %s: a capability entry has no type", k.handle), "", c.origin)
+			rs.diag("KIT_CAP_TYPE_MISSING", LevelError, "kits", fmt.Sprintf("kit %s: a capability entry has no type", k.handleShown), "", c.origin)
 			return
 		}
 		k.caps = append(k.caps, c)
@@ -466,7 +479,7 @@ func (rs *resolver) expandKitDescriptor(k *kitState) {
 			opt := g.Get("optional") != nil && g.Get("optional").Value == "true"
 			members := g.Get("capabilities")
 			if members == nil || len(members.Items) == 0 {
-				rs.diag("KIT_GROUP_EMPTY", LevelError, "kits", fmt.Sprintf("kit %s: capability groups must not be empty", k.handle), "", Origin{SourceID: k.srcID, Line: g.Pos.Line, Via: k.via()})
+				rs.diag("KIT_GROUP_EMPTY", LevelError, "kits", fmt.Sprintf("kit %s: capability groups must not be empty", k.handleShown), "", Origin{SourceID: k.srcID, Line: g.Pos.Line, Via: k.via()})
 				continue
 			}
 			for j, m := range members.Items {
@@ -492,7 +505,7 @@ func (rs *resolver) checkAgent() {
 	for _, k := range rs.kits {
 		if k.handle == agent.val {
 			if k.expanded && k.descKind != "" && k.descKind != "workload" && k.descKind != "set" {
-				rs.diag("AGENT_NOT_WORKLOAD", LevelError, "kits", fmt.Sprintf("agent %q matches kit %s, but that kit is a %s, not a workload", agent.val, k.source, k.descKind), "agent", agent.origin())
+				rs.diag("AGENT_NOT_WORKLOAD", LevelError, "kits", fmt.Sprintf("agent %q matches kit %s, but that kit is a %s, not a workload", agent.val, k.shown, k.descKind), "agent", agent.origin())
 			}
 			return
 		}

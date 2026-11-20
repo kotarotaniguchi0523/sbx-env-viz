@@ -147,13 +147,16 @@ func (rs *resolver) checkValues() {
 }
 
 type credUse struct {
-	cap       *capState
-	service   string
-	phases    []string
-	apiKey    bool
-	oauth     bool
-	domains   []string
-	oauthDoms []string
+	cap     *capState
+	service string
+	// shown and domainsShown are what may be displayed.
+	shown        string
+	domainsShown map[string]string
+	phases       []string
+	apiKey       bool
+	oauth        bool
+	domains      []string
+	oauthDoms    []string
 }
 
 func (rs *resolver) checkCredentialTriad() {
@@ -173,44 +176,50 @@ func (rs *resolver) checkCredentialTriad() {
 				continue
 			}
 			cfg := c.config
-			u := credUse{cap: c, service: cfg.str("service"), phases: phases(cfg.get("phase"))}
+			u := credUse{cap: c, service: cfg.str("service"), shown: rs.r.text(cfg.dstr("service")), phases: phases(cfg.get("phase")), domainsShown: map[string]string{}}
+			shownDomain := u.domainsShown
 			if ak := cfg.get("apiKey"); ak != nil {
 				u.apiKey = true
 				for _, inj := range ak.get("inject").list() {
 					u.domains = append(u.domains, inj.str("domain"))
+					u.domainsShown[inj.str("domain")] = inj.dstr("domain")
 				}
 				if ak.str("name") == "" && len(ak.get("inject").list()) == 0 {
-					rs.diag("CREDENTIAL_INVALID", LevelError, "credentials", fmt.Sprintf("kit %s credential %s: apiKey needs a name or inject rules", k.handle, u.service), "", c.origin)
+					rs.diag("CREDENTIAL_INVALID", LevelError, "credentials", fmt.Sprintf("kit %s credential %s: apiKey needs a name or inject rules", k.handleShown, u.shown), "", c.origin)
 				}
 			}
 			if oa := cfg.get("oauth"); oa != nil {
 				u.oauth = true
-				u.oauthDoms = append(u.oauthDoms, oa.get("resourceHosts").scalars()...)
-				if h := oa.get("tokenEndpoint").str("host"); h != "" {
-					u.oauthDoms = append(u.oauthDoms, h)
+				for _, h := range oa.get("resourceHosts").list() {
+					u.oauthDoms = append(u.oauthDoms, h.val)
+					u.domainsShown[h.val] = h.disp
+				}
+				if h := oa.get("tokenEndpoint").get("host"); h != nil && h.val != "" {
+					u.oauthDoms = append(u.oauthDoms, h.val)
+					u.domainsShown[h.val] = h.disp
 				}
 				if oa.str("passthrough") == "true" {
-					rs.diag("OAUTH_PASSTHROUGH", LevelWarning, "credentials", fmt.Sprintf("kit %s credential %s sets oauth.passthrough, returning the real token to the sandbox", k.handle, u.service), "", c.origin)
+					rs.diag("OAUTH_PASSTHROUGH", LevelWarning, "credentials", fmt.Sprintf("kit %s credential %s sets oauth.passthrough, returning the real token to the sandbox", k.handleShown, u.shown), "", c.origin)
 				}
 			}
 			if !u.apiKey && !u.oauth {
-				rs.diag("CREDENTIAL_INVALID", LevelError, "credentials", fmt.Sprintf("kit %s credential %s declares neither apiKey nor oauth", k.handle, u.service), "", c.origin)
+				rs.diag("CREDENTIAL_INVALID", LevelError, "credentials", fmt.Sprintf("kit %s credential %s declares neither apiKey nor oauth", k.handleShown, u.shown), "", c.origin)
 			}
 			if u.service == "" || len(u.phases) == 0 {
-				rs.diag("CREDENTIAL_INVALID", LevelError, "credentials", fmt.Sprintf("kit %s credential@1 requires service and phase", k.handle), "", c.origin)
+				rs.diag("CREDENTIAL_INVALID", LevelError, "credentials", fmt.Sprintf("kit %s credential@1 requires service and phase", k.handleShown), "", c.origin)
 			}
 			for _, ph := range u.phases {
 				key := u.service + "/" + ph
 				if prev, ok := owner[key]; ok {
 					rs.diag("CREDENTIAL_CONFLICT", LevelError, "credentials",
-						fmt.Sprintf("credential %s (%s phase) is declared by both kit %s and kit %s; one credential has one owner", u.service, ph, prev.kit.handle, k.handle), "", prev.origin, c.origin)
+						fmt.Sprintf("credential %s (%s phase) is declared by both kit %s and kit %s; one credential has one owner", u.shown, ph, prev.kit.handleShown, k.handleShown), "", prev.origin, c.origin)
 				} else {
 					owner[key] = c
 				}
 				for _, d := range u.domains {
 					if !domainAllowed(d, allow[ph]) {
 						rs.diag("CREDENTIAL_INJECT_NOT_ALLOWED", LevelError, "credentials",
-							fmt.Sprintf("kit %s credential %s injects into %s, but the kit's network-policy@1 %s allow list does not list it exactly (wildcards do not count)", k.handle, u.service, d, ph), "", c.origin)
+							fmt.Sprintf("kit %s credential %s injects into %s, but the kit's network-policy@1 %s allow list does not list it exactly (wildcards do not count)", k.handleShown, u.shown, shownDomain[d], ph), "", c.origin)
 					}
 				}
 			}
@@ -230,7 +239,7 @@ func (rs *resolver) checkCredentialTriad() {
 	for _, u := range uses {
 		used[u.service] = true
 		b := bindings.get(u.service)
-		itemID := "kit:" + u.cap.kit.handle + "/credential@1/" + u.service + "/" + strings.Join(u.phases, ",")
+		itemID := "kit:" + u.cap.kit.handleShown + "/credential@1/" + u.shown + "/" + strings.Join(u.phases, ",")
 		check := func(mech string, need bool, doms []string) {
 			if !need {
 				return
@@ -239,10 +248,10 @@ func (rs *resolver) checkCredentialTriad() {
 			if bm == nil {
 				if u.cap.optional {
 					rs.diag("CREDENTIAL_UNBOUND", LevelWarning, "credentials",
-						fmt.Sprintf("kit %s requests credential %s (%s) as optional, but bindings.%s.%s is missing; sbx silently skips it and the kit runs unauthenticated", u.cap.kit.handle, u.service, mech, u.service, mech), itemID, u.cap.origin)
+						fmt.Sprintf("kit %s requests credential %s (%s) as optional, but bindings.%s.%s is missing; sbx silently skips it and the kit runs unauthenticated", u.cap.kit.handleShown, u.shown, mech, u.shown, mech), itemID, u.cap.origin)
 				} else {
 					rs.diag("CREDENTIAL_UNBOUND", LevelError, "credentials",
-						fmt.Sprintf("kit %s requires credential %s (%s), but bindings.%s.%s is missing; sbx env create fails", u.cap.kit.handle, u.service, mech, u.service, mech), itemID, u.cap.origin)
+						fmt.Sprintf("kit %s requires credential %s (%s), but bindings.%s.%s is missing; sbx env create fails", u.cap.kit.handleShown, u.shown, mech, u.shown, mech), itemID, u.cap.origin)
 				}
 				return
 			}
@@ -250,12 +259,12 @@ func (rs *resolver) checkCredentialTriad() {
 			var missing []string
 			for _, d := range doms {
 				if !contains(have, d) {
-					missing = append(missing, d)
+					missing = append(missing, rs.r.text(u.domainsShown[d]))
 				}
 			}
 			if len(missing) > 0 {
 				rs.diag("BINDING_DOMAIN_MISSING", LevelWarning, "credentials",
-					fmt.Sprintf("bindings.%s.%s.domains does not approve %s used by kit %s; sbx asks for approval at create time (and fails unattended runs)", u.service, mech, strings.Join(missing, ", "), u.cap.kit.handle), "bindings."+u.service+"."+mech, bm.origin(), u.cap.origin)
+					fmt.Sprintf("bindings.%s.%s.domains does not approve %s used by kit %s; sbx asks for approval at create time (and fails unattended runs)", u.shown, mech, strings.Join(missing, ", "), u.cap.kit.handleShown), "bindings."+u.shown+"."+mech, bm.origin(), u.cap.origin)
 			}
 		}
 		check("apiKey", u.apiKey, u.domains)
@@ -263,7 +272,7 @@ func (rs *resolver) checkCredentialTriad() {
 		if secrets.get(u.service) == nil {
 			missingSecret = true
 			rs.diag("SECRET_NOT_DECLARED", LevelInfo, "credentials",
-				fmt.Sprintf("credential %s has no secrets.%s entry; it must already exist in the sbx secret store (sbx secret ls), which this tool cannot see", u.service, u.service), itemID, u.cap.origin)
+				fmt.Sprintf("credential %s has no secrets.%s entry; it must already exist in the sbx secret store (sbx secret ls), which this tool cannot see", u.shown, u.shown), itemID, u.cap.origin)
 		}
 	}
 	if missingSecret {
@@ -324,14 +333,15 @@ func (rs *resolver) checkHostMounts() {
 				continue
 			}
 			p := c.config.str("path")
+			pShown := rs.r.text(c.config.dstr("path"))
 			declared[p] = true
 			if p == "" || !strings.HasPrefix(p, "/") || strings.Contains(p, "/../") || strings.HasSuffix(p, "/") || strings.Contains(p, "//") || strings.Contains(p, "/./") {
-				rs.diag("HOST_MOUNT_PATH_INVALID", LevelError, "boundary", fmt.Sprintf("kit %s host-mount@1 path must be absolute and canonical", k.handle), "", c.origin)
+				rs.diag("HOST_MOUNT_PATH_INVALID", LevelError, "boundary", fmt.Sprintf("kit %s host-mount@1 path must be absolute and canonical", k.handleShown), "", c.origin)
 			}
 			if mounts.get(p) == nil {
 				rs.diag("HOST_MOUNT_SHARED", LevelWarning, "boundary",
-					fmt.Sprintf("kit %s host-mount@1 %s has no mounts: entry, so every sandbox composing this kit shares one host directory; add mounts: { %s: <dir> } to give this environment its own", k.handle, p, p),
-					"kit:"+k.handle+"/host-mount@1/"+p, c.origin)
+					fmt.Sprintf("kit %s host-mount@1 %s has no mounts: entry, so every sandbox composing this kit shares one host directory; add mounts: { %s: <dir> } to give this environment its own", k.handleShown, pShown, pShown),
+					"kit:"+k.handleShown+"/host-mount@1/"+pShown, c.origin)
 			}
 		}
 	}
@@ -358,6 +368,7 @@ func (rs *resolver) checkTemplate() {
 		return
 	}
 	ref := t.val
+	shownRef := rs.kitRef(t.disp)
 	tag := ""
 	if !strings.Contains(ref, "@sha256:") {
 		last := ref[strings.LastIndex(ref, "/")+1:]
@@ -391,7 +402,7 @@ func (rs *resolver) checkTemplate() {
 		if isDev {
 			reason = "the :dev template is a moving tag; its contents are not analysed and change between creates"
 		}
-		rs.coverage(CoverageMutableImage, ref, reason, t.origin())
+		rs.coverage(CoverageMutableImage, shownRef, reason, t.origin())
 	}
 }
 
@@ -508,8 +519,8 @@ func (rs *resolver) checkWritableLocations() {
 		for _, m := range writable {
 			if in, _ := within(m.dir, filepath.Clean(k.dir)); in {
 				rs.diag("KIT_IN_WRITABLE_MOUNT", LevelWarning, "boundary",
-					fmt.Sprintf("local kit %s lives inside the writable %s mount; the agent can change the network policy and credentials it requests on the next create", k.source, m.id),
-					"kits["+rs.r.path(k.source)+"]", k.origin)
+					fmt.Sprintf("local kit %s lives inside the writable %s mount; the agent can change the network policy and credentials it requests on the next create", k.shown, m.id),
+					"kits["+k.shown+"]", k.origin)
 			}
 		}
 	}
@@ -523,22 +534,23 @@ func (rs *resolver) checkSSHAndOthers() {
 				cfg := c.config
 				if cfg == nil || cfg.str("unrestricted") != "false" {
 					rs.diag("SSH_AGENT_UNRESTRICTED", LevelWarning, "boundary",
-						fmt.Sprintf("kit %s requests ssh-agent@1 unrestricted: the sandbox can sign anything with every key your agent holds; set unrestricted: false with sign/authenticate", k.handle),
-						"kit:"+k.handle+"/ssh-agent@1/"+strings.Join(phases(cfg.get("phase")), ","), c.origin)
+						fmt.Sprintf("kit %s requests ssh-agent@1 unrestricted: the sandbox can sign anything with every key your agent holds; set unrestricted: false with sign/authenticate", k.handleShown),
+						"kit:"+k.handleShown+"/ssh-agent@1/"+strings.Join(phases(cfg.get("phase")), ","), c.origin)
 				}
 			case "privileged@1", "dockerd@1":
-				rs.diag("PRIVILEGED", LevelWarning, "boundary", fmt.Sprintf("kit %s requests %s, the widest elevation inside the sandbox VM", k.handle, c.short), "kit:"+k.handle+"/"+c.short, c.origin)
+				rs.diag("PRIVILEGED", LevelWarning, "boundary", fmt.Sprintf("kit %s requests %s, the widest elevation inside the sandbox VM", k.handleShown, c.short), "kit:"+k.handleShown+"/"+c.short, c.origin)
 			case "network-policy@1":
 				for _, ph := range []string{"install", "runtime"} {
-					for _, a := range c.config.get(ph).get("allow").scalars() {
-						if (a == "*" || a == "**") && ph == "runtime" {
-							rs.diag("EGRESS_UNRESTRICTED", LevelWarning, "boundary", fmt.Sprintf("kit %s allows all runtime egress (%s)", k.handle, a), "kit:"+k.handle+"/network-policy@1/runtime.allow/"+a, c.origin)
+					for _, e := range c.config.get(ph).get("allow").list() {
+						if (e.val == "*" || e.val == "**") && ph == "runtime" {
+							a := rs.r.text(e.disp)
+							rs.diag("EGRESS_UNRESTRICTED", LevelWarning, "boundary", fmt.Sprintf("kit %s allows all runtime egress (%s)", k.handleShown, a), "kit:"+k.handleShown+"/network-policy@1/runtime.allow/"+a, c.origin)
 						}
 					}
 				}
 			}
 			if !strings.HasPrefix(c.typ, capNamespace) && !c.optional {
-				rs.diag("UNKNOWN_CAPABILITY_REQUIRED", LevelWarning, "kits", fmt.Sprintf("kit %s requires unknown capability %s; a host that does not recognise it refuses the kit", k.handle, c.typ), "kit:"+k.handle+"/"+c.short, c.origin)
+				rs.diag("UNKNOWN_CAPABILITY_REQUIRED", LevelWarning, "kits", fmt.Sprintf("kit %s requires unknown capability %s; a host that does not recognise it refuses the kit", k.handleShown, c.typ), "kit:"+k.handleShown+"/"+c.short, c.origin)
 			}
 		}
 	}

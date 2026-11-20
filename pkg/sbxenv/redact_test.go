@@ -254,3 +254,64 @@ func TestHomeIsNotReplacedInsideAnotherPath(t *testing.T) {
 		}
 	}
 }
+
+func TestCredentialsAndScalarSecretsAreHiddenInEveryMode(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []sbxenv.Redaction{sbxenv.RedactHome, sbxenv.RedactStrict} {
+		t.Run(string(mode), func(t *testing.T) {
+			t.Parallel()
+			// Arrange
+			f := newFixture(t)
+			// The credential-shaped URLs are assembled at run time so the
+			// repository's own secret scan does not flag this fixture.
+			cred := func(n string) string { return "user" + ":" + "PSEUDOSECRET" + n + "@" }
+			f.write(t, "sbxenv.yaml", minimal+"secrets:\n  scalar: PSEUDOSECRET0101\n"+
+				"sandboxOptions:\n  template: "+cred("0102")+"ghcr.io/example/base:1\n"+
+				"mcp:\n  servers:\n    - name: remote\n      url: https://"+cred("0103")+"mcp.example.com/sse\n"+
+				"kits:\n  - git+https://"+cred("0104")+"github.com/org/repo.git#ref=abc\n")
+
+			// Act
+			p := f.resolve(t, run{paths: []string{"."}, opts: sbxenv.ResolveOptions{Redaction: mode}})
+			out := toJSON(t, p)
+
+			// Assert
+			for _, secret := range []string{"PSEUDOSECRET0101", "PSEUDOSECRET0102", "PSEUDOSECRET0103", "PSEUDOSECRET0104"} {
+				if strings.Contains(out, secret) {
+					t.Errorf("%s mode leaks %s", mode, secret)
+				}
+			}
+			if got := item(t, p, "secrets.scalar").Value; got != "<literal value hidden>" {
+				t.Errorf("scalar secret = %q", got)
+			}
+			if !hasItem(p, "kits[git+https://<credentials>@github.com/org/repo.git#ref=abc]") {
+				t.Error("the kit stays identifiable without its credentials")
+			}
+		})
+	}
+}
+
+func TestStrictHidesArgumentValuesWhereverTheyFlow(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	f := newFixture(t)
+	f.write(t, "kits/k/k.yaml", "schemaVersion: \"3\"\nkind: mixin\nargs:\n  host:\n    default: none\ncapabilities:\n  - type: com.docker.sandbox/network-policy@1\n    config:\n      runtime:\n        allow: [\"${{ kit.args.host }}.example.com\"]\n")
+	f.write(t, "sbxenv.yaml", minimal+"args:\n  n:\n    default: x\nname: ${{ env.args.n }}\nworkspace: ./${{ env.args.n }}\nkits:\n  - source: ./kits/k\n    args:\n      host: ${{ env.args.n }}\n")
+
+	// Act
+	strict := f.resolve(t, run{paths: []string{"."}, opts: sbxenv.ResolveOptions{EnvArgs: []string{"n=PSEUDOSECRET0105"}}})
+	local := f.resolve(t, run{paths: []string{"."}, opts: sbxenv.ResolveOptions{EnvArgs: []string{"n=PSEUDOSECRET0105"}, Redaction: sbxenv.RedactHome}})
+
+	// Assert
+	if strings.Contains(toJSON(t, strict), "PSEUDOSECRET0105") {
+		t.Error("strict output leaks an argument value through name, workspace, or a kit")
+	}
+	if got := item(t, strict, "workspace").Value; got != "~/proj/<redacted>" {
+		t.Errorf("strict workspace = %q, want the structure with the value hidden", got)
+	}
+	if !hasItem(strict, "kit:k/network-policy@1/runtime.allow/<redacted>.example.com") {
+		t.Error("strict egress should keep its shape with the value hidden")
+	}
+	if !hasItem(local, "kit:k/network-policy@1/runtime.allow/PSEUDOSECRET0105.example.com") {
+		t.Error("a local view shows the real resolved domain")
+	}
+}

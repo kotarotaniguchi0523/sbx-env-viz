@@ -34,6 +34,9 @@ func newRedactor(mode Redaction, home string, aliases []string) *redactor {
 	return r
 }
 
+// redactedText replaces a hidden value.
+const redactedText = "<redacted>"
+
 func (r *redactor) strict() bool { return r.mode == RedactStrict }
 
 // path shortens $HOME to ~ wherever a path starts with it.
@@ -150,6 +153,15 @@ func (r *redactor) expr(body string) string {
 		return "<redacted>"
 	}
 	return r.text(body)
+}
+
+// userinfoRe matches "user:secret@" right after an optional scheme.
+var userinfoRe = regexp.MustCompile(`^((?:[A-Za-z][A-Za-z0-9+.-]*://)?)[^/@\s]*:[^/@\s]*@`)
+
+// stripUserinfo removes credentials from a URL-like reference. A bare user
+// name such as git@ carries no secret and is kept.
+func stripUserinfo(s string) string {
+	return userinfoRe.ReplaceAllString(s, "${1}<credentials>@")
 }
 
 // literalSecret never returns the value.

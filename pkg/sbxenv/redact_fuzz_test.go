@@ -14,7 +14,9 @@ import (
 // can enter an environment file. VALUE is replaced by a YAML double-quoted
 // scalar, so any string survives the round trip.
 const redactionTemplate = `schemaVersion: "1"
+name: ${{ env.args.b }}
 agent: claude
+workspace: ./${{ env.args.b }}
 entrypoint: [/bin/run, VALUE]
 args:
   a:
@@ -25,9 +27,18 @@ env:
   E: VALUE
   F: ${{ env.args.a }}
   G: ${{ env.args.b }}
+sandboxOptions:
+  template: ghcr.io/example/${{ env.args.b }}:1
+additionalWorkspaces:
+  - path: ../shared
+    target: /w/${{ env.args.b }}
+ports:
+  - sandbox: 80
+    hostIP: ${{ env.args.b }}
 secrets:
   lit:
     value: VALUE
+  scalar: VALUE
   cmd:
     command: VALUE
 lifecycle:
@@ -35,10 +46,52 @@ lifecycle:
     - command: VALUE
 mcp:
   servers:
-    - name: m
+    - name: ${{ env.args.b }}
       command: srv
       args: [VALUE]
+    - name: remote
+      url: https://user:${{ env.args.b }}@mcp.example.com/sse
+kits:
+  - source: ./kit
+    args:
+      host: ${{ env.args.b }}
+  - git+https://user:${{ env.args.b }}@github.com/org/repo.git#ref=abc
 `
+
+// kitDescriptor routes its argument into every structural field a kit has.
+const kitDescriptor = `schemaVersion: "3"
+kind: mixin
+args:
+  host:
+    default: none
+capabilities:
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      runtime:
+        allow: ["${{ kit.args.host }}"]
+  - type: com.docker.sandbox/credential@1
+    optional: true
+    config:
+      service: s
+      phase: runtime
+      apiKey:
+        name: TOKEN
+        inject: [{domain: "${{ kit.args.host }}", header: Authorization}]
+  - type: com.docker.sandbox/host-mount@1
+    config: {path: "/data/${{ kit.args.host }}"}
+  - type: com.docker.sandbox/ssh-agent@1
+    config: {phase: runtime, unrestricted: false, sign: ["${{ kit.args.host }}"]}
+  - type: com.docker.sandbox/lifecycle@1
+    config:
+      files:
+        - path: "/etc/${{ kit.args.host }}"
+`
+
+type kitDir string
+
+func (k kitDir) LoadKit(dir string) (sbxenv.KitInput, error) {
+	return sbxenv.KitInput{DescriptorPath: dir + "/kit.yaml", Content: []byte(k)}, nil
+}
 
 // referenceOnly matches a value that is nothing but a reference name such
 // as ${{ env.args.x }}. Names are structure and may be shown.
@@ -48,7 +101,7 @@ func strictJSON(t *testing.T, value string) (string, bool) {
 	quoted, _ := json.Marshal(value)
 	doc := strings.ReplaceAll(redactionTemplate, "VALUE", string(quoted))
 	p, err := sbxenv.Resolve([]sbxenv.LayerInput{{Path: "/w/sbxenv.yaml", Content: []byte(doc), Kind: sbxenv.LayerEnv}},
-		sbxenv.ResolveOptions{Redaction: sbxenv.RedactStrict, EnvArgs: []string{"b=" + value}})
+		sbxenv.ResolveOptions{Redaction: sbxenv.RedactStrict, EnvArgs: []string{"b=" + value}, Kits: kitDir(kitDescriptor)})
 	if err != nil {
 		return err.Error(), false
 	}
