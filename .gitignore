@@ -9,3 +9,4 @@
 /trivy.json
 /vuls.json
 /govulncheck.txt
+/.audit/

@@ -75,7 +75,7 @@ func Resolve(layers []LayerInput, opts ResolveOptions) (*Plan, error) {
 	}
 	rs := &resolver{
 		opts:      opts,
-		r:         newRedactor(opts.Redaction, opts.HomeDir),
+		r:         newRedactor(opts.Redaction, opts.HomeDir, opts.HomeAliases),
 		argDecls:  map[string]*argDecl{},
 		argValues: map[string]*ArgValue{},
 		itemIndex: map[string]int{},

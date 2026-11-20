@@ -341,3 +341,28 @@ func TestHelpAndVersion(t *testing.T) {
 		})
 	}
 }
+
+func TestHomeIsShortenedWhenHomeIsASymlink(t *testing.T) {
+	t.Parallel()
+	// Arrange: HOME points at a symlink and the working directory is the
+	// resolved path, as with /var -> /private/var on macOS.
+	real := newSandbox(t)
+	link := filepath.Join(t.TempDir(), "home-link")
+	if err := os.Symlink(real.home, link); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	real.write(t, "sbxenv.yaml", minimal)
+	s := sandbox{home: link, work: real.work}
+
+	// Act
+	r := s.run(t, "--json")
+
+	// Assert
+	inv := r.json(t)["invocation"].(map[string]any)
+	if inv["projectDir"] != "~/proj" {
+		t.Errorf("projectDir = %v, want ~/proj", inv["projectDir"])
+	}
+	if strings.Contains(r.stdout, real.home) || strings.Contains(r.stdout, link) {
+		t.Error("--json leaks the home directory through its other spelling")
+	}
+}

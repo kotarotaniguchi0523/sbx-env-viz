@@ -236,3 +236,21 @@ func TestParseErrorsNeverQuoteContent(t *testing.T) {
 		})
 	}
 }
+
+func TestHomeIsNotReplacedInsideAnotherPath(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	f := newFixture(t)
+	f.write(t, "sbxenv.yaml", minimal+"env:\n  A: /private"+f.home+"/x\n  B: PATH="+f.home+"/bin\n  C: \""+f.home+"/a:"+f.home+"/b\"\n")
+
+	// Act
+	p := f.resolve(t, run{paths: []string{"."}, opts: sbxenv.ResolveOptions{Redaction: sbxenv.RedactHome}})
+
+	// Assert
+	want := map[string]string{"env.A": "/private" + f.home + "/x", "env.B": "PATH=~/bin", "env.C": "~/a:~/b"}
+	for id, w := range want {
+		if got := item(t, p, id).Value; got != w {
+			t.Errorf("%s = %q, want %q", id, got, w)
+		}
+	}
+}

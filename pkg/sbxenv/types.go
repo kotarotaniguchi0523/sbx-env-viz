@@ -80,6 +80,9 @@ type ResolveOptions struct {
 	ProjectDir string
 	// HomeDir is used only to shorten paths to ~ in output.
 	HomeDir string
+	// HomeAliases are other spellings of HomeDir that paths may use, such as
+	// its symlink-resolved form (/private/var/... on macOS).
+	HomeAliases []string
 
 	EnvArgsFiles []ArgFile
 	// EnvArgs are --env-arg NAME=VALUE flags in command-line order.

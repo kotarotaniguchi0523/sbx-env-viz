@@ -1,6 +1,7 @@
 package sbxenv
 
 import (
+	"sort"
 	"strings"
 )
 
@@ -9,35 +10,43 @@ import (
 // field means forgetting to copy it at all.
 type redactor struct {
 	mode Redaction
-	home string
+	// homes holds every spelling of $HOME, longest first.
+	homes []string
 }
 
-func newRedactor(mode Redaction, home string) *redactor {
+func newRedactor(mode Redaction, home string, aliases []string) *redactor {
 	if mode == "" {
 		mode = RedactStrict
 	}
-	home = strings.TrimRight(home, `/\`)
-	if len(home) < 2 {
-		home = ""
+	r := &redactor{mode: mode}
+	seen := map[string]bool{}
+	for _, h := range append([]string{home}, aliases...) {
+		h = strings.TrimRight(h, `/\`)
+		for _, v := range []string{h, strings.ReplaceAll(h, `\`, `/`)} {
+			if len(v) >= 2 && !seen[v] {
+				seen[v] = true
+				r.homes = append(r.homes, v)
+			}
+		}
 	}
-	return &redactor{mode: mode, home: home}
+	sort.Slice(r.homes, func(i, j int) bool { return len(r.homes[i]) > len(r.homes[j]) })
+	return r
 }
 
 func (r *redactor) strict() bool { return r.mode == RedactStrict }
 
-// path shortens $HOME to ~ in any string that may hold host paths.
+// path shortens $HOME to ~ wherever a path starts with it.
 func (r *redactor) path(s string) string {
-	if r.home == "" || s == "" {
-		return s
+	for _, h := range r.homes {
+		s = replaceHome(s, h)
 	}
-	out := s
-	for _, h := range []string{r.home, strings.ReplaceAll(r.home, `\`, `/`)} {
-		out = replacePathPrefix(out, h)
-	}
-	return out
+	return s
 }
 
-func replacePathPrefix(s, home string) string {
+// replaceHome replaces home only where it is a whole leading path: at the
+// start of s or after a separator such as space, '=', or ':', and followed
+// by the end, '/', or '\'. "/private/home/al/x" and "/home/alice" stay.
+func replaceHome(s, home string) string {
 	var b strings.Builder
 	for {
 		i := strings.Index(s, home)
@@ -46,10 +55,11 @@ func replacePathPrefix(s, home string) string {
 			return b.String()
 		}
 		end := i + len(home)
-		// Only replace at a path boundary (/home/al must not match /home/alice).
-		if end < len(s) && s[end] != '/' && s[end] != '\\' {
-			b.WriteString(s[:end])
-			s = s[end:]
+		startOK := i == 0 || strings.ContainsRune(" \t\n\"'=:,;([{<@", rune(s[i-1]))
+		endOK := end == len(s) || s[end] == '/' || s[end] == '\\'
+		if !startOK || !endOK {
+			b.WriteString(s[:i+1])
+			s = s[i+1:]
 			continue
 		}
 		b.WriteString(s[:i])
@@ -130,3 +140,9 @@ func isSimpleToken(s string) bool {
 
 // literalSecret never returns the value.
 func (r *redactor) literalSecret() string { return "<literal value hidden>" }
+
+// ShortenHome rewrites every leading occurrence of a home directory
+// spelling in s to ~, with the same path-boundary rules the Plan uses.
+func ShortenHome(s string, home string, aliases ...string) string {
+	return newRedactor(RedactHome, home, aliases).path(s)
+}

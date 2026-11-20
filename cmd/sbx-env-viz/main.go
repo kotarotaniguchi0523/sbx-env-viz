@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/x/term"
@@ -216,12 +217,13 @@ func run(args []string, e env) int {
 		return exitUsage
 	}
 	home, _ := e.home()
-	shorten := func(s string) string {
-		if home != "" && len(home) > 1 {
-			return strings.ReplaceAll(s, home, "~")
+	var homeAliases []string
+	if home != "" {
+		if resolved, err := filepath.EvalSymlinks(home); err == nil && resolved != home {
+			homeAliases = append(homeAliases, resolved)
 		}
-		return s
 	}
+	shorten := func(s string) string { return sbxenv.ShortenHome(s, home, homeAliases...) }
 	res, err := loader.Load(loader.Request{Paths: o.paths, EnvArgsFiles: o.envArgsFiles, KitArgsFiles: o.kitArgsFiles, WorkDir: wd, HomeDir: home})
 	if err != nil {
 		fmt.Fprintf(e.stderr, "sbx-env-viz: %s\n", shorten(err.Error()))
@@ -241,7 +243,7 @@ func run(args []string, e env) int {
 		redaction = sbxenv.RedactStrict
 	}
 	plan, err := sbxenv.Resolve(res.Layers, sbxenv.ResolveOptions{
-		ProjectDir: res.ProjectDir, HomeDir: home,
+		ProjectDir: res.ProjectDir, HomeDir: home, HomeAliases: homeAliases,
 		EnvArgsFiles: res.EnvArgsFiles, EnvArgs: o.envArgs,
 		KitArgsFiles: res.KitArgsFiles, KitArgs: o.kitArgs,
 		Name: o.name, Clone: o.clone, SkipHostCommands: o.skipHost,
