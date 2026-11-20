@@ -41,4 +41,4 @@ Both were shown failing on broken variants: list merge switched to append, a rep
 
 Not covered: `mcp.servers` and `additionalWorkspaces` keyed merges share `mergeList` but only ports are enumerated; kit `args` merging; the redaction of literal structure (paths, ports, domains written directly in a file), which is shown by design.
 
-Last confirmed against the code at commit 6785f92. Move this forward only after re-reading the covered functions and re-running both checks at the new commit.
+Last confirmed against the code at commit 994b227. Move this forward only after re-reading the covered functions and re-running both checks at the new commit.
