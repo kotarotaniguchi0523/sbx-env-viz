@@ -210,12 +210,20 @@ func TestHelpOpensAndAnyKeyCloses(t *testing.T) {
 	s.gone("キー操作")
 }
 
-// click presses the left button on the first occurrence of text.
+// click presses the left button on the first cell of the first occurrence
+// of text. It passes coordinates rather than MouseClickOptions.OnText,
+// which fails on linux/amd64 in tui-test v0.1.1 ("null native string with
+// nonzero length").
 func (s *screen) click(text string) {
 	s.t.Helper()
+	loc := s.locations(text)
+	if len(loc) == 0 {
+		s.t.Fatalf("click %q: not on screen\n%s", text, s.text())
+	}
+	x, y := uint16(loc[0].Start.Column), uint16(loc[0].Start.Row)
 	before := s.text()
-	if err := s.term.Mouse.Click(tuitest.MouseClickOptions{OnText: tuitest.Ptr(text)}); err != nil {
-		s.t.Fatalf("click %q: %v\n%s", text, err, s.text())
+	if err := s.term.Mouse.Click(tuitest.MouseClickOptions{X: &x, Y: &y}); err != nil {
+		s.t.Fatalf("click %q at %d,%d: %v", text, x, y, err)
 	}
 	s.settle(before)
 }
