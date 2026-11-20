@@ -374,6 +374,7 @@ var badgeJA = map[string]string{
 	BadgeWarn:    "指摘あり",
 	BadgeUnknown: "中身を確認できない",
 	BadgeLiteral: "秘密が平文",
+	"[DRIFT]":    "宣言と稼働中の実体のズレ",
 }
 
 // BadgeLabel explains a badge such as "[HOST]" in Japanese.

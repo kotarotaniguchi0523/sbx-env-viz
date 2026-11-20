@@ -1,0 +1,4 @@
+[
+  {"name": "docs", "transport": "sse", "status": "ready", "auth_status": "authorized", "gateway": "local"},
+  {"name": "jira", "transport": "streamable-http", "status": "unavailable", "auth_status": "needs_auth", "gateway": "local"}
+]

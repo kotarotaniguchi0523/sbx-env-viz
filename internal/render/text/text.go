@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/live"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/model"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
 )
@@ -96,4 +97,29 @@ func Write(w io.Writer, p *sbxenv.Plan) error {
 
 func section(b *strings.Builder, title string) {
 	fmt.Fprintf(b, "\n== %s ==\n", title)
+}
+
+// WriteLive appends the comparison with the running sandbox.
+func WriteLive(w io.Writer, t *live.Target) error {
+	b := &strings.Builder{}
+	section(b, "稼働中の実体との比較（--live）")
+	if t.Err != "" {
+		fmt.Fprintf(b, "  %s\n", model.EscapeControl(t.Err))
+	}
+	switch c := t.Comparison; {
+	case t.Sandbox == nil:
+		fmt.Fprintf(b, "  対象: %s（%s）\n", model.EscapeControl(t.Name), t.State)
+	case c != nil:
+		fmt.Fprintf(b, "  対象: %s（%s） ズレ %d 件\n", model.EscapeControl(t.Name), t.State, len(c.Drifts))
+		for _, d := range c.Drifts {
+			fmt.Fprintf(b, "  %s [DRIFT] %s: %s\n", model.SeverityTag(d.Severity), model.EscapeControl(d.Kind), model.EscapeControl(d.Title))
+			fmt.Fprintf(b, "       宣言: %s\n       実体: %s\n", model.EscapeControl(d.Declared), model.EscapeControl(d.Actual))
+		}
+		fmt.Fprintf(b, "  比較した項目: %s\n", strings.Join(c.Checked, "・"))
+		for _, s := range c.Skipped {
+			fmt.Fprintf(b, "  比較していない: %s\n", s)
+		}
+	}
+	_, err := io.WriteString(w, b.String())
+	return err
 }

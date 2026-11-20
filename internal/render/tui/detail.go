@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/live"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/model"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
 )
@@ -372,6 +373,26 @@ func (m *Model) sourceDoc(d *doc, s *sbxenv.Source) {
 	}
 }
 
+func driftDoc(d *doc, x *live.Drift) {
+	d.title("ズレ: " + x.Title)
+	d.field("分類", x.Kind)
+	d.heading("宣言（sbxenv.yaml）")
+	d.text(x.Declared, 2)
+	d.heading("現在の実体（sbx）")
+	d.text(x.Actual, 2)
+	d.heading("どうすればよいか")
+	d.text(x.Fix, 2)
+	d.heading("このツールの判定（独自基準）")
+	d.field("  危険度", riskLine(x.Severity))
+	d.text(judgementBasis, 2)
+	d.heading("比較の根拠")
+	d.text("宣言: 設定ファイルの静的解析", 2)
+	d.text("実体: "+x.Source+" の出力（読み取り専用のコマンド）", 2)
+	if x.ItemID != "" {
+		d.text("関連する設定: "+x.ItemID+"（3: Items で詳細を確認できます）", 2)
+	}
+}
+
 func helpDoc() doc {
 	var d doc
 	d.title("このツールについて")
@@ -381,6 +402,7 @@ func helpDoc() doc {
 	d.heading("キー操作")
 	for _, kv := range [][2]string{
 		{"1 / 2 / 3 / 4, [ / ]", "画面切替（Overview / Risk / Items / Sources）"},
+		{"< / >, s", "対象の sandbox を切替 / 一覧から選ぶ（自動検出時）"},
 		{"j / k, ↑ / ↓", "移動（詳細ペインではスクロール）"},
 		{"h / l", "ペイン移動（狭い画面では戻る / 詳細）"},
 		{"Enter / Esc", "詳細を開く（Overview では詳細へ移動）/ 戻る・検索解除"},
@@ -398,7 +420,7 @@ func helpDoc() doc {
 	d.text("Overview のカードの項目をクリックで詳細へ移動", 2)
 	d.text("ペインをクリックでフォーカス、ホイールでカーソル下のペインをスクロール", 2)
 	d.heading("目印（バッジ）")
-	for _, b := range []string{sbxenv.BadgeHost, sbxenv.BadgeOpaque, sbxenv.BadgeRW, sbxenv.BadgeRO, sbxenv.BadgePersist, sbxenv.BadgeNet, sbxenv.BadgeCred, sbxenv.BadgeSSH, sbxenv.BadgeSkip, sbxenv.BadgeWarn, sbxenv.BadgeUnknown, sbxenv.BadgeLiteral} {
+	for _, b := range []string{sbxenv.BadgeHost, sbxenv.BadgeOpaque, sbxenv.BadgeRW, sbxenv.BadgeRO, sbxenv.BadgePersist, sbxenv.BadgeNet, sbxenv.BadgeCred, sbxenv.BadgeSSH, sbxenv.BadgeSkip, sbxenv.BadgeWarn, sbxenv.BadgeUnknown, sbxenv.BadgeLiteral, "[DRIFT]"} {
 		d.text(fmt.Sprintf("%-10s %s", b, sbxenv.BadgeLabel(b)), 2)
 	}
 	return d

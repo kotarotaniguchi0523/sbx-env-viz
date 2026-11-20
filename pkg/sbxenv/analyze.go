@@ -596,6 +596,7 @@ func (rs *resolver) finish() *Plan {
 		Diagnostics: nonNil(rs.diags),
 	}
 	p.Summary = Summarize(p)
+	p.Declared = rs.declared()
 	return p
 }
 

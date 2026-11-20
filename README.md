@@ -42,6 +42,21 @@ sbx-env-viz . --json > plan.json
 
 対応する展開式は `${{ env.args.NAME }}`・`${{ env.projectDir }}`・`${{ env.fileDir }}` です（`$${{ … }}` はリテラル、`$VAR` は展開しません）。ローカル kit では `network-policy@1`・`credential@1`・`host-mount@1`・`ssh-agent@1`・`git-identity@1`・`lifecycle@1` を展開します。それ以外の capability も設定を落とさずそのまま表示します。
 
+## 自動検出と稼働中の sandbox との比較
+
+ターミナルで引数なしで `sbx-env-viz` を実行すると、次のものを自動で集めて切り替えながら表示します。
+
+- `sbx ls --json`、sandbox ごとの `sbx policy ls <name> --json` と `sbx secret ls --sandbox <name> --json`、`sbx mcp ls --json`（どれも読み取り専用の一覧コマンドで、`--no-input` 付きで実行します。シークレットは名前だけを読み、値は取得しません）
+- カレントディレクトリと各 sandbox のワークスペースの近くにある `sbxenv.yaml` / `sbxenv.*.yaml`（`sbxenv.X.local.yaml` は `sbxenv.X.yaml` に重ねます）と `~/.sbxenv.yaml`
+
+宣言の `name`（なければメインのワークスペースのパス）で sandbox と紐付けます。画面上部の「対象」バーに、`稼働中` / `停止中` / `宣言のみ（未作成）` / `宣言ファイル未検出` と `ズレ N` を表示します。`<` `>` かクリックで切り替え、`s` で一覧から選べます。
+
+宣言と実体の両方がある sandbox では、エージェント、ワークスペースとマウント（欠落・追加・読み書きの違い）、ポート公開、通信の許可と拒否（手動で追加したルール、宣言したのに反映されていないルール）、シークレットの登録有無、MCP サーバーの登録と状態を比べ、`1:Overview` と `2:Risk` に「ズレ」として表示します。詳細ペインでは「宣言（sbxenv.yaml）」と「現在の実体（sbx）」を並べ、作り直しなどの対処を案内します。メモリや CPU、lifecycle の実行履歴のように sbx の一覧から取得できないものは比較せず、比較しなかったことを表示します。
+
+`sbx` がない場合やデーモンが停止している場合は、設定ファイルだけを解析します。パスを指定したとき、`--text` / `--json` のとき、`--offline` のときは従来どおり sbx を実行しません。`--live` を付けると、それらの出力でも比較結果を加えます（`--json` では `live` キー）。
+
+`sbx ls` の配列形式、snake_case のフィールド名、ポート行の `host_ip` / `host_port` / `sandbox_port` / `protocol` は公式ドキュメントに記載があります。`policy ls` / `secret ls` / `mcp ls` の JSON の入れ子の形は公開されていないため、記載されているフィールド名（`decision`、`resources`、`created_via`、`service`、`auth_status` など）を構造によらず探して読みます。
+
 ## TUI
 
 | キー | 動作 |
@@ -53,6 +68,7 @@ sbx-env-viz . --json > plan.json
 | `g` | Items のグループ切替（層別 / 境界別 / kit 別） |
 | `f` | レイヤー絞り込み（非表示になった警告の件数をヘッダーに表示） |
 | `/` | 検索（`Esc` で解除） |
+| `<` `>` / `s` | 対象の sandbox を切替 / 一覧から選ぶ（自動検出時） |
 | `?` / `q` | ヘルプ / 終了（終了時に 1 行要約を表示） |
 
 | マウス | 動作 |

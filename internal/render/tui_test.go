@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/live"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/tui"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
 )
@@ -775,4 +776,129 @@ func TestTUIDetailSaysWhenTheDocsGiveNoWarning(t *testing.T) {
 
 	// Assert
 	u.want("▍公式の見解（Docker Sandboxes / sandbox-kit-spec）", "公式ドキュメントに特段の警告記載なし", "▍このツールの判定（独自基準）", "危険度: 情報（INFO）")
+}
+
+// --- discovered sandboxes ------------------------------------------------------
+
+// newTargetsUI shows three discovered targets: a declaration paired with a
+// running sandbox whose agent differs, a sandbox without files, and a
+// declaration not yet created.
+func newTargetsUI(t *testing.T, width, height int) *ui {
+	t.Helper()
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	running := &live.Sandbox{Name: "web", Agent: "codex", Status: "running", RulesKnown: true, SecretsKnown: true}
+	cmp := live.Compare(p, running, &live.Snapshot{Available: true}, nil)
+	orphan := &live.Sandbox{Name: "orphan", Agent: "claude", Status: "stopped",
+		Workspaces: []live.Mount{{Path: "/srv/orphan"}}, Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 8080, SandboxPort: 80, Protocol: "tcp"}}}
+	q, _ := newPlan(t, sbxenv.RedactHome)
+	m := tui.NewTargets([]live.Target{
+		{Name: "web", State: "稼働中", Files: []string{"~/proj/sbxenv.yaml"}, Plan: p, Sandbox: running, Comparison: &cmp},
+		{Name: "orphan", State: "停止中・宣言ファイル未検出", Sandbox: orphan},
+		{Name: "api", State: "宣言のみ（未作成）", Files: []string{"~/api/sbxenv.yaml"}, Plan: q},
+	}, "", true)
+	m.Update(tea.WindowSizeMsg{Width: width, Height: height})
+	u := &ui{t: t, m: m}
+	u.frame()
+	return u
+}
+
+func TestTUITargetBarNamesEverySandboxWithItsState(t *testing.T) {
+	t.Parallel()
+	// Arrange / Act
+	u := newTargetsUI(t, 160, 50)
+
+	// Assert
+	bar := u.lines()[1]
+	for _, want := range []string{"対象 ", "[web 稼働中 ズレ ", "[orphan 停止中・宣言ファイル未検出]", "[api 宣言のみ（未作成）]"} {
+		if !strings.Contains(bar, want) {
+			t.Errorf("target bar missing %q: %q", want, bar)
+		}
+	}
+	if !strings.Contains(u.lines()[2], "[ズレ ") {
+		t.Errorf("summary should count drift: %q", u.lines()[2])
+	}
+	u.want("宣言（設定ファイル）と稼働中の実体（sbx）を比較")
+}
+
+func TestTUISinglePlanHasNoTargetBar(t *testing.T) {
+	t.Parallel()
+	// Act
+	u := newUI(t, 130, 40, true)
+
+	// Assert
+	if strings.HasPrefix(u.lines()[1], "対象 ") || u.has("[ズレ") {
+		t.Errorf("a plan from the command line has no target bar:\n%s", u.text())
+	}
+}
+
+func TestTUIKeysSwitchTargets(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		keys []string
+		want string
+	}{
+		{nil, "▍宣言と実体のズレ"},
+		{[]string{">"}, "▍稼働中の実体（宣言ファイル未検出）"},
+		{[]string{">", ">"}, "▍稼働中の実体"},
+		{[]string{"<"}, "まだ作成されていません"},
+		{[]string{">", ">", ">"}, "▍宣言と実体のズレ"},
+	}
+	for _, tc := range cases {
+		t.Run(strings.Join(tc.keys, ""), func(t *testing.T) {
+			t.Parallel()
+			// Act
+			u := newTargetsUI(t, 160, 50).press(tc.keys...)
+
+			// Assert
+			u.want(tc.want)
+		})
+	}
+}
+
+func TestTUIClickOnATargetChipSwitchesToIt(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	u := newTargetsUI(t, 160, 50)
+
+	// Act
+	u.clickOn("orphan 停止中", 1)
+
+	// Assert
+	u.want("▍稼働中の実体（宣言ファイル未検出）", "ワークスペース: /srv/orphan", "ポート公開: 127.0.0.1:8080 -> sandbox:80/tcp", "稼働中の実体のみ（宣言ファイル未検出）")
+}
+
+func TestTUIPickerListsTargetsAndSwitchesByKeyOrClick(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	u := newTargetsUI(t, 160, 50)
+
+	// Act / Assert: s opens the list, j and Enter pick the third target.
+	u.press("s")
+	u.want("対象の切替", "▶ web  [稼働中]", "~/api/sbxenv.yaml", "（設定ファイルなし）")
+	u.press("j", "j", "enter")
+	u.want("まだ作成されていません")
+	if u.has("対象の切替") {
+		t.Error("Enter closes the list")
+	}
+
+	// Act / Assert: a click on a row picks it too.
+	u.press("s")
+	u.clickOn("orphan  [停止中", 5)
+	u.want("▍稼働中の実体（宣言ファイル未検出）")
+}
+
+func TestTUIDriftOpensSideBySideInRisk(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	u := newTargetsUI(t, 160, 60)
+
+	// Act: the first Overview entry is the agent drift.
+	u.clickOn("エージェント: 宣言と違うエージェントで動いている", 4)
+
+	// Assert
+	if got := u.listTitle(); !strings.Contains(got, "Risk") {
+		t.Errorf("list title = %q", got)
+	}
+	u.want("[DRIFT] ズレ: 宣言と違うエージェントで動いている", "▍宣言（sbxenv.yaml）", "▍現在の実体（sbx）", "codex",
+		"▍どうすればよいか", "sbx env rm", "▍比較の根拠", "sbx ls --json")
 }

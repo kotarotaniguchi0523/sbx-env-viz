@@ -1,0 +1,24 @@
+[
+  {
+    "name": "web-app",
+    "id": "sbx_0001",
+    "agent": "claude",
+    "status": "running",
+    "detached": false,
+    "workspaces": [{"path": "{{WS}}", "read_only": false}],
+    "mounts": [],
+    "ports": [{"host_ip": "127.0.0.1", "host_port": 4000, "sandbox_port": 3000, "protocol": "tcp"}],
+    "created_at": "2026-11-01T09:00:00Z",
+    "last_used_at": "2026-11-19T18:30:00Z"
+  },
+  {
+    "name": "orphan",
+    "id": "sbx_0002",
+    "agent": "codex",
+    "status": "stopped",
+    "workspaces": ["{{OTHER}}"],
+    "ports": [],
+    "created_at": "2026-10-01T09:00:00Z",
+    "last_used_at": "2026-10-02T09:00:00Z"
+  }
+]

@@ -54,6 +54,11 @@ type launch struct {
 	args       []string
 	color      bool
 	files      map[string]string
+	// auto starts the binary with no arguments, so it discovers sandboxes.
+	auto bool
+	// sbx maps "ARGS" of an sbx command to the JSON it prints; {{PROJ}} is
+	// replaced by the project directory. Nil means sbx is not installed.
+	sbx map[string]string
 }
 
 // screen is a running sbx-env-viz in its own terminal.
@@ -79,11 +84,20 @@ func start(t *testing.T, l launch) *screen {
 	if l.rows == 0 {
 		l.rows = 40
 	}
-	if l.args == nil {
+	path := os.Getenv("PATH")
+	switch {
+	case l.auto:
+		l.args = []string{}
+		// Only the fake sbx (or none) and the tools its script needs.
+		path = "/usr/bin:/bin"
+		if l.sbx != nil {
+			path = fakeSbx(t, proj, l.sbx) + ":" + path
+		}
+	case l.args == nil:
 		l.args = []string{"base.sbxenv.yaml", "local.sbxenv.yaml"}
 	}
 	env := map[string]string{
-		"HOME": home, "PATH": os.Getenv("PATH"), "LANG": "C.UTF-8",
+		"HOME": home, "PATH": path, "LANG": "C.UTF-8",
 		"TERM": "xterm-256color", "COLORTERM": "truecolor",
 	}
 	if !l.color {
@@ -101,6 +115,29 @@ func start(t *testing.T, l launch) *screen {
 	s.expect("sbx-env-viz")
 	s.idle()
 	return s
+}
+
+// fakeSbx writes an executable "sbx" that prints fixture JSON for the
+// read-only commands sbx-env-viz runs, and fails on anything else.
+func fakeSbx(t *testing.T, proj string, outputs map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	var script strings.Builder
+	script.WriteString("#!/bin/sh\nargs=\"$*\"\nargs=\"${args% --no-input}\"\ncase \"$args\" in\n")
+	i := 0
+	for args, out := range outputs {
+		f := filepath.Join(dir, fmt.Sprintf("out%d.json", i))
+		i++
+		if err := os.WriteFile(f, []byte(strings.ReplaceAll(out, "{{PROJ}}", proj)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&script, "  %q) cat %q ;;\n", args, f)
+	}
+	script.WriteString("  *) echo \"unexpected: $args\" >&2; exit 1 ;;\nesac\n")
+	if err := os.WriteFile(filepath.Join(dir, "sbx"), []byte(script.String()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }
 
 func (s *screen) idle() {

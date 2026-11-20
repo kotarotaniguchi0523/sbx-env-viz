@@ -6,6 +6,8 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/live"
+	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/model"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
 )
 
@@ -67,6 +69,39 @@ func (m *Model) buildOverview() {
 				}
 			}
 			return false
+		}
+	}
+
+	if t := m.target(); t != nil {
+		switch {
+		case t.Err != "":
+			newCard("設定ファイルを解析できません")
+			info(t.Err)
+			for _, f := range t.Files {
+				info("ファイル: " + model.EscapeControl(f))
+			}
+			m.rows = rows
+			return
+		case t.Plan == nil && t.Sandbox != nil:
+			m.liveCard(t.Sandbox, newCard, info)
+			m.rows = rows
+			return
+		case t.Comparison != nil:
+			newCard(fmt.Sprintf("宣言と実体のズレ（%d 件）", len(m.drifts)))
+			for i := range m.drifts {
+				d := &m.drifts[i]
+				add(d.Kind+": "+d.Title, row{label: d.Title, badges: []string{"[DRIFT]"}, sev: d.Severity, drift: d})
+			}
+			if len(m.drifts) == 0 {
+				info("ズレは見つかりませんでした。")
+			}
+			info("比較した項目: " + strings.Join(t.Comparison.Checked, "・"))
+			for _, s := range t.Comparison.Skipped {
+				info(model.EscapeControl(s))
+			}
+		case strings.HasPrefix(t.State, "宣言のみ"):
+			newCard("稼働中の実体")
+			info("まだ作成されていません（sbx ls に該当する sandbox がありません）。")
 		}
 	}
 
@@ -188,6 +223,46 @@ func (m *Model) buildOverview() {
 	m.rows = rows
 }
 
+// liveCard shows a sandbox that no environment file declares.
+func (m *Model) liveCard(sb *live.Sandbox, newCard func(string), info func(string)) {
+	newCard("稼働中の実体（宣言ファイル未検出）")
+	info("この sandbox を宣言した sbxenv*.yaml が、カレントディレクトリとワークスペースの近くに見つかりませんでした。")
+	info("エージェント: " + orNone(sb.Agent))
+	info("状態: " + live.StateLabel(sb.Status))
+	for _, w := range sb.Workspaces {
+		info("ワークスペース: " + w.Path + roLabel(w.ReadOnly))
+	}
+	for _, w := range sb.Mounts {
+		info("マウント: " + w.Path + roLabel(w.ReadOnly))
+	}
+	for _, p := range sb.Ports {
+		info(fmt.Sprintf("ポート公開: %s:%d -> sandbox:%d/%s", orNone(p.HostIP), p.HostPort, p.SandboxPort, orNone(p.Protocol)))
+	}
+	if sb.RulesKnown {
+		info(fmt.Sprintf("通信ルール: %d 件", len(sb.Rules)))
+	}
+	if sb.SecretsKnown {
+		info("シークレット（名前のみ）: " + orNone(strings.Join(sb.Secrets, ", ")))
+	}
+}
+
+func orNone(s string) string {
+	if s == "" {
+		return "（なし）"
+	}
+	return s
+}
+
+func roLabel(ro *bool) string {
+	switch {
+	case ro == nil:
+		return ""
+	case *ro:
+		return "（読み取り専用）"
+	}
+	return "（読み書き可能）"
+}
+
 func field(it *sbxenv.Item, key string) string {
 	for _, f := range it.Fields {
 		if f.Key == key {
@@ -220,7 +295,7 @@ func (m *Model) jump() {
 	m.setView(target)
 	for i := range m.rows {
 		x := m.rows[i]
-		if (r.item != nil && x.item == r.item) || (r.diag != nil && x.diag == r.diag) || (r.cover != nil && x.cover == r.cover) {
+		if (r.item != nil && x.item == r.item) || (r.diag != nil && x.diag == r.diag) || (r.cover != nil && x.cover == r.cover) || (r.drift != nil && x.drift == r.drift) {
 			m.selectRow(i)
 			break
 		}
@@ -263,10 +338,13 @@ func (m *Model) overviewPanes(w, top, ph int) string {
 		iw := width - 2
 		active := false
 		inner := []string{m.pal.heading.Render(trunc("▍"+c.title, iw))}
-		for i, l := range c.lines {
-			y := colH[col] + 2 + i
+		for _, l := range c.lines {
+			y := colH[col] + 1 + len(inner)
 			if l.row < 0 {
-				inner = append(inner, trunc(m.pal.dim.Render(" "+l.text), iw))
+				// Informational lines wrap; only entries are one row.
+				for _, w := range wrap(l.text, iw-2) {
+					inner = append(inner, m.pal.dim.Render(" "+w))
+				}
 				continue
 			}
 			zs = append(zs, ovZone{col*cw + 1, y, col*cw + 1 + iw, l.row})

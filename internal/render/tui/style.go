@@ -101,7 +101,7 @@ func newPalette(noColor bool) palette {
 
 	for name, col := range map[string]color.Color{
 		"[HOST]": red, "[SSH]": red, "[LITERAL]": red, "[!]": red, "[ERROR]": red,
-		"[RW]": orange, "[WARNING]": orange,
+		"[RW]": orange, "[WARNING]": orange, "[DRIFT]": orange,
 		"[CRED]": yellow,
 		"[NET]":  cyan, "[RO]": cyan,
 		"[PERSIST]": purple, "[OPAQUE]": purple, "[UNKNOWN]": purple, "[COVERAGE]": purple,

@@ -15,6 +15,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/live"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/model"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
 )
@@ -53,6 +54,7 @@ type row struct {
 	diag   *sbxenv.Diagnostic
 	cover  *sbxenv.Coverage
 	source *sbxenv.Source
+	drift  *live.Drift
 }
 
 // Model is the Bubble Tea model.
@@ -78,6 +80,16 @@ type Model struct {
 	pal   palette
 	rows  []row
 	cards []card
+
+	// targets are the sandboxes found by discovery; empty for a single
+	// plan given on the command line.
+	targets []live.Target
+	tIdx    int
+	// liveNote explains in Japanese why live data is missing or partial.
+	liveNote string
+	picker   bool
+	pCursor  int
+	drifts   []live.Drift
 	// oScroll is the first visible canvas line of the Overview.
 	oScroll int
 	// zones are the clickable regions of the last frame; mouse events are
@@ -90,14 +102,61 @@ type Model struct {
 func New(p *sbxenv.Plan, noColor bool) *Model {
 	p = model.ForTerminal(p)
 	m := &Model{plan: p, idx: model.SourceIndex(p), width: 100, height: 30, pal: newPalette(noColor)}
-	m.filters = []string{""}
-	for _, s := range p.Meta.Sources {
+	m.resetFilters()
+	m.rebuild()
+	return m
+}
+
+// NewTargets builds a model that switches between discovered sandboxes.
+// note explains, in Japanese, why live data is missing or partial.
+func NewTargets(targets []live.Target, note string, noColor bool) *Model {
+	m := &Model{targets: targets, liveNote: model.EscapeControl(note), width: 100, height: 30, pal: newPalette(noColor)}
+	m.setTarget(0)
+	return m
+}
+
+func (m *Model) resetFilters() {
+	m.filters, m.filterIdx = []string{""}, 0
+	for _, s := range m.plan.Meta.Sources {
 		if s.Kind == sbxenv.SourceEnv || s.Kind == sbxenv.SourceUserDefaults || s.Kind == sbxenv.SourceKit {
 			m.filters = append(m.filters, s.ID)
 		}
 	}
+}
+
+func (m *Model) multi() bool { return len(m.targets) > 0 }
+
+func (m *Model) target() *live.Target {
+	if !m.multi() {
+		return nil
+	}
+	return &m.targets[m.tIdx]
+}
+
+// setTarget shows target i: its plan (an empty one for a sandbox without
+// files) and its drift list, with every view reset.
+func (m *Model) setTarget(i int) {
+	m.tIdx = i
+	t := &m.targets[i]
+	p := t.Plan
+	if p == nil {
+		p = &sbxenv.Plan{Meta: sbxenv.Meta{Notice: "no environment file found for this sandbox"}}
+	}
+	m.plan = model.ForTerminal(p)
+	m.idx = model.SourceIndex(m.plan)
+	m.drifts = nil
+	if t.Comparison != nil {
+		for _, d := range t.Comparison.Drifts {
+			for _, f := range []*string{&d.Kind, &d.Title, &d.Declared, &d.Actual, &d.Fix, &d.Source} {
+				*f = model.EscapeControl(*f)
+			}
+			m.drifts = append(m.drifts, d)
+		}
+	}
+	m.resetFilters()
+	m.cursor = [viewCount]int{}
+	m.query, m.searching, m.detail, m.focus, m.dScroll, m.oScroll = "", false, false, 0, 0, 0
 	m.rebuild()
-	return m
 }
 
 // Init implements tea.Model.
@@ -128,6 +187,15 @@ func (m *Model) rebuild() {
 		m.buildOverview()
 		rows = m.rows
 	case viewRisk:
+		if m.filter() == "" {
+			for i := range m.drifts {
+				d := &m.drifts[i]
+				label := "ズレ: " + d.Title
+				if m.matches(label + " " + d.Kind) {
+					rows = append(rows, row{label: label, badges: []string{"[DRIFT]"}, sev: d.Severity, drift: d})
+				}
+			}
+		}
 		for _, r := range model.RiskList(m.plan) {
 			if r.Cover != nil {
 				// Gaps are premises of a static analysis, not findings;
@@ -310,6 +378,10 @@ func (m *Model) click(x, y int) {
 		m.help = false
 		return
 	}
+	if m.picker && z.kind != zoneTarget && z.kind != zoneTargetRow {
+		m.picker = false
+		return
+	}
 	switch z.kind {
 	case zoneTab:
 		m.setView(viewID(z.value))
@@ -344,6 +416,11 @@ func (m *Model) click(x, y int) {
 	case zoneBack:
 		m.detail = false
 		m.focus = 0
+	case zoneTarget, zoneTargetRow:
+		m.picker = false
+		if z.value != m.tIdx {
+			m.setTarget(z.value)
+		}
 	}
 }
 
@@ -399,11 +476,41 @@ func (m *Model) key(k string) (tea.Model, tea.Cmd) {
 		m.help = false
 		return m, nil
 	}
+	if m.picker {
+		switch k {
+		case "q", "ctrl+c":
+			return m, tea.Quit
+		case "j", "down":
+			m.pCursor = min(m.pCursor+1, len(m.targets)-1)
+		case "k", "up":
+			m.pCursor = max(m.pCursor-1, 0)
+		case "enter":
+			m.picker = false
+			if m.pCursor != m.tIdx {
+				m.setTarget(m.pCursor)
+			}
+		case "esc", "s":
+			m.picker = false
+		}
+		return m, nil
+	}
 	switch k {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "?":
 		m.help = true
+	case "s":
+		if m.multi() {
+			m.picker, m.pCursor = true, m.tIdx
+		}
+	case ">", ".":
+		if m.multi() {
+			m.setTarget((m.tIdx + 1) % len(m.targets))
+		}
+	case "<", ",":
+		if m.multi() {
+			m.setTarget((m.tIdx + len(m.targets) - 1) % len(m.targets))
+		}
 	case "1", "2", "3", "4":
 		m.setView(viewID(k[0] - '1'))
 	case "]", "tab":
@@ -499,13 +606,27 @@ func (m *Model) View() tea.View {
 
 // Run starts the TUI and returns the one-line summary to print on exit.
 func Run(p *sbxenv.Plan, in io.Reader, out io.Writer) (string, error) {
-	noColor := os.Getenv("NO_COLOR") != ""
-	m := New(p, noColor)
+	return run(New(p, os.Getenv("NO_COLOR") != ""), in, out)
+}
+
+// RunTargets starts the TUI over discovered sandboxes.
+func RunTargets(targets []live.Target, note string, in io.Reader, out io.Writer) (string, error) {
+	return run(NewTargets(targets, note, os.Getenv("NO_COLOR") != ""), in, out)
+}
+
+func run(m *Model, in io.Reader, out io.Writer) (string, error) {
 	opts := []tea.ProgramOption{tea.WithInput(in), tea.WithOutput(out)}
 	if _, err := tea.NewProgram(m, opts...).Run(); err != nil {
 		return "", err
 	}
-	return ExitSummary(p), nil
+	line := ExitSummary(m.plan)
+	if t := m.target(); t != nil {
+		line = "sbx-env-viz: " + model.EscapeControl(t.Name) + ": " + sbxenv.SummaryLine(m.plan.Summary)
+		if t.Comparison != nil {
+			line += fmt.Sprintf(" | ズレ %d", len(t.Comparison.Drifts))
+		}
+	}
+	return line, nil
 }
 
 // ExitSummary is printed to stdout after the TUI closes.

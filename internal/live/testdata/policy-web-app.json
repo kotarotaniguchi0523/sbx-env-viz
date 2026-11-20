@@ -1,0 +1,12 @@
+[
+  {"policy_id": "default", "source": "local", "created_via": "default", "rules": [
+    {"rule_id": "r1", "decision": "allow", "resource_type": "network", "resources": ["api.anthropic.com"]}
+  ]},
+  {"policy_id": "kit-net", "source": "kit", "created_via": "provisioned", "rules": [
+    {"rule_id": "r2", "decision": "allow", "resource_type": "network", "resources": ["api.example.com"]}
+  ]},
+  {"policy_id": "local", "source": "local", "created_via": "added", "rules": [
+    {"rule_id": "r3", "decision": "allow", "resource_type": "network", "resources": ["manual.example.com"]},
+    {"rule_id": "r4", "decision": "deny", "resource_type": "filesystem", "resources": ["/etc"]}
+  ]}
+]

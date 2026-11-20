@@ -408,3 +408,148 @@ func TestDirectoryWithoutEnvFileNamesTheFileItLookedFor(t *testing.T) {
 		t.Errorf("exit %d, stderr %q should name kits/sbxenv.yaml", r.code, r.stderr)
 	}
 }
+
+// fakeSbx puts an "sbx" on PATH that records every call in calls.log and
+// answers the read-only listings with a sandbox named web-app running
+// codex. It returns the PATH to use and the log path.
+func (s sandbox) fakeSbx(t *testing.T) (path, log string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake sbx is a shell script")
+	}
+	dir := t.TempDir()
+	log = filepath.Join(dir, "calls.log")
+	script := `#!/bin/sh
+echo "$*" >> "` + log + `"
+case "$*" in
+  "ls --json --no-input") echo '[{"name":"web-app","agent":"codex","status":"running","workspaces":[],"ports":[]}]' ;;
+  *) echo '[]' ;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(dir, "sbx"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir + string(os.PathListSeparator) + "/usr/bin:/bin", log
+}
+
+func (s sandbox) runPath(t *testing.T, path string, args ...string) result {
+	t.Helper()
+	cmd := exec.Command(binary, args...)
+	cmd.Dir = s.work
+	cmd.Env = []string{"HOME=" + s.home, "PATH=" + path, "TERM=dumb", "NO_COLOR=1"}
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	err := cmd.Run()
+	code := 0
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		code = exit.ExitCode()
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	return result{code: code, stdout: out.String(), stderr: errb.String()}
+}
+
+const liveEnv = "schemaVersion: \"1\"\nname: web-app\nagent: claude\n"
+
+func TestTextAndJSONStayOfflineWithoutLive(t *testing.T) {
+	t.Parallel()
+	for _, args := range [][]string{nil, {"--text"}, {"--json"}, {"sbxenv.yaml"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			t.Parallel()
+			// Arrange
+			s := newSandbox(t)
+			s.write(t, "sbxenv.yaml", liveEnv)
+			path, log := s.fakeSbx(t)
+
+			// Act
+			r := s.runPath(t, path, args...)
+
+			// Assert
+			if r.code != 0 {
+				t.Fatalf("exit %d: %s", r.code, r.stderr)
+			}
+			if _, err := os.Stat(log); err == nil {
+				b, _ := os.ReadFile(log)
+				t.Errorf("sbx ran without --live: %s", b)
+			}
+			if strings.Contains(r.stdout, "稼働中の実体との比較") || strings.Contains(r.stdout, `"live"`) {
+				t.Errorf("offline output changed:\n%s", r.stdout)
+			}
+		})
+	}
+}
+
+func TestLiveTextComparesWithTheRunningSandbox(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	s := newSandbox(t)
+	s.write(t, "sbxenv.yaml", liveEnv)
+	path, log := s.fakeSbx(t)
+
+	// Act
+	r := s.runPath(t, path, "--text", "--live")
+
+	// Assert
+	if r.code != 0 {
+		t.Fatalf("exit %d: %s", r.code, r.stderr)
+	}
+	for _, want := range []string{"稼働中の実体との比較（--live）", "対象: web-app（稼働中） ズレ 1 件", "宣言と違うエージェントで動いている", "宣言: claude", "実体: codex"} {
+		if !strings.Contains(r.stdout, want) {
+			t.Errorf("missing %q:\n%s", want, r.stdout)
+		}
+	}
+	calls, _ := os.ReadFile(log)
+	for _, line := range strings.Split(strings.TrimSpace(string(calls)), "\n") {
+		if !strings.HasSuffix(line, "--json --no-input") || !(strings.HasPrefix(line, "ls ") || strings.Contains(line, " ls ")) {
+			t.Errorf("only read-only listings may run, got %q", line)
+		}
+	}
+}
+
+func TestLiveJSONAddsALiveSection(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	s := newSandbox(t)
+	s.write(t, "sbxenv.yaml", liveEnv)
+	path, _ := s.fakeSbx(t)
+
+	// Act
+	r := s.runPath(t, path, "--json", "--live")
+
+	// Assert
+	doc := r.json(t)
+	l, ok := doc["live"].(map[string]any)
+	if !ok || l["sandbox"] != "web-app" || len(l["drift"].([]any)) != 1 {
+		t.Errorf("live = %v", doc["live"])
+	}
+	if doc["schemaVersion"] == nil && doc["meta"] == nil {
+		t.Error("the plan must stay intact")
+	}
+}
+
+func TestLiveWithoutSbxReportsAndKeepsGoing(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	s := newSandbox(t)
+	s.write(t, "sbxenv.yaml", liveEnv)
+
+	// Act: PATH without sbx.
+	r := s.runPath(t, "/usr/bin:/bin", "--text", "--live")
+
+	// Assert
+	if r.code != 0 || !strings.Contains(r.stdout, "sbx コマンドが見つからない") {
+		t.Errorf("exit %d\n%s%s", r.code, r.stdout, r.stderr)
+	}
+}
+
+func TestLiveAndOfflineCannotBeCombined(t *testing.T) {
+	t.Parallel()
+	// Act
+	r := newSandbox(t).run(t, "--live", "--offline")
+
+	// Assert
+	if r.code != 2 || !strings.Contains(r.stderr, "--live and --offline cannot be combined") {
+		t.Errorf("exit %d: %s", r.code, r.stderr)
+	}
+}

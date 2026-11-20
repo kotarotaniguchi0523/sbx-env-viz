@@ -22,6 +22,8 @@ const (
 	zoneDetailPane
 	zoneRow
 	zoneBack
+	zoneTarget
+	zoneTargetRow
 )
 
 // zone is a clickable rectangle of the last frame, half-open on both axes.
@@ -85,7 +87,12 @@ func (m *Model) Render() string {
 		h = 8
 	}
 	m.zones = nil
-	lines := []string{m.titleBar(w), m.summaryBar(w), m.contextBar(w), m.chipBar(w)}
+	lines := []string{m.titleBar(w)}
+	if m.multi() {
+		lines = append(lines, m.targetBar(w, len(lines)))
+	}
+	lines = append(lines, m.summaryBar(w), m.contextBar(w))
+	lines = append(lines, m.chipBar(w, len(lines)))
 	if state := m.stateLine(); state != "" {
 		lines = append(lines, trunc(m.pal.bold.Render(state), w))
 	}
@@ -114,6 +121,32 @@ func (m *Model) titleBar(w int) string {
 	return trunc(s.b.String(), w)
 }
 
+// targetBar lists the discovered sandboxes as clickable chips.
+func (m *Model) targetBar(w, y int) string {
+	s := &strip{m: m, y: y}
+	s.text("対象 ", m.pal.chipLabel)
+	for i := range m.targets {
+		t := &m.targets[i]
+		label := model.EscapeControl(t.Name) + " " + t.State
+		if n := t.Drifts(); n > 0 {
+			label += fmt.Sprintf(" ズレ %d", n)
+		}
+		st := m.pal.chip
+		switch {
+		case i == m.tIdx:
+			st = m.pal.chipActive
+		case t.Drifts() > 0:
+			st = m.pal.chipAlert
+		}
+		s.zone(m.chipText(label), st, zoneTarget, i)
+		s.text(" ", lipgloss.NewStyle())
+	}
+	if len(m.targets) > 1 {
+		s.text("< > で切替・s で一覧", m.pal.dim)
+	}
+	return trunc(s.b.String(), w)
+}
+
 func (m *Model) summaryBar(w int) string {
 	sum := m.plan.Summary
 	chips := []struct {
@@ -127,6 +160,13 @@ func (m *Model) summaryBar(w int) string {
 		{"外への許可", sum.EgressAllows, false},
 		{"エラー", sum.Errors, sum.Errors > 0},
 		{"警告", sum.Warnings, sum.Warnings > 0},
+	}
+	if t := m.target(); t != nil && t.Comparison != nil {
+		chips = append(chips, struct {
+			label string
+			n     int
+			alert bool
+		}{"ズレ", len(m.drifts), len(m.drifts) > 0})
 	}
 	var full []string
 	for _, c := range chips {
@@ -142,15 +182,27 @@ func (m *Model) summaryBar(w int) string {
 	}
 	// Too narrow for pills: keep every count in a compact line.
 	compact := fmt.Sprintf("Host実行%d 永続%d RW%d 許可%d E%d W%d", sum.HostExec, sum.HostPersistent, sum.RWMounts, sum.EgressAllows, sum.Errors, sum.Warnings)
+	if t := m.target(); t != nil && t.Comparison != nil {
+		compact += fmt.Sprintf(" ズレ%d", len(m.drifts))
+	}
 	return trunc(m.pal.summaryValue.Render(compact), w)
 }
 
 func (m *Model) contextBar(w int) string {
-	return trunc(m.pal.dim.Render("宣言の静的解析（稼働中 sandbox の状態ではない） ")+model.ArgsLine(m.plan), w)
+	notice := "宣言の静的解析（稼働中 sandbox の状態ではない） "
+	if t := m.target(); t != nil {
+		switch {
+		case t.Comparison != nil:
+			notice = "宣言（設定ファイル）と稼働中の実体（sbx）を比較 "
+		case t.Plan == nil:
+			notice = "稼働中の実体のみ（宣言ファイル未検出） "
+		}
+	}
+	return trunc(m.pal.dim.Render(notice)+model.ArgsLine(m.plan), w)
 }
 
-func (m *Model) chipBar(w int) string {
-	s := &strip{m: m, y: 3}
+func (m *Model) chipBar(w, y int) string {
+	s := &strip{m: m, y: y}
 	if m.view == viewOverview {
 		s.text("全体の構成をカードで表示。項目を選んで Enter（またはクリック）で詳細へ移動します", m.pal.chipLabel)
 		return trunc(s.b.String(), w)
@@ -201,6 +253,9 @@ func (m *Model) stateLine() string {
 		}
 		state = append(state, fmt.Sprintf("絞り込み（非表示の警告・エラー %d 件）: %s", hidden, label))
 	}
+	if m.liveNote != "" {
+		state = append(state, m.liveNote)
+	}
 	if m.searching {
 		state = append(state, "検索: "+m.query+"▏")
 	} else if m.query != "" {
@@ -215,6 +270,10 @@ func (m *Model) statusBar(w int) string {
 		{"q", "終了"}, {"?", "ヘルプ"}, {"1-4", "画面"}, {"j/k", "移動"}, {"Enter", "詳細"},
 		{"h/l", "ペイン"}, {"g", "グループ"}, {"f", "絞り込み"}, {"/", "検索"},
 	} {
+		if kv[0] == "1-4" && m.multi() {
+			b.WriteString(m.pal.keyCap.Render("s"))
+			b.WriteString(m.pal.keyText.Render(" 対象 "))
+		}
 		b.WriteString(m.pal.keyCap.Render(kv[0]))
 		b.WriteString(m.pal.keyText.Render(" " + kv[1] + " "))
 	}
@@ -228,6 +287,8 @@ func (m *Model) panes(w, top, ph int) string {
 	switch {
 	case m.help:
 		return m.box(w, ph, m.helpLines(w-2), true)
+	case m.picker:
+		return m.box(w, ph, m.pickerLines(w-2, top), true)
 	case m.view == viewOverview:
 		return m.overviewPanes(w, top, ph)
 	case m.twoPane():
@@ -348,6 +409,8 @@ func (m *Model) detailLines(iw, ih, top, x0 int) []string {
 		m.coverageDoc(&d, r.cover)
 	case r.source != nil:
 		m.sourceDoc(&d, r.source)
+	case r.drift != nil:
+		driftDoc(&d, r.drift)
 	}
 	focused := m.focus == 1 || !m.twoPane()
 	title := m.paneTitle("詳細", focused)
@@ -372,6 +435,32 @@ func (m *Model) detailLines(iw, ih, top, x0 int) []string {
 	lines := []string{title}
 	for _, l := range body {
 		lines = append(lines, " "+l)
+	}
+	return lines
+}
+
+// pickerLines lists every target with its state, files, and drift count;
+// a click or Enter on a row switches to it.
+func (m *Model) pickerLines(iw, top int) []string {
+	lines := []string{m.paneTitle("対象の切替（j/k で選択・Enter で決定・Esc で閉じる）", true)}
+	for i := range m.targets {
+		t := &m.targets[i]
+		files := "（設定ファイルなし）"
+		if len(t.Files) > 0 {
+			files = strings.Join(t.Files, " + ")
+		}
+		text := fmt.Sprintf("%s  [%s]", model.EscapeControl(t.Name), t.State)
+		if t.Comparison != nil {
+			text += fmt.Sprintf("  ズレ %d 件", t.Drifts())
+		}
+		text += "  " + model.EscapeControl(files)
+		y := top + 1 + len(lines)
+		m.addZone(1, y, 1+iw, y+1, zoneTargetRow, i)
+		if i == m.pCursor {
+			lines = append(lines, m.pal.selected.Render(pad(trunc(" ▶ "+text, iw), iw)))
+		} else {
+			lines = append(lines, trunc(" • "+text, iw))
+		}
 	}
 	return lines
 }

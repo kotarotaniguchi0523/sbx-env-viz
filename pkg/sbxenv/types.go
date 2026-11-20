@@ -164,6 +164,9 @@ type Plan struct {
 	Coverage    []Coverage   `json:"coverage"`
 	Diagnostics []Diagnostic `json:"diagnostics"`
 	Summary     Summary      `json:"summary"`
+	// Declared holds unredacted resolved values for comparing with a
+	// running sandbox. It is never serialised.
+	Declared *Declared `json:"-"`
 }
 
 // Meta describes the plan and its inputs.

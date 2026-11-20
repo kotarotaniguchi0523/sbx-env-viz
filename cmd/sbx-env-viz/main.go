@@ -6,6 +6,9 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +18,7 @@ import (
 
 	"github.com/charmbracelet/x/term"
 
+	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/live"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/loader"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/jsonout"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/model"
@@ -36,7 +40,7 @@ const (
 func main() {
 	os.Exit(run(os.Args[1:], env{
 		stdin: os.Stdin, stdout: os.Stdout, stderr: os.Stderr,
-		getenv: os.Getenv, getwd: os.Getwd, home: os.UserHomeDir,
+		getenv: os.Getenv, getwd: os.Getwd, home: os.UserHomeDir, sbx: live.ExecRunner{},
 		isTTY: func() bool {
 			return term.IsTerminal(os.Stdin.Fd()) && term.IsTerminal(os.Stdout.Fd())
 		},
@@ -50,6 +54,8 @@ type env struct {
 	getwd          func() (string, error)
 	home           func() (string, error)
 	isTTY          func() bool
+	// sbx runs read-only sbx commands for live data.
+	sbx live.Runner
 }
 
 type options struct {
@@ -67,6 +73,8 @@ type options struct {
 	text, json   bool
 	redact       bool
 	failOn       string
+	live         bool
+	offline      bool
 	help         bool
 	version      bool
 }
@@ -78,12 +86,22 @@ shows the effective configuration, provenance, boundaries, and diagnostics.
 Paths and flags mirror "sbx env create". A directory means <dir>/sbxenv.yaml;
 with no path, ./sbxenv.yaml is merged over ~/.sbxenv.yaml.
 
+With no path in a terminal (TUI), it also finds sandboxes automatically:
+read-only "sbx ls / policy ls / secret ls / mcp ls --json" list the
+existing sandboxes, sbxenv*.yaml files are searched in the working
+directory and next to each workspace, declarations are paired with
+sandboxes, and differences (drift) are shown. Without sbx, or when the
+daemon is stopped, only the files are analysed. Secret values are never
+requested.
+
 Output (default: TUI when stdin and stdout are terminals and TERM != dumb,
 otherwise text):
   --text                  plain text summary
   --json                  schemaVersion "1" JSON IR (strictly redacted)
   --redact                strict redaction for TUI / text too
   --fail-on LEVEL         none (default) | warning | error; exit 1 when reached
+  --live                  also read existing sandboxes from sbx (any output)
+  --offline               never run sbx (the default for paths, --text, --json)
 
 sbx env flags:
   --env-arg NAME=VALUE    environment argument (repeatable)
@@ -178,6 +196,10 @@ func parseArgs(args []string) (*options, error) {
 			o.json, err = boolVal()
 		case "redact":
 			o.redact, err = boolVal()
+		case "live":
+			o.live, err = boolVal()
+		case "offline":
+			o.offline, err = boolVal()
 		case "version":
 			o.version = true
 		default:
@@ -194,6 +216,9 @@ func parseArgs(args []string) (*options, error) {
 	}
 	if o.text && o.json {
 		return nil, errors.New("--text and --json cannot be combined")
+	}
+	if o.live && o.offline {
+		return nil, errors.New("--live and --offline cannot be combined")
 	}
 	return o, nil
 }
@@ -225,11 +250,6 @@ func run(args []string, e env) int {
 		}
 	}
 	shorten := func(s string) string { return model.EscapeControl(sbxenv.ShortenHome(s, home, homeAliases...)) }
-	res, err := loader.Load(loader.Request{Paths: o.paths, EnvArgsFiles: o.envArgsFiles, KitArgsFiles: o.kitArgsFiles, WorkDir: wd, HomeDir: home})
-	if err != nil {
-		fmt.Fprintf(e.stderr, "sbx-env-viz: %s\n", shorten(err.Error()))
-		return exitUsage
-	}
 	mode := "text"
 	switch {
 	case o.json:
@@ -243,22 +263,70 @@ func run(args []string, e env) int {
 	if o.json || o.redact {
 		redaction = sbxenv.RedactStrict
 	}
-	plan, err := sbxenv.Resolve(res.Layers, sbxenv.ResolveOptions{
-		ProjectDir: res.ProjectDir, HomeDir: home, HomeAliases: homeAliases,
-		EnvArgsFiles: res.EnvArgsFiles, EnvArgs: o.envArgs,
-		KitArgsFiles: res.KitArgsFiles, KitArgs: o.kitArgs,
-		Name: o.name, Clone: o.clone, SkipHostCommands: o.skipHost,
-		Cloud: o.cloud, TTL: o.ttl, OnTimeout: o.onTimeout,
-		Kits: loader.FSKits{}, Redaction: redaction,
-	})
+	resolve := func(req loader.Request) (*sbxenv.Plan, error) {
+		res, err := loader.Load(req)
+		if err != nil {
+			return nil, err
+		}
+		return sbxenv.Resolve(res.Layers, sbxenv.ResolveOptions{
+			ProjectDir: res.ProjectDir, HomeDir: home, HomeAliases: homeAliases,
+			EnvArgsFiles: res.EnvArgsFiles, EnvArgs: o.envArgs,
+			KitArgsFiles: res.KitArgsFiles, KitArgs: o.kitArgs,
+			Name: o.name, Clone: o.clone, SkipHostCommands: o.skipHost,
+			Cloud: o.cloud, TTL: o.ttl, OnTimeout: o.onTimeout,
+			Kits: loader.FSKits{}, Redaction: redaction,
+		})
+	}
+	show := func(p string) string { return model.EscapeControl(sbxenv.ShortenHome(p, home, homeAliases...)) }
+
+	// Without paths in a terminal, discover sandboxes and files and let the
+	// person switch between them.
+	if len(o.paths) == 0 && mode == "tui" && !o.offline {
+		targets, snap := live.Discover(context.Background(), live.DiscoverRequest{
+			WorkDir: wd, Runner: e.sbx, Show: show,
+			Resolve: func(g live.Group) (*sbxenv.Plan, error) {
+				return resolve(loader.Request{Paths: g.Paths, EnvArgsFiles: o.envArgsFiles, KitArgsFiles: o.kitArgsFiles, WorkDir: g.Dir, HomeDir: home})
+			},
+		})
+		if len(targets) > 0 {
+			line, err := tui.RunTargets(targets, snap.Problem, e.stdin, e.stdout)
+			if err != nil {
+				fmt.Fprintf(e.stderr, "sbx-env-viz: %s\n", shorten(err.Error()))
+				return exitUsage
+			}
+			fmt.Fprintln(e.stdout, line)
+			worst := exitOK
+			for _, t := range targets {
+				if t.Plan != nil {
+					worst = max(worst, threshold(o.failOn, t.Plan))
+				}
+			}
+			return worst
+		}
+		// Nothing found: fall through to the usual message about files.
+	}
+
+	plan, err := resolve(loader.Request{Paths: o.paths, EnvArgsFiles: o.envArgsFiles, KitArgsFiles: o.kitArgsFiles, WorkDir: wd, HomeDir: home})
 	if err != nil {
 		fmt.Fprintf(e.stderr, "sbx-env-viz: %s\n", shorten(err.Error()))
 		return exitUsage
 	}
-	switch mode {
-	case "json":
+	var target *live.Target
+	if o.live {
+		target = liveTarget(plan, e.sbx, show)
+	}
+	switch {
+	case mode == "tui" && target != nil:
+		var line string
+		line, err = tui.RunTargets([]live.Target{*target}, target.Err, e.stdin, e.stdout)
+		if err == nil {
+			fmt.Fprintln(e.stdout, line)
+		}
+	case mode == "json" && target != nil:
+		err = writeJSONWithLive(e.stdout, plan, target)
+	case mode == "json":
 		err = jsonout.Write(e.stdout, plan)
-	case "tui":
+	case mode == "tui":
 		var line string
 		line, err = tui.Run(plan, e.stdin, e.stdout)
 		if err == nil {
@@ -266,6 +334,9 @@ func run(args []string, e env) int {
 		}
 	default:
 		err = text.Write(e.stdout, plan)
+		if err == nil && target != nil {
+			err = text.WriteLive(e.stdout, target)
+		}
 	}
 	if err != nil {
 		fmt.Fprintf(e.stderr, "sbx-env-viz: %s\n", shorten(err.Error()))
@@ -286,4 +357,54 @@ func threshold(failOn string, p *sbxenv.Plan) int {
 		}
 	}
 	return exitOK
+}
+
+// liveTarget pairs one resolved plan with the sandbox it created. Err
+// carries the reason when sbx gave no answer or no sandbox matches.
+func liveTarget(plan *sbxenv.Plan, r live.Runner, show live.Paths) *live.Target {
+	snap := live.Collect(context.Background(), r)
+	t := &live.Target{Name: "（宣言）", State: "宣言", Plan: plan, Err: snap.Problem}
+	if plan.Declared != nil && plan.Declared.Name != "" {
+		t.Name = plan.Declared.Name
+	}
+	if !snap.Available {
+		return t
+	}
+	t.State = "宣言のみ（未作成）"
+	if i := live.Match(plan.Declared, snap.Sandboxes); i >= 0 {
+		sb := snap.Sandboxes[i]
+		cmp := live.Compare(plan, &sb, &snap, show)
+		t.Name, t.State, t.Sandbox, t.Comparison = sb.Name, live.StateLabel(sb.Status), &sb, &cmp
+	}
+	return t
+}
+
+func writeJSONWithLive(w io.Writer, plan *sbxenv.Plan, t *live.Target) error {
+	var buf bytes.Buffer
+	if err := jsonout.Write(&buf, plan); err != nil {
+		return err
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &doc); err != nil {
+		return err
+	}
+	l := map[string]any{"state": t.State}
+	if t.Err != "" {
+		l["problem"] = t.Err
+	}
+	if t.Sandbox != nil {
+		l["sandbox"] = t.Sandbox.Name
+	}
+	if c := t.Comparison; c != nil {
+		drifts := []map[string]any{}
+		for _, d := range c.Drifts {
+			drifts = append(drifts, map[string]any{"kind": d.Kind, "title": d.Title, "declared": d.Declared, "actual": d.Actual,
+				"fix": d.Fix, "severity": d.Severity, "itemId": d.ItemID, "source": d.Source})
+		}
+		l["drift"], l["checked"], l["skipped"] = drifts, c.Checked, c.Skipped
+	}
+	doc["live"] = l
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(doc)
 }
