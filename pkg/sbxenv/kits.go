@@ -383,10 +383,10 @@ func (rs *resolver) kitVnode(n *parser.Node, k *kitState, p string) *vnode {
 			})
 			v.val = e.out
 			for _, kept := range e.kept {
-				rs.coverage(CoverageKitEnvRef, k.handle+": ${{ "+kept+" }}", "final container environment references are resolved by sbx at create time; the value is shown unexpanded", Origin{SourceID: k.srcID, Line: n.Pos.Line, Via: k.via()})
+				rs.coverage(CoverageKitEnvRef, k.handle+": ${{ "+rs.r.expr(kept)+" }}", "final container environment references are resolved by sbx at create time; the value is shown unexpanded", Origin{SourceID: k.srcID, Line: n.Pos.Line, Via: k.via()})
 			}
 			for _, u := range e.unresolved {
-				rs.diag("KIT_UNRESOLVED_EXPR", LevelError, "expression", fmt.Sprintf("kit %s: expression ${{ %s }} at %s cannot be resolved (only declared kit.args and kit.env references expand)", k.handle, u, p), "", Origin{SourceID: k.srcID, Line: n.Pos.Line, Col: n.Pos.Col, Via: k.via()})
+				rs.diag("KIT_UNRESOLVED_EXPR", LevelError, "expression", fmt.Sprintf("kit %s: expression ${{ %s }} at %s cannot be resolved (only declared kit.args and kit.env references expand)", k.handle, rs.r.expr(u), p), "", Origin{SourceID: k.srcID, Line: n.Pos.Line, Col: n.Pos.Col, Via: k.via()})
 			}
 		}
 	case parser.Map:

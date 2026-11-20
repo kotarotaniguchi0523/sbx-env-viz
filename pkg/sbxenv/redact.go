@@ -1,6 +1,7 @@
 package sbxenv
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -136,6 +137,19 @@ func isSimpleToken(s string) bool {
 		}
 	}
 	return true
+}
+
+// exprRefRe matches expression bodies that are reference names, such as
+// env.args.NAME or kit.env.HOME. Names are structure, not values.
+var exprRefRe = regexp.MustCompile(`^(env|kit)(\.[A-Za-z_][A-Za-z0-9_-]*)+$`)
+
+// expr formats the body of a ${{ ... }} expression for a message. Strict
+// mode shows only reference names; anything else may be a value.
+func (r *redactor) expr(body string) string {
+	if r.strict() && !exprRefRe.MatchString(body) {
+		return "<redacted>"
+	}
+	return r.text(body)
 }
 
 // literalSecret never returns the value.

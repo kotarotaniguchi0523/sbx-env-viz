@@ -425,12 +425,12 @@ func (rs *resolver) convert(n *parser.Node, ls *layerState, path string, expandO
 				}
 			}
 			for _, u := range e.unresolved {
-				msg := fmt.Sprintf("expression ${{ %s }} at %s cannot be resolved", u, path)
+				msg := fmt.Sprintf("expression ${{ %s }} at %s cannot be resolved", rs.r.expr(u), path)
 				if name, ok := envArgRef(u); ok {
 					if _, declared := rs.argDecls[name]; declared {
-						msg = fmt.Sprintf("expression ${{ %s }} at %s has no value (argument %q is required and was not supplied)", u, path, name)
+						msg = fmt.Sprintf("expression ${{ %s }} at %s has no value (argument %q is required and was not supplied)", rs.r.expr(u), path, name)
 					} else {
-						msg = fmt.Sprintf("expression ${{ %s }} at %s references an undeclared argument %q", u, path, name)
+						msg = fmt.Sprintf("expression ${{ %s }} at %s references an undeclared argument %q", rs.r.expr(u), path, name)
 					}
 				} else if !strings.HasPrefix(u, "env.") {
 					msg += "; only env.args.NAME, env.projectDir, and env.fileDir are expanded in environment files"
