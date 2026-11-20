@@ -89,7 +89,11 @@ func Load(req Request) (*Result, error) {
 			}
 			data, err := readFile(p)
 			if err != nil {
-				return nil, fmt.Errorf("environment file %q: %w", raw, describe(err))
+				shown := raw
+				if st.IsDir() {
+					shown = filepath.Join(raw, DefaultFileName)
+				}
+				return nil, fmt.Errorf("environment file %q: %w", shown, describe(err))
 			}
 			res.Layers = append(res.Layers, sbxenv.LayerInput{Path: p, Content: data, Kind: sbxenv.LayerEnv})
 		}

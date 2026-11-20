@@ -16,6 +16,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/loader"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/jsonout"
@@ -324,7 +325,7 @@ func TestTUIViewsGroupingFilterSearchAndHelp(t *testing.T) {
 		{"tab moves to the next view", []string{"tab"}, []string{"g:層別"}, nil},
 		{"] and [ move between views", []string{"]", "]", "["}, []string{"g:層別"}, nil},
 		{"sources view", []string{"3"}, []string{"~/proj/sbxenv.yaml", "未展開・解析範囲外"}, nil},
-		{"f filters by the first layer", []string{"f"}, []string{"絞り込み: L1", "非表示の警告・エラー"}, nil},
+		{"f filters by the first layer", []string{"f"}, []string{"絞り込み", ": L1 ", "非表示の警告・エラー"}, nil},
 		{"f cycles through every source", []string{"f", "f", "f", "f"}, nil, []string{"絞り込み:"}},
 		{"search narrows the list", []string{"2", "/", "a", "g", "e", "n", "t", "enter"}, []string{"agent = claude"}, []string{"ports["}},
 		{"backspace edits the query", []string{"2", "/", "a", "x", "backspace", "enter"}, []string{"検索: a"}, nil},
@@ -475,5 +476,80 @@ func TestTUIEscapesControlCharactersInValues(t *testing.T) {
 	}
 	if !strings.Contains(s, `x\x1b[31mred\nnext`) {
 		t.Errorf("escaped value not shown:\n%s", s)
+	}
+}
+
+func TestTUIFilterHeaderKeepsTheHiddenCount(t *testing.T) {
+	t.Parallel()
+	// Arrange: a source path long enough to fill the header line.
+	dir := filepath.Join(t.TempDir(), strings.Repeat("deeply-nested-directory/", 6))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "sbxenv.yaml")
+	doc := "schemaVersion: \"1\"\nagent: claude\nports:\n  - {sandbox: 1, hostIP: 0.0.0.0}\n"
+	p, err := sbxenv.Resolve([]sbxenv.LayerInput{{Path: path, Content: []byte(doc), Kind: sbxenv.LayerEnv}}, sbxenv.ResolveOptions{HomeDir: t.TempDir(), Redaction: sbxenv.RedactHome})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := tui.New(p, true)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+
+	// Act
+	press(m, "f")
+	header := strings.Split(m.Render(), "\n")[3]
+
+	// Assert
+	if !strings.Contains(header, "非表示の警告・エラー") || !strings.Contains(header, "件") {
+		t.Errorf("filter header lost the hidden count: %q", header)
+	}
+}
+
+func TestTUIDetailScrollStopsAtTheEnd(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	keys := []string{"2", "l"}
+	for i := 0; i < 200; i++ {
+		keys = append(keys, "j")
+	}
+
+	// Act
+	s := screen(t, 130, keys...)
+
+	// Assert
+	var right []string
+	for _, line := range strings.Split(s, "\n") {
+		if _, after, ok := strings.Cut(ansi.Strip(line), "│"); ok && strings.TrimSpace(after) != "" {
+			right = append(right, after)
+		}
+	}
+	if len(right) < 5 {
+		t.Errorf("detail pane scrolled past its end; visible lines: %d\n%s", len(right), s)
+	}
+}
+
+func TestTUISourcesViewHonoursTheFilter(t *testing.T) {
+	t.Parallel()
+	// Act: filter to the first layer, then open Sources.
+	s := screen(t, 130, "f", "3")
+
+	// Assert
+	if !strings.Contains(s, "~/proj/sbxenv.yaml") || strings.Contains(s, "~/proj/local.yaml [") {
+		t.Errorf("sources view should list only the filtered source:\n%s", s)
+	}
+}
+
+func TestTUINarrowHeaderAndFooterKeepEssentials(t *testing.T) {
+	t.Parallel()
+	// Act
+	s := screen(t, 80)
+
+	// Assert
+	lines := strings.Split(s, "\n")
+	if !strings.Contains(lines[1], "未展開") {
+		t.Errorf("summary lost the unexpanded count at 80 columns: %q", lines[1])
+	}
+	if !strings.Contains(lines[len(lines)-1], "q:終了") || !strings.Contains(lines[len(lines)-1], "?:ヘルプ") {
+		t.Errorf("footer lost quit/help at 80 columns: %q", lines[len(lines)-1])
 	}
 }

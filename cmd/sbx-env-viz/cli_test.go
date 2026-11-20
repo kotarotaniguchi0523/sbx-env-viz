@@ -393,3 +393,18 @@ func TestTextOutputNeutralisesTerminalControlCharacters(t *testing.T) {
 		t.Errorf("escaped forms should stay readable:\n%s", r.stdout)
 	}
 }
+
+func TestDirectoryWithoutEnvFileNamesTheFileItLookedFor(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	s := newSandbox(t)
+	s.write(t, "kits/k/k.yaml", "x: 1\n")
+
+	// Act
+	r := s.run(t, "kits")
+
+	// Assert
+	if r.code != 2 || !strings.Contains(r.stderr, filepath.Join("kits", "sbxenv.yaml")) {
+		t.Errorf("exit %d, stderr %q should name kits/sbxenv.yaml", r.code, r.stderr)
+	}
+}

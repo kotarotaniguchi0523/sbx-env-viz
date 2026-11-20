@@ -183,6 +183,9 @@ func (m *Model) rebuild() {
 	case viewSources:
 		for i := range m.plan.Meta.Sources {
 			s := &m.plan.Meta.Sources[i]
+			if f := m.filter(); f != "" && s.ID != f {
+				continue
+			}
 			state := "展開済み"
 			if !s.Expanded {
 				state = "未展開"
@@ -198,6 +201,9 @@ func (m *Model) rebuild() {
 			for i := range m.plan.Coverage {
 				c := &m.plan.Coverage[i]
 				label := fmt.Sprintf("[%s] %s", c.Kind, c.Ref)
+				if f := m.filter(); f != "" && c.Origin.SourceID != f {
+					continue
+				}
 				if m.matches(label) {
 					rows = append(rows, row{label: label, sev: sbxenv.SeverityMedium, cover: c})
 				}
@@ -462,7 +468,7 @@ func (m *Model) headerLines(w int) []string {
 	}
 	lines := []string{
 		trunc(m.st.title.Render("sbx-env-viz")+" "+strings.Join(tabs, "")+extra, w),
-		trunc(sbxenv.SummaryLine(p.Summary), w),
+		trunc(summaryFor(p.Summary, w), w),
 		trunc(m.st.dim.Render("宣言の静的解析（稼働中 sandbox の状態ではない） ")+model.ArgsLine(p), w),
 	}
 	var state []string
@@ -478,7 +484,7 @@ func (m *Model) headerLines(w int) []string {
 		if s, ok := m.idx[f]; ok {
 			label = f + " " + s.Path
 		}
-		state = append(state, fmt.Sprintf("絞り込み: %s（非表示の警告・エラー %d 件）", label, hidden))
+		state = append(state, fmt.Sprintf("絞り込み（非表示の警告・エラー %d 件）: %s", hidden, label))
 	}
 	if m.searching {
 		state = append(state, "検索: "+m.query+"▏")
@@ -492,7 +498,7 @@ func (m *Model) headerLines(w int) []string {
 }
 
 func (m *Model) footer(w int) string {
-	keys := "1-3/[]:ビュー j/k:移動 h/l:ペイン Enter:詳細 g:グループ f:絞り込み /:検索 ?:ヘルプ q:終了"
+	keys := "q:終了 ?:ヘルプ 1-3/[]:ビュー j/k:移動 Enter:詳細 h/l:ペイン g:グループ f:絞り込み /:検索"
 	return trunc(m.st.dim.Render(keys), w)
 }
 
@@ -573,10 +579,13 @@ func (m *Model) detailLines(w, h int) []string {
 	case r.source != nil:
 		m.writeSource(&b, r.source)
 	}
-	wrapped := lipgloss.NewStyle().Width(w).Render(b.String())
+	wrapped := lipgloss.NewStyle().Width(w).Render(strings.TrimRight(b.String(), "\n"))
 	lines := strings.Split(wrapped, "\n")
-	if m.dScroll > len(lines)-1 {
-		m.dScroll = max(0, len(lines)-1)
+	for len(lines) > 0 && strings.TrimSpace(ansi.Strip(lines[len(lines)-1])) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if limit := max(0, len(lines)-h); m.dScroll > limit {
+		m.dScroll = limit
 	}
 	lines = lines[m.dScroll:]
 	if len(lines) > h {
@@ -715,6 +724,15 @@ func (m *Model) helpText(w, h int) string {
 これは宣言の静的解析です。緑の「安全」表示は出しません。
 未展開の kit・テンプレート・ホスト共通ポリシーは Coverage として常に表示します。`
 	return lipgloss.NewStyle().Width(w).MaxHeight(h).Render(t)
+}
+
+// summaryFor picks the full summary line, or a compact one that keeps
+// every count when the terminal is too narrow for the full labels.
+func summaryFor(s sbxenv.Summary, w int) string {
+	if full := sbxenv.SummaryLine(s); lipgloss.Width(full) <= w {
+		return full
+	}
+	return fmt.Sprintf("Host実行%d 永続%d RW%d 許可%d E%d W%d 未展開%d", s.HostExec, s.HostPersistent, s.RWMounts, s.EgressAllows, s.Errors, s.Warnings, s.Unexpanded)
 }
 
 func trunc(s string, w int) string {
