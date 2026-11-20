@@ -5,10 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/model"
@@ -42,12 +39,10 @@ type Sandbox struct {
 	SecretsKnown bool
 }
 
-// Mount is a host directory mounted into a sandbox. ReadOnly is nil when
-// sbx did not report the access mode.
+// Mount is a host directory mounted into a sandbox. sbx ls reports paths
+// only, not whether a mount is read-only.
 type Mount struct {
-	Path     string
-	Target   string
-	ReadOnly *bool
+	Path string
 }
 
 // Port is a published port.
@@ -60,15 +55,18 @@ type Port struct {
 
 // Rule is one effective network rule.
 type Rule struct {
-	Decision   string // allow or deny
-	Resource   string
-	Source     string // local, org, kit, ...
-	CreatedVia string // default, added, provisioned, approval
+	Decision string // allow or deny
+	Resource string
+	// Origin and Layer say where the rule comes from (sbx's own words).
+	Origin, Layer string
+	// CreatedVia is provenance.created_via: default, added, provisioned,
+	// or approval.
+	CreatedVia string
 }
 
 // MCPServer is one row of `sbx mcp ls --json`.
 type MCPServer struct {
-	Name, Transport, Status, AuthStatus string
+	Name, Transport, Status, Type string
 }
 
 // Collect asks sbx about every sandbox. It never fails: a missing sbx, a
@@ -109,7 +107,7 @@ func Collect(ctx context.Context, r Runner) Snapshot {
 			partial = append(partial, sb.Name+" の通信ルール")
 		}
 		if out, err := r.Run(ctx, "secret", "ls", "--sandbox", sb.Name, "--json"); err == nil {
-			if sb.Secrets, err = parseSecrets(out, sb.Name); err == nil {
+			if sb.Secrets, err = parseSecrets(out); err == nil {
 				sb.SecretsKnown = true
 			}
 		}
@@ -137,229 +135,128 @@ func (missing) Run(context.Context, ...string) ([]byte, error) { return nil, Err
 
 func clean(s string) string { return model.EscapeControl(firstLine(s)) }
 
-// --- tolerant JSON reading ----------------------------------------------
+// --- reading sbx output -------------------------------------------------
 //
-// The sbx documentation fixes that list output is a JSON array with
-// snake_case keys, and names the fields of `sbx ls` and of port rows. The
-// exact nesting of policy, secret, and MCP rows is not documented, so the
-// readers below look for the documented field names wherever they appear
-// and ignore everything else.
+// The structs below follow the JSON that sbx v0.54.0 prints. Fields this
+// tool does not use are left out on purpose: in particular a secret row's
+// "secret" field has no counterpart, so encoding/json discards it and its
+// value never enters the process's data.
 
-func decode(b []byte) (any, error) {
+type lsRow struct {
+	Name       string   `json:"name"`
+	ID         string   `json:"id"`
+	Agent      string   `json:"agent"`
+	Status     string   `json:"status"`
+	LastUsedAt string   `json:"last_used_at"`
+	CreatedAt  string   `json:"created_at"`
+	Ports      []lsPort `json:"ports"`
+	Mounts     []string `json:"mounts"`
+	Workspaces []string `json:"workspaces"`
+}
+
+type lsPort struct {
+	HostIP      string `json:"host_ip"`
+	HostPort    int    `json:"host_port"`
+	SandboxPort int    `json:"sandbox_port"`
+	Protocol    string `json:"protocol"`
+}
+
+type policyDoc struct {
+	Rules []struct {
+		ResourceType string   `json:"resource_type"`
+		Decision     string   `json:"decision"`
+		Resources    []string `json:"resources"`
+		Origin       string   `json:"origin"`
+		Layer        string   `json:"layer"`
+		Status       string   `json:"status"`
+		Provenance   struct {
+			CreatedVia string `json:"created_via"`
+		} `json:"provenance"`
+	} `json:"rules"`
+}
+
+// secretDoc maps only scope, type, and name of each secret row.
+type secretDoc struct {
+	Secrets []struct {
+		Scope string `json:"scope"`
+		Type  string `json:"type"`
+		Name  string `json:"name"`
+	} `json:"secrets"`
+}
+
+type mcpRow struct {
+	Name      string `json:"name"`
+	Transport string `json:"transport"`
+	Status    string `json:"status"`
+	Type      string `json:"type"`
+}
+
+func unmarshal(b []byte, v any) error {
 	d := json.NewDecoder(bytes.NewReader(b))
-	d.UseNumber()
-	var v any
-	if err := d.Decode(&v); err != nil {
-		return nil, err
-	}
-	return v, nil
+	return d.Decode(v)
 }
 
-// rows returns the objects of a top-level array, or of the array under one
-// of keys when the top level is an object (older sbx releases).
-func rows(v any, keys ...string) ([]map[string]any, error) {
-	if m, ok := v.(map[string]any); ok {
-		for _, k := range keys {
-			if a, ok := m[k]; ok {
-				v = a
-				break
-			}
-		}
-	}
-	a, ok := v.([]any)
-	if !ok {
-		if v == nil {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("expected a JSON array")
-	}
-	var out []map[string]any
-	for _, e := range a {
-		if m, ok := e.(map[string]any); ok {
-			out = append(out, m)
-		}
-	}
-	return out, nil
-}
+func esc(s string) string { return model.EscapeControl(s) }
 
-func str(m map[string]any, keys ...string) string {
-	for _, k := range keys {
-		switch v := m[k].(type) {
-		case string:
-			if v != "" {
-				return model.EscapeControl(v)
-			}
-		case json.Number:
-			return v.String()
-		case bool:
-			return strconv.FormatBool(v)
+func paths(list []string) []Mount {
+	var out []Mount
+	for _, p := range list {
+		if p != "" {
+			out = append(out, Mount{Path: esc(p)})
 		}
 	}
-	return ""
-}
-
-func num(m map[string]any, keys ...string) int {
-	for _, k := range keys {
-		switch v := m[k].(type) {
-		case json.Number:
-			if n, err := strconv.Atoi(v.String()); err == nil {
-				return n
-			}
-		case string:
-			if n, err := strconv.Atoi(v); err == nil {
-				return n
-			}
-		}
-	}
-	return 0
-}
-
-func boolp(m map[string]any, keys ...string) *bool {
-	for _, k := range keys {
-		if b, ok := m[k].(bool); ok {
-			return &b
-		}
-	}
-	switch strings.ToLower(str(m, "mode", "access")) {
-	case "ro", "readonly", "read-only":
-		t := true
-		return &t
-	case "rw", "readwrite", "read-write":
-		f := false
-		return &f
-	}
-	return nil
+	return out
 }
 
 func parseList(b []byte) ([]Sandbox, error) {
-	v, err := decode(b)
-	if err != nil {
-		return nil, err
-	}
-	rs, err := rows(v, "sandboxes")
-	if err != nil {
-		return nil, err
+	var rows []lsRow
+	if err := unmarshal(b, &rows); err != nil {
+		// Releases before v0.48.0 wrapped the array in {"sandboxes": [...]}.
+		var old struct {
+			Sandboxes []lsRow `json:"sandboxes"`
+		}
+		if unmarshal(b, &old) != nil {
+			return nil, err
+		}
+		rows = old.Sandboxes
 	}
 	var out []Sandbox
-	for _, m := range rs {
-		out = append(out, Sandbox{
-			Name: str(m, "name"), ID: str(m, "id"), Agent: str(m, "agent"), Status: str(m, "status", "state"),
-			Workspaces: mounts(m["workspaces"]), Mounts: mounts(m["mounts"]), Ports: ports(m["ports"]),
-			CreatedAt: str(m, "created_at"), LastUsedAt: str(m, "last_used_at"),
-		})
+	for _, r := range rows {
+		sb := Sandbox{Name: esc(r.Name), ID: esc(r.ID), Agent: esc(r.Agent), Status: esc(r.Status),
+			Workspaces: paths(r.Workspaces), Mounts: paths(r.Mounts),
+			CreatedAt: esc(r.CreatedAt), LastUsedAt: esc(r.LastUsedAt)}
+		for _, p := range r.Ports {
+			sb.Ports = append(sb.Ports, Port{HostIP: esc(p.HostIP), HostPort: p.HostPort, SandboxPort: p.SandboxPort, Protocol: strings.ToLower(esc(p.Protocol))})
+		}
+		out = append(out, sb)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
 }
 
-func mounts(v any) []Mount {
-	var list []any
-	switch x := v.(type) {
-	case []any:
-		list = x
-	case string, map[string]any:
-		list = []any{x}
-	}
-	var out []Mount
-	for _, e := range list {
-		switch x := e.(type) {
-		case string:
-			if x != "" {
-				out = append(out, Mount{Path: model.EscapeControl(x)})
-			}
-		case map[string]any:
-			p := str(x, "path", "host_path", "workspace_path", "source", "host")
-			if p == "" {
-				continue
-			}
-			out = append(out, Mount{Path: p, Target: str(x, "target", "mount_target", "sandbox_path", "destination"),
-				ReadOnly: boolp(x, "read_only", "readonly")})
-		}
-	}
-	return out
-}
-
-var portText = regexp.MustCompile(`^(?:\[?([0-9A-Fa-f.:]*?)\]?:)?(\d+)->(\d+)(?:/(\w+))?$`)
-
-func ports(v any) []Port {
-	list, _ := v.([]any)
-	var out []Port
-	for _, e := range list {
-		switch x := e.(type) {
-		case map[string]any:
-			out = append(out, Port{HostIP: str(x, "host_ip"), HostPort: num(x, "host_port"),
-				SandboxPort: num(x, "sandbox_port", "port"), Protocol: strings.ToLower(str(x, "protocol"))})
-		case string:
-			if m := portText.FindStringSubmatch(strings.TrimSpace(x)); m != nil {
-				hp, _ := strconv.Atoi(m[2])
-				sp, _ := strconv.Atoi(m[3])
-				out = append(out, Port{HostIP: m[1], HostPort: hp, SandboxPort: sp, Protocol: strings.ToLower(m[4])})
-			}
-		}
-	}
-	return out
-}
-
-// parseRules collects every object that carries a decision and a
-// resource, inheriting source and created_via from enclosing objects.
+// parseRules returns the active network rules, one per resource.
 func parseRules(b []byte) ([]Rule, error) {
-	v, err := decode(b)
-	if err != nil {
+	var doc policyDoc
+	if err := unmarshal(b, &doc); err != nil {
 		return nil, err
 	}
 	seen := map[Rule]bool{}
 	var out []Rule
-	var walk func(v any, source, via string)
-	walk = func(v any, source, via string) {
-		switch x := v.(type) {
-		case []any:
-			for _, e := range x {
-				walk(e, source, via)
-			}
-		case map[string]any:
-			if s := str(x, "source"); s != "" {
-				source = s
-			}
-			if s := str(x, "created_via"); s != "" {
-				via = s
-			}
-			decision := strings.ToLower(str(x, "decision"))
-			typ := strings.ToLower(str(x, "resource_type", "type"))
-			inactive := x["active"] == false || strings.EqualFold(str(x, "status"), "inactive")
-			if (decision == "allow" || decision == "deny") && !strings.Contains(typ, "file") && !inactive {
-				var res []string
-				for _, k := range []string{"resource", "resource_value", "pattern", "domain", "host"} {
-					if s := str(x, k); s != "" {
-						res = append(res, s)
-					}
-				}
-				if a, ok := x["resources"].([]any); ok {
-					for _, e := range a {
-						if s, ok := e.(string); ok && s != "" {
-							res = append(res, model.EscapeControl(s))
-						} else if m, ok := e.(map[string]any); ok {
-							if s := str(m, "value", "resource", "pattern", "domain"); s != "" {
-								res = append(res, s)
-							}
-						}
-					}
-				}
-				for _, r := range res {
-					rule := Rule{Decision: decision, Resource: strings.ToLower(r), Source: strings.ToLower(source), CreatedVia: strings.ToLower(via)}
-					if !seen[rule] {
-						seen[rule] = true
-						out = append(out, rule)
-					}
-				}
-			}
-			for k, c := range x {
-				if k != "resources" {
-					walk(c, source, via)
-				}
+	for _, r := range doc.Rules {
+		typ := strings.ToLower(r.ResourceType)
+		decision := strings.ToLower(r.Decision)
+		if (typ != "network" && typ != "") || (decision != "allow" && decision != "deny") || strings.Contains(strings.ToLower(r.Status), "inactive") {
+			continue
+		}
+		for _, res := range r.Resources {
+			rule := Rule{Decision: decision, Resource: strings.ToLower(esc(res)), Origin: strings.ToLower(esc(r.Origin)),
+				Layer: strings.ToLower(esc(r.Layer)), CreatedVia: strings.ToLower(esc(r.Provenance.CreatedVia))}
+			if res != "" && !seen[rule] {
+				seen[rule] = true
+				out = append(out, rule)
 			}
 		}
 	}
-	walk(v, "", "")
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Resource != out[j].Resource {
 			return out[i].Resource < out[j].Resource
@@ -369,62 +266,35 @@ func parseRules(b []byte) ([]Rule, error) {
 	return out, nil
 }
 
-// parseSecrets returns the service names of secret rows. Value fields are
-// never read.
-func parseSecrets(b []byte, sandbox string) ([]string, error) {
-	v, err := decode(b)
-	if err != nil {
+// parseSecrets returns the names of the sandbox's stored secrets.
+func parseSecrets(b []byte) ([]string, error) {
+	var doc secretDoc
+	if err := unmarshal(b, &doc); err != nil {
 		return nil, err
 	}
 	seen := map[string]bool{}
-	var walk func(v any)
-	walk = func(v any) {
-		switch x := v.(type) {
-		case []any:
-			for _, e := range x {
-				walk(e)
-			}
-		case map[string]any:
-			name := str(x, "service", "secret_name")
-			if name == "" && (x["scope"] != nil || x["placeholder"] != nil || x["env_name"] != nil || x["secret_type"] != nil) {
-				name = str(x, "name")
-			}
-			if sb := str(x, "sandbox", "sandbox_name"); name != "" && (sb == "" || sb == sandbox) && !strings.EqualFold(str(x, "scope"), "global") {
-				seen[name] = true
-			}
-			for k, c := range x {
-				if k != "value" && k != "secret_value" {
-					walk(c)
-				}
-			}
+	var out []string
+	for _, s := range doc.Secrets {
+		if s.Name == "" || strings.EqualFold(s.Scope, "global") || seen[s.Name] {
+			continue
 		}
-	}
-	walk(v)
-	out := make([]string, 0, len(seen))
-	for n := range seen {
-		out = append(out, n)
+		seen[s.Name] = true
+		out = append(out, esc(s.Name))
 	}
 	sort.Strings(out)
 	return out, nil
 }
 
 func parseMCP(b []byte) ([]MCPServer, error) {
-	v, err := decode(b)
-	if err != nil {
-		return nil, err
-	}
-	rs, err := rows(v, "servers")
-	if err != nil {
+	var rows []mcpRow
+	if err := unmarshal(b, &rows); err != nil {
 		return nil, err
 	}
 	var out []MCPServer
-	for _, m := range rs {
-		name := str(m, "name", "server_name")
-		if name == "" {
-			continue
+	for _, r := range rows {
+		if r.Name != "" {
+			out = append(out, MCPServer{Name: esc(r.Name), Transport: esc(r.Transport), Status: esc(r.Status), Type: esc(r.Type)})
 		}
-		out = append(out, MCPServer{Name: name, Transport: str(m, "transport", "transport_type"),
-			Status: str(m, "status", "state"), AuthStatus: str(m, "auth_status")})
 	}
 	return out, nil
 }

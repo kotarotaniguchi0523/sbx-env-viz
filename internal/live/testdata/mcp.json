@@ -1,4 +1,6 @@
 [
-  {"name": "docs", "transport": "sse", "status": "ready", "auth_status": "authorized", "gateway": "local"},
-  {"name": "jira", "transport": "streamable-http", "status": "unavailable", "auth_status": "needs_auth", "gateway": "local"}
+  {"name": "docs", "transport": "sse", "status": "ready", "type": "remote",
+   "gateway": {"name": "local", "local": true, "operator": "user", "decision": "allow", "signed_in_as": ""}},
+  {"name": "jira", "transport": "streamable-http", "status": "needs authorization", "type": "remote",
+   "gateway": {"name": "local", "local": true, "operator": "user", "decision": "allow", "signed_in_as": ""}}
 ]

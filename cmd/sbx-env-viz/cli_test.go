@@ -422,8 +422,11 @@ func (s sandbox) fakeSbx(t *testing.T) (path, log string) {
 	script := `#!/bin/sh
 echo "$*" >> "` + log + `"
 case "$*" in
-  "ls --json --no-input") echo '[{"name":"web-app","agent":"codex","status":"running","workspaces":[],"ports":[]}]' ;;
-  *) echo '[]' ;;
+  "ls --json --no-input") echo '[{"name":"web-app","id":"sbx_1","agent":"codex","status":"running","last_used_at":"","created_at":"","ports":[],"mounts":[],"workspaces":[]}]' ;;
+  "policy ls web-app --json --no-input") echo '{"rules":[]}' ;;
+  "secret ls --sandbox web-app --json --no-input") echo '{"secrets":[],"custom_secrets":[],"shadowed_services":[],"env_only_count":0}' ;;
+  "mcp ls --json --no-input") echo '[]' ;;
+  *) echo "unexpected: $*" >&2; exit 1 ;;
 esac
 `
 	if err := os.WriteFile(filepath.Join(dir, "sbx"), []byte(script), 0o755); err != nil {

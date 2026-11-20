@@ -1,12 +1,19 @@
-[
-  {"policy_id": "default", "source": "local", "created_via": "default", "rules": [
-    {"rule_id": "r1", "decision": "allow", "resource_type": "network", "resources": ["api.anthropic.com"]}
-  ]},
-  {"policy_id": "kit-net", "source": "kit", "created_via": "provisioned", "rules": [
-    {"rule_id": "r2", "decision": "allow", "resource_type": "network", "resources": ["api.example.com"]}
-  ]},
-  {"policy_id": "local", "source": "local", "created_via": "added", "rules": [
-    {"rule_id": "r3", "decision": "allow", "resource_type": "network", "resources": ["manual.example.com"]},
-    {"rule_id": "r4", "decision": "deny", "resource_type": "filesystem", "resources": ["/etc"]}
-  ]}
-]
+{
+  "rules": [
+    {"id": "r1", "name": "default allow", "policy_id": "p-default", "scope": "sandbox", "applies_to": "web-app",
+     "resource_type": "network", "decision": "allow", "resources": ["api.anthropic.com"], "origin": "default",
+     "layer": "local", "status": "active", "editable": false, "provenance": {"created_via": "default"}, "actions": []},
+    {"id": "r2", "name": "kit net", "policy_id": "p-kit", "scope": "sandbox", "applies_to": "web-app",
+     "resource_type": "network", "decision": "allow", "resources": ["api.example.com"], "origin": "kit",
+     "layer": "kit", "status": "active", "editable": false, "provenance": {"created_via": "provisioned"}, "actions": []},
+    {"id": "r3", "name": "manual", "policy_id": "p-local", "scope": "sandbox", "applies_to": "web-app",
+     "resource_type": "network", "decision": "allow", "resources": ["manual.example.com"], "origin": "local",
+     "layer": "local", "status": "active", "editable": true, "provenance": {"created_via": "added"}, "actions": ["remove"]},
+    {"id": "r4", "name": "fs", "policy_id": "p-local", "scope": "sandbox", "applies_to": "web-app",
+     "resource_type": "filesystem", "decision": "deny", "resources": ["/etc"], "origin": "local",
+     "layer": "local", "status": "active", "editable": true, "provenance": {"created_via": "added"}, "actions": []},
+    {"id": "r5", "name": "off", "policy_id": "p-org", "scope": "sandbox", "applies_to": "web-app",
+     "resource_type": "network", "decision": "allow", "resources": ["inactive.example.com"], "origin": "org",
+     "layer": "org", "status": "inactive", "editable": false, "provenance": {"created_via": "added"}, "actions": []}
+  ]
+}

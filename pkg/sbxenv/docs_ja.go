@@ -64,8 +64,8 @@ type FieldDoc struct {
 	// warnings, recommendations. Empty when the documentation states none;
 	// it is never this tool's own judgement.
 	OfficialNote string `json:"officialNote,omitempty"`
-	// OfficialRef is the section OfficialNote is taken from.
-	OfficialRef string `json:"officialRef,omitempty"`
+	// OfficialRefs are the sections OfficialNote is taken from.
+	OfficialRefs []string `json:"officialRefs,omitempty"`
 }
 
 const (
@@ -263,38 +263,65 @@ func AllDocs() []FieldDoc {
 func MergeLabel(r MergeRule) string { return mergeLabels[r] }
 
 const (
-	refProtect   = refEnv + "#protect-the-environment-file"
-	refHostCmds  = refEnv + "#approve-or-skip-host-commands"
-	refCapPrefix = refSpec + "capabilities/com.docker.sandbox/"
+	refStart    = refEnv + "#start-an-environment"
+	refProtect  = refEnv + "#protect-the-environment-file"
+	refHostCmds = refEnv + "#approve-or-skip-host-commands"
+	refCombine  = refEnv + "#combine-team-defaults-and-personal-settings"
+	refCap      = refSpec + "capabilities/com.docker.sandbox/"
 )
 
-// officialNotes are summaries of what the official documentation says,
-// keyed like fieldDocs. Only statements the documentation makes belong here.
-var officialNotes = map[string][2]string{
-	"workspace":                       {"workspace に指定したホストのディレクトリが sandbox にマウントされ、clone の既定は false です。clone: true は sbx create --clone と同じ非公開のクローンを使います。環境ファイルは、マウントするディレクトリ（メインと additionalWorkspaces のすべて）の外に置くよう求めています。", refEnv + "#workspace"},
-	"additionalWorkspaces[]":          {"readOnly の既定は false（書き込み可能）で、置き換える側で readOnly を省略すると書き込み可能になると明記しています。環境ファイルは書き込み可能なマウントの外に置くよう求めています。", refEnv + "#additionalworkspaces"},
-	"sandboxOptions.skills":           {"readwrite は sandbox が共有スキルを変更できるようにする設定です。省略時はデーモンの既定で、組織が上書きしない限り readonly です。", refEnv + "#sandboxoptions"},
-	"sandboxOptions.writableEnvFiles": {"環境ファイルはホストで実行するライフサイクル・秘密・MCP のコマンドを宣言できるため、書き込み可能なマウントの外に置くこと。ワークスペース直下に置いた場合は既定で読み取り専用でマウントされます。writableEnvFiles: true は、将来ホストで実行されるコマンドをエージェントが変更してよいと信頼できる場合にだけ使うこと、としています。", refProtect},
-	"secrets.*":                       {"value の直書きはファイルを読める人に見えてしまうため、ref（保管庫の参照）か command（実行時に取得）を使うよう警告しています。command の補助スクリプトは書き込み可能な sandbox マウントの外に置き、絶対パスなどで指定すること。秘密の command は --skip-host-commands を付けても必要なときに実行されます。", refEnv + "#secrets"},
-	"bindings.*.apiKey":               {"bindings はユーザー全体の credentials.yaml に結合され、sbx env rm でも既定では残ります。--prune-bindings はファイルに書かれたサービスの全体の承認をまとめて消すため、同じ承認を使う他の sandbox にも影響すると警告しています。", refEnv + "#bindings"},
-	"bindings.*.oauth":                {"bindings はユーザー全体の credentials.yaml に結合され、sbx env rm でも既定では残ります。--prune-bindings は他の sandbox にも影響し得ると警告しています。", refEnv + "#bindings"},
-	"mcp.servers[]":                   {"command 型のサーバーは、MCP ゲートウェイが起動するたびに（再起動後も）ホスト上であなたの権限で動きます。承認で固定されるのは実行ファイルのパスだけで、中身やスクリプトは固定されないため、それらは書き込み可能なマウントの外に置くこと。ホスト上のコマンドを含む計画は既定で毎回承認が必要で、--skip-host-commands で無効にできます。", refEnv + "#approve-local-mcp-commands"},
-	"ports[]":                         {"hostIP の既定はループバック（あなたの PC の中からだけ接続可）、host の既定は空きポートの自動割り当てです。", refEnv + "#ports"},
-	"lifecycle.initialize[]":          {"lifecycle のコマンドはホスト上であなたのユーザー権限で動きます。ホスト上のコマンドを含む計画は既定で毎回承認が必要で、--skip-host-commands で実行しないようにできます。", refHostCmds},
-	"lifecycle.postCreate[]":          {"lifecycle のコマンドはホスト上であなたのユーザー権限で動きます。ホスト上のコマンドを含む計画は既定で毎回承認が必要で、--skip-host-commands で実行しないようにできます。", refHostCmds},
-	"lifecycle.preRemove[]":           {"lifecycle のコマンドはホスト上であなたのユーザー権限で動きます。preRemove が失敗しても警告だけで削除は続きます。--skip-host-commands で実行しないようにできます。", refHostCmds},
-	"kits[]":                          {"再現性のため、Git の Kit は ref パラメーターで、OCI の Kit は変更されないタグかハッシュ値で固定するよう勧めています。", refEnv + "#kits"},
-	"cap:network-policy@1":            {"既定は全遮断（deny-by-default）で、allow に一致しない通信は拒否され、書かれていないフェーズは何も許可しません。allow と deny の両方に一致する通信先は拒否されます（deny が優先）。ある Kit の deny は別の Kit の allow では打ち消せません。", refCapPrefix + "network-policy@1.md"},
-	"cap:credential@1":                {"秘密の置き場所はホストの認証情報ストアで、ホストの環境変数が自動で渡されることはありません。proxyManaged では本物の値はホストに残り、sandbox の中には置き換え用の値だけが見えます。passthrough: true は明示的なセキュリティの格下げで、ランタイムは拒否してもよいとしています。", refCapPrefix + "credential@1.md"},
-	"cap:host-mount@1":                {"1 つのホストのディレクトリを、ホストおよび同じ Kit を使う他の sandbox と共有します。sandbox からの書き込みはそのディレクトリに届き、データはホストと他の sandbox から見えます。", refCapPrefix + "host-mount@1.md"},
-	"cap:ssh-agent@1":                 {"秘密鍵は sandbox に置かれずホストに残ります。unrestricted の既定は true で、その場合は sandbox が求めるものに、公開されたすべての鍵で署名します（任意のサーバーへのログイン、あなたの名義の署名など）。unrestricted: false と sign / authenticate で操作を絞れます。", refCapPrefix + "ssh-agent@1.md"},
-	"cap:lifecycle@1":                 {"フックが見られる環境変数は、env に宣言した名前と最小限の基本変数（PATH、HOME など）だけで、その値もホストの環境からは取られません。", refCapPrefix + "lifecycle@1.md"},
+// officialNote summarises what the official documentation states, with the
+// sections each statement comes from. Every sentence must be traceable to
+// one of refs; nothing is inferred. Checked against the documentation for
+// the sbx version in TargetSbxVersion.
+type officialNote struct {
+	note string
+	refs []string
+}
+
+var officialNotes = map[string]officialNote{
+	"workspace": {"workspace を省略するとホストのディレクトリをマウントしない sandbox になり、指定するとそのディレクトリがマウントされます。clone の既定は false で、clone: true は sbx create --clone と同じ非公開のクローンを使います。環境ファイルは、sandbox にマウントするディレクトリ（メインのワークスペースとすべての additionalWorkspaces）の外に置くよう求めています。",
+		[]string{refEnv + "#workspace", refStart}},
+	"additionalWorkspaces[]": {"readOnly の既定は false（書き込み可能）です。複数のファイルで同じワークスペースを置き換えるとき、置き換える側で readOnly を省略すると書き込み可能になると明記しています。環境ファイルは、メインのワークスペースと additionalWorkspaces のどちらについても、書き込み可能なマウントの外に置くよう求めています。",
+		[]string{refEnv + "#additionalworkspaces", refCombine, refProtect}},
+	"sandboxOptions.skills": {"readwrite は sandbox が共有スキルを変更できるようにする設定です。省略時はデーモンの既定で、組織が上書きしない限り readonly です。",
+		[]string{refEnv + "#sandboxoptions"}},
+	"sandboxOptions.writableEnvFiles": {"環境ファイルはホストで実行されるライフサイクル・秘密・MCP のコマンドを宣言できるため、エージェントが次回の実行内容を変えられないよう、書き込み可能なマウントの外に置くよう求めています。ワークスペース直下に置いた場合は既定で読み取り専用でマウントされますが、サブディレクトリに置いたファイルは親ディレクトリの名前変更で差し替えられ得るとしています。writableEnvFiles: true は、将来ホストで実行されるコマンドをエージェントが変更してよいと信頼できる場合にだけ使うこと、としています。",
+		[]string{refProtect}},
+	"secrets.*": {"value の直書きはファイルを読める人なら誰でも見られるため、ref（保管庫の参照）か command（実行時に取得）を使うよう警告しています。秘密の command は一時ディレクトリから実行され、補助スクリプトとその依存は書き込み可能な sandbox マウントの外に置き、絶対パスなどで指定するよう求めています。--skip-host-commands を付けても、秘密の command は必要なときに実行されます。",
+		[]string{refEnv + "#secrets", refHostCmds}},
+	"bindings.*.apiKey": {"bindings はユーザー全体の credentials.yaml に結合され、sbx env rm でも既定では残ります。--prune-bindings はファイルに書かれたサービスの全体の承認をまとめて削除するため、同じ承認を共有する他の sandbox にも影響し得ると警告しています。",
+		[]string{refEnv + "#bindings"}},
+	"bindings.*.oauth": {"bindings はユーザー全体の credentials.yaml に結合され、sbx env rm でも既定では残ります。--prune-bindings は同じ承認を共有する他の sandbox にも影響し得ると警告しています。",
+		[]string{refEnv + "#bindings"}},
+	"mcp.servers[]": {"command 型のサーバーは、MCP ゲートウェイが起動するたびに（再起動後も）ホスト上であなたの権限で動きます。承認で固定されるのは実行ファイルのパスだけで、実行ファイルやスクリプト、読み込むパッケージの中身は固定されないため、それらは書き込み可能なマウントの外に置くよう求めています。ローカル MCP のコマンドを含む計画は既定で毎回承認が必要で、--skip-host-commands で無効にできます。",
+		[]string{refEnv + "#approve-local-mcp-commands", refHostCmds}},
+	"ports[]": {"hostIP の既定はループバック（あなたの PC の中からだけ接続可）、host の既定は空きポートの自動割り当てです。ポートを公開できない場合、作成は失敗し、新しい sandbox は削除されます。",
+		[]string{refEnv + "#ports"}},
+	"lifecycle.initialize[]": {"lifecycle のコマンドはホスト上であなたのユーザー権限で動きます。lifecycle のコマンドを含む計画は既定で実行のたびに承認が必要で、--skip-host-commands で実行しないようにできます。",
+		[]string{refEnv + "#lifecycle", refHostCmds}},
+	"lifecycle.postCreate[]": {"lifecycle のコマンドはホスト上であなたのユーザー権限で動きます。lifecycle のコマンドを含む計画は既定で実行のたびに承認が必要で、--skip-host-commands で実行しないようにできます。",
+		[]string{refEnv + "#lifecycle", refHostCmds}},
+	"lifecycle.preRemove[]": {"lifecycle のコマンドはホスト上であなたのユーザー権限で動きます。preRemove が失敗しても警告が出るだけで削除は続きます。lifecycle のコマンドを含む計画は既定で実行のたびに承認が必要で、--skip-host-commands で実行しないようにできます。",
+		[]string{refEnv + "#lifecycle", refHostCmds}},
+	"kits[]": {"再現性のため、Git の Kit は ref パラメーターで、OCI の Kit は変更されないタグかダイジェスト（ハッシュ値）で固定するよう勧めています。",
+		[]string{refEnv + "#kits"}},
+	"cap:network-policy@1": {"既定は全遮断（deny-by-default）で、allow に一致しない通信は拒否され、書かれていないフェーズは何も許可しません。allow と deny の両方に一致する通信先は拒否されます（deny が優先）。ある Kit の deny は、別の Kit の allow では打ち消せません。",
+		[]string{refCap + "network-policy@1.md"}},
+	"cap:credential@1": {"秘密の出どころはホスト側の認証情報ストアだけで、ホストの環境変数が自動で渡されることはありません。proxyManaged（または OAuth のセンチネル）では本物の秘密を sandbox に置かず、sandbox の中にはセンチネルの値だけが見え、外向きの通信で本物に置き換えられます。passthrough: true は明示的なセキュリティの格下げで、ランタイムは拒否してもよいとしています。",
+		[]string{refCap + "credential@1.md"}},
+	"cap:host-mount@1": {"1 つのホストのディレクトリを、ホストおよび同じ Kit を使う他の sandbox と共有します。sandbox からの書き込みはそのディレクトリに届き、データはホストと同じ Kit の他の sandbox に届きます。",
+		[]string{refCap + "host-mount@1.md"}},
+	"cap:ssh-agent@1": {"秘密鍵は sandbox に置かれません。unrestricted の既定は true で、その場合は sandbox が求めるものに、公開されたすべての鍵で署名します（届く範囲の任意のサーバーへのログイン、あなたの名義の署名など）。unrestricted: false にすると、sign か authenticate の少なくとも一方が必要になり、そこに書いたものだけに署名します。",
+		[]string{refCap + "ssh-agent@1.md"}},
+	"cap:lifecycle@1": {"フックの環境変数は、env に宣言した名前と、PATH・HOME などの基本変数だけに制限されます。基本変数の値はイメージと sandbox から決まり、ホストの環境からは取られません。",
+		[]string{refCap + "lifecycle@1.md"}},
 }
 
 func withOfficial(docs []FieldDoc) []FieldDoc {
 	for i := range docs {
 		if n, ok := officialNotes[docs[i].Key]; ok {
-			docs[i].OfficialNote, docs[i].OfficialRef = n[0], n[1]
+			docs[i].OfficialNote, docs[i].OfficialRefs = n.note, n.refs
 		}
 	}
 	return docs

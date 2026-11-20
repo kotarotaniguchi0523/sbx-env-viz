@@ -64,15 +64,6 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		}
 		return ""
 	}
-	strict := p.Meta.Redaction == sbxenv.RedactStrict
-	hide := func(decl, actual string) string {
-		// A declared value hidden by strict redaction must not reappear
-		// through the live side.
-		if strict && strings.Contains(decl, "<redacted>") {
-			return "<redacted>"
-		}
-		return actual
-	}
 	add := func(x Drift) { c.Drifts = append(c.Drifts, x) }
 
 	// Agent.
@@ -88,6 +79,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 	if len(sb.Workspaces) > 0 || len(d.Workspaces) > 0 {
 		c.Checked = append(c.Checked, "ワークスペース・マウント")
 		used := map[int]bool{}
+		readOnlyNote := false
 		for _, w := range d.Workspaces {
 			decl := item(w.ItemID)
 			if w.Primary && w.Clone {
@@ -110,9 +102,6 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				for _, m := range sb.Mounts {
 					if samePath(m.Path, w.Path) {
 						found = -2
-						if m.ReadOnly != nil && *m.ReadOnly != w.ReadOnly {
-							add(rwDrift(w, decl, hide(decl, show(m.Path))))
-						}
 						break
 					}
 				}
@@ -123,29 +112,22 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 					Fix: fixRecreate, Severity: sbxenv.SeverityMedium, ItemID: w.ItemID, Source: srcLs})
 			case found >= 0:
 				used[found] = true
-				m := sb.Workspaces[found]
-				if m.ReadOnly != nil && *m.ReadOnly != w.ReadOnly {
-					add(rwDrift(w, decl, hide(decl, show(m.Path))))
-				}
 			}
+			if w.ReadOnly || !w.Primary {
+				readOnlyNote = true
+			}
+		}
+		if readOnlyNote {
+			c.Skipped = append(c.Skipped, "sbx ls --json はマウントのパスだけを出力し、読み取り専用かどうかを出力しないため、書き込みの可否（RW / RO）は比較していません。")
 		}
 		for i, m := range sb.Workspaces {
 			if used[i] {
 				continue
 			}
-			access := "読み書きの区別は sbx から取得できず"
-			sev := sbxenv.SeverityMedium
-			if m.ReadOnly != nil {
-				if *m.ReadOnly {
-					access, sev = "読み取り専用", sbxenv.SeverityLow
-				} else {
-					access, sev = "読み書き可能", sbxenv.SeverityHigh
-				}
-			}
 			add(Drift{Kind: "ワークスペース・マウント", Title: "宣言にないフォルダがマウントされている", Declared: "（宣言なし）",
-				Actual:   show(m.Path) + "（" + access + "）",
+				Actual:   show(m.Path) + "（読み書きの区別は sbx から取得できません）",
 				Fix:      "sbx の操作で後から追加された可能性があります。不要なら作り直して宣言どおりにし、必要なら設定ファイルの additionalWorkspaces に書いてください。",
-				Severity: sev, Source: srcLs})
+				Severity: sbxenv.SeverityMedium, Source: srcLs})
 		}
 	}
 
@@ -214,7 +196,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		live := map[string]bool{}
 		for _, r := range sb.Rules {
 			live[r.Decision+" "+r.Resource] = true
-			if r.Source == "kit" {
+			if strings.Contains(r.Origin, "kit") || strings.Contains(r.Layer, "kit") {
 				kitVisible = true
 			}
 		}
@@ -299,7 +281,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 					Fix: fixRecreate, Severity: sbxenv.SeverityMedium, ItemID: m.ItemID, Source: "sbx mcp ls --json"})
 				continue
 			}
-			if st := strings.TrimSpace(row.AuthStatus + " " + row.Status); needsAuth(st) {
+			if st := row.Status; needsAuth(st) {
 				add(Drift{Kind: "MCP サーバー", Title: "MCP サーバーは登録済みだが使える状態ではない", Declared: item(m.ItemID), Actual: "状態: " + st,
 					Fix: "認証が必要な場合は sbx mcp auth " + m.Name + " を実行してください。詳しくは sbx mcp inspect " + m.Name + " で確認できます。", Severity: sbxenv.SeverityLow,
 					ItemID: m.ItemID, Source: "sbx mcp ls --json"})
@@ -309,15 +291,6 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 	c.Skipped = append(c.Skipped, "メモリ・CPU・lifecycle の実行履歴などは sbx の一覧から取得できないため比較していません。")
 	sort.SliceStable(c.Drifts, func(i, j int) bool { return c.Drifts[i].Severity.Rank() > c.Drifts[j].Severity.Rank() })
 	return c
-}
-
-func rwDrift(w sbxenv.DeclaredMount, decl, actual string) Drift {
-	want, got, sev := "読み書き可能", "読み取り専用", sbxenv.SeverityLow
-	if w.ReadOnly {
-		want, got, sev = "読み取り専用", "読み書き可能", sbxenv.SeverityHigh
-	}
-	return Drift{Kind: "ワークスペース・マウント", Title: "書き込みの可否が宣言と違う（宣言は" + want + "、実体は" + got + "）",
-		Declared: decl, Actual: actual + "（" + got + "）", Fix: fixRecreate, Severity: sev, ItemID: w.ItemID, Source: srcLs}
 }
 
 func samePath(a, b string) bool {

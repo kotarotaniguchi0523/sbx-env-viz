@@ -75,9 +75,9 @@ func newWorld(t *testing.T, env string) *world {
 		out: map[string]string{
 			"ls --json":                          fixture(t, "ls.json", vars),
 			"policy ls web-app --json":           fixture(t, "policy-web-app.json", vars),
-			"policy ls orphan --json":            "[]",
+			"policy ls orphan --json":            `{"rules": []}`,
 			"secret ls --sandbox web-app --json": fixture(t, "secrets-web-app.json", vars),
-			"secret ls --sandbox orphan --json":  "[]",
+			"secret ls --sandbox orphan --json":  `{"secrets": [], "custom_secrets": [], "shadowed_services": [], "env_only_count": 0}`,
 			"mcp ls --json":                      fixture(t, "mcp.json", vars),
 		},
 		fail: map[string]error{},
@@ -208,6 +208,13 @@ func TestCollectReadsSandboxesPoliciesSecretNamesAndMCP(t *testing.T) {
 	if !web.RulesKnown || len(web.Rules) == 0 || !web.SecretsKnown || strings.Join(web.Secrets, ",") != "github" {
 		t.Errorf("rules %v (%v), secrets %v (%v)", web.Rules, web.RulesKnown, web.Secrets, web.SecretsKnown)
 	}
+	var rules []string
+	for _, r := range web.Rules {
+		rules = append(rules, r.Decision+" "+r.Resource+" "+r.CreatedVia)
+	}
+	if got := strings.Join(rules, ", "); got != "allow api.anthropic.com default, allow api.example.com provisioned, allow manual.example.com added" {
+		t.Errorf("network rules = %s (filesystem and inactive rules must be left out)", got)
+	}
 	if strings.Contains(fmt.Sprintf("%+v", s), "do-not-read-me") {
 		t.Error("a secret value reached the snapshot")
 	}
@@ -220,8 +227,8 @@ func TestCollectAcceptsTheOlderObjectShape(t *testing.T) {
 	t.Parallel()
 	// Arrange: before v0.48.0 `sbx ls --json` wrapped the array.
 	r := &fakeSbx{out: map[string]string{
-		"ls --json":          `{"sandboxes": [{"name": "a", "agent": "claude", "status": "running", "ports": ["0.0.0.0:8080->80/tcp"]}]}`,
-		"policy ls a --json": "[]", "secret ls --sandbox a --json": "[]", "mcp ls --json": `{"servers": []}`,
+		"ls --json":          `{"sandboxes": [{"name": "a", "agent": "claude", "status": "running", "ports": [{"host_ip": "0.0.0.0", "host_port": 8080, "sandbox_port": 80, "protocol": "tcp"}]}]}`,
+		"policy ls a --json": `{"rules": []}`, "secret ls --sandbox a --json": `{"secrets": []}`, "mcp ls --json": `[]`,
 	}}
 
 	// Act
@@ -253,8 +260,8 @@ func TestCollectEscapesControlCharacters(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	r := &fakeSbx{out: map[string]string{
-		"ls --json": `[{"name": "x\u001b[2Jy", "status": "running"}]`, "policy ls x\x1b[2Jy --json": "[]",
-		"secret ls --sandbox x\x1b[2Jy --json": "[]", "mcp ls --json": "[]",
+		"ls --json": `[{"name": "x\u001b[2Jy", "status": "running"}]`, "policy ls x\x1b[2Jy --json": `{"rules": []}`,
+		"secret ls --sandbox x\x1b[2Jy --json": `{"secrets": []}`, "mcp ls --json": "[]",
 	}}
 
 	// Act
@@ -444,34 +451,38 @@ func TestDriftWorkspaceMissingAndExtra(t *testing.T) {
 
 	// Act
 	c := compare(t, env, func(w *world) {
-		w.sbx.out["ls --json"] = strings.Replace(w.sbx.out["ls --json"], `"workspaces": [{"path": "`+w.ws+`", "read_only": false}]`,
-			`"workspaces": [{"path": "`+w.ws+`", "read_only": false}, {"path": "/srv/extra", "read_only": false}]`, 1)
+		w.sbx.out["ls --json"] = strings.Replace(w.sbx.out["ls --json"], `"workspaces": ["`+w.ws+`"]`,
+			`"workspaces": ["`+w.ws+`", "/srv/extra"]`, 1)
 	})
 
 	// Assert
 	if d, ok := drift(c, "宣言したフォルダがマウントされていない"); !ok || !strings.Contains(d.Declared, "elsewhere") {
 		t.Errorf("missing mount: %+v (%v)", d, c.Drifts)
 	}
-	if d, ok := drift(c, "宣言にないフォルダ"); !ok || !strings.Contains(d.Actual, "/srv/extra") || d.Severity != sbxenv.SeverityHigh {
+	if d, ok := drift(c, "宣言にないフォルダ"); !ok || !strings.Contains(d.Actual, "/srv/extra") || !strings.Contains(d.Actual, "読み書きの区別は sbx から取得できません") {
 		t.Errorf("extra mount: %+v", d)
 	}
 }
 
-func TestDriftReadOnlyVersusWritable(t *testing.T) {
+func TestReadOnlyIsNotComparedBecauseSbxDoesNotReportIt(t *testing.T) {
 	t.Parallel()
-	// Arrange
+	// Arrange: the declaration wants a read-only mount; sbx ls lists paths
+	// only, so whether it is read-only cannot be known.
 	env := strings.Replace(matching, "workspace: ./web-app", "workspace: ./web-app\nadditionalWorkspaces:\n  - {path: ./elsewhere, readOnly: true}", 1)
 
 	// Act
 	c := compare(t, env, func(w *world) {
-		w.sbx.out["ls --json"] = strings.Replace(w.sbx.out["ls --json"], `"read_only": false}]`,
-			`"read_only": false}, {"path": "`+w.other+`", "read_only": false}]`, 1)
+		w.sbx.out["ls --json"] = strings.Replace(w.sbx.out["ls --json"], `"workspaces": ["`+w.ws+`"]`, `"workspaces": ["`+w.ws+`", "`+w.other+`"]`, 1)
 	})
 
 	// Assert
-	d, ok := drift(c, "書き込みの可否")
-	if !ok || d.Severity != sbxenv.SeverityHigh || !strings.Contains(d.Title, "宣言は読み取り専用、実体は読み書き可能") {
-		t.Errorf("drift = %+v (%v)", d, c.Drifts)
+	for _, d := range c.Drifts {
+		if d.Kind == "ワークスペース・マウント" {
+			t.Errorf("no mount drift expected, got %+v", d)
+		}
+	}
+	if !strings.Contains(strings.Join(c.Skipped, ""), "書き込みの可否（RW / RO）は比較していません") {
+		t.Errorf("the reason must be stated: %v", c.Skipped)
 	}
 }
 
@@ -528,7 +539,7 @@ func TestDriftSecrets(t *testing.T) {
 
 	// Act
 	c := compare(t, env, func(w *world) {
-		w.sbx.out["secret ls --sandbox web-app --json"] = `[{"service": "github", "scope": "sandbox", "sandbox": "web-app"}, {"service": "npm", "scope": "sandbox", "sandbox": "web-app"}]`
+		w.sbx.out["secret ls --sandbox web-app --json"] = `{"secrets": [{"scope": "sandbox", "type": "service", "name": "github", "secret": "x"}, {"scope": "sandbox", "type": "service", "name": "npm", "secret": "y"}], "custom_secrets": []}`
 	})
 
 	// Assert
@@ -593,9 +604,9 @@ func TestDiscoverTreatsSymlinkedAndMissingPathsAsTheSame(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := &fakeSbx{out: map[string]string{
-		"ls --json":                    `[{"name": "s", "agent": "claude", "status": "running", "workspaces": [{"path": "` + filepath.Join(link, "missing-ws") + `", "read_only": false}]}]`,
-		"policy ls s --json":           "[]",
-		"secret ls --sandbox s --json": "[]",
+		"ls --json":                    `[{"name": "s", "agent": "claude", "status": "running", "workspaces": ["` + filepath.Join(link, "missing-ws") + `"]}]`,
+		"policy ls s --json":           `{"rules": []}`,
+		"secret ls --sandbox s --json": `{"secrets": []}`,
 		"mcp ls --json":                "[]",
 	}}
 	w := &world{dir: real}

@@ -178,13 +178,59 @@ func TestOfficialNotesQuoteTheDocsAndNameTheirSource(t *testing.T) {
 		if !strings.Contains(d.OfficialNote, phrase) {
 			t.Errorf("%s official note %q lacks %q", key, d.OfficialNote, phrase)
 		}
-		if !strings.HasPrefix(d.OfficialRef, "https://docs.docker.com/") && !strings.HasPrefix(d.OfficialRef, "https://github.com/docker/sandbox-kit-spec/") {
-			t.Errorf("%s official note has no official source: %q", key, d.OfficialRef)
+		if len(d.OfficialRefs) == 0 {
+			t.Errorf("%s official note has no source", key)
+		}
+		for _, ref := range d.OfficialRefs {
+			if !strings.HasPrefix(ref, "https://docs.docker.com/ai/sandboxes/") && !strings.HasPrefix(ref, "https://github.com/docker/sandbox-kit-spec/") {
+				t.Errorf("%s official source %q is not an official document", key, ref)
+			}
 		}
 	}
 	for _, d := range sbxenv.AllDocs() {
-		if (d.OfficialNote == "") != (d.OfficialRef == "") {
+		if (d.OfficialNote == "") != (len(d.OfficialRefs) == 0) {
 			t.Errorf("%s: a note needs its source and a source needs its note", d.Key)
+		}
+	}
+}
+
+// TestEveryCitedSectionExists checks every documentation link against the
+// anchors recorded from the published pages, so a mistyped or invented
+// section fails without network access.
+func TestEveryCitedSectionExists(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	b, err := os.ReadFile(filepath.Join("testdata", "official-anchors.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	known := map[string]bool{}
+	for _, l := range strings.Split(string(b), "\n") {
+		if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "#") {
+			known[l] = true
+		}
+	}
+	const env = "https://docs.docker.com/ai/sandboxes/configuration/environment-files/#"
+	const spec = "https://github.com/docker/sandbox-kit-spec/blob/main/docs/spec/"
+
+	for _, d := range sbxenv.AllDocs() {
+		for _, ref := range append([]string{d.Reference}, d.OfficialRefs...) {
+			// Act
+			var key string
+			switch {
+			case strings.HasPrefix(ref, env):
+				key = strings.TrimPrefix(ref, env)
+			case strings.HasPrefix(ref, spec):
+				key = strings.TrimPrefix(ref, spec)
+			default:
+				t.Errorf("%s cites %q, which is not an official document", d.Key, ref)
+				continue
+			}
+
+			// Assert
+			if !known[key] {
+				t.Errorf("%s cites %q, which the published documentation does not have", d.Key, ref)
+			}
 		}
 	}
 }

@@ -234,7 +234,9 @@ func (m *Model) itemDoc(d *doc, it *sbxenv.Item) {
 		d.heading("公式の見解（Docker Sandboxes / sandbox-kit-spec）")
 		if doc.OfficialNote != "" {
 			d.text(doc.OfficialNote, 2)
-			d.field("  出典", doc.OfficialRef)
+			for _, ref := range doc.OfficialRefs {
+				d.field("  出典", ref)
+			}
 		} else {
 			d.text("公式ドキュメントに特段の警告記載なし", 2)
 			d.field("  出典", doc.Reference)

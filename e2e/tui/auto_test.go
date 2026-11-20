@@ -19,17 +19,17 @@ var autoFiles = map[string]string{
 var autoSbx = map[string]string{
 	"ls --json": `[
   {"name": "web-app", "id": "sbx_1", "agent": "codex", "status": "running",
-   "workspaces": [{"path": "{{PROJ}}/web-app", "read_only": false}],
+   "mounts": [], "workspaces": ["{{PROJ}}/web-app"],
    "ports": [{"host_ip": "127.0.0.1", "host_port": 4000, "sandbox_port": 3000, "protocol": "tcp"}],
    "created_at": "2026-11-01T09:00:00Z", "last_used_at": "2026-11-19T09:00:00Z"},
   {"name": "orphan", "id": "sbx_2", "agent": "claude", "status": "stopped",
-   "workspaces": ["/srv/orphan"], "ports": [],
+   "mounts": [], "workspaces": ["/srv/orphan"], "ports": [],
    "created_at": "2026-10-01T09:00:00Z", "last_used_at": "2026-10-01T09:00:00Z"}
 ]`,
-	"policy ls web-app --json":           `[{"source": "local", "created_via": "added", "rules": [{"decision": "allow", "resource_type": "network", "resources": ["manual.example.com"]}]}]`,
-	"policy ls orphan --json":            `[]`,
-	"secret ls --sandbox web-app --json": `[]`,
-	"secret ls --sandbox orphan --json":  `[]`,
+	"policy ls web-app --json":           `{"rules": [{"id": "r1", "name": "manual", "policy_id": "p1", "scope": "sandbox", "applies_to": "web-app", "resource_type": "network", "decision": "allow", "resources": ["manual.example.com"], "origin": "local", "layer": "local", "status": "active", "editable": true, "provenance": {"created_via": "added"}, "actions": []}]}`,
+	"policy ls orphan --json":            `{"rules": []}`,
+	"secret ls --sandbox web-app --json": `{"secrets": [], "custom_secrets": [], "shadowed_services": [], "env_only_count": 0}`,
+	"secret ls --sandbox orphan --json":  `{"secrets": [], "custom_secrets": [], "shadowed_services": [], "env_only_count": 0}`,
 	"mcp ls --json":                      `[]`,
 }
 

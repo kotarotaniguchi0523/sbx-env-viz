@@ -230,10 +230,10 @@ func (m *Model) liveCard(sb *live.Sandbox, newCard func(string), info func(strin
 	info("エージェント: " + orNone(sb.Agent))
 	info("状態: " + live.StateLabel(sb.Status))
 	for _, w := range sb.Workspaces {
-		info("ワークスペース: " + w.Path + roLabel(w.ReadOnly))
+		info("ワークスペース: " + w.Path)
 	}
 	for _, w := range sb.Mounts {
-		info("マウント: " + w.Path + roLabel(w.ReadOnly))
+		info("マウント: " + w.Path)
 	}
 	for _, p := range sb.Ports {
 		info(fmt.Sprintf("ポート公開: %s:%d -> sandbox:%d/%s", orNone(p.HostIP), p.HostPort, p.SandboxPort, orNone(p.Protocol)))
@@ -251,16 +251,6 @@ func orNone(s string) string {
 		return "（なし）"
 	}
 	return s
-}
-
-func roLabel(ro *bool) string {
-	switch {
-	case ro == nil:
-		return ""
-	case *ro:
-		return "（読み取り専用）"
-	}
-	return "（読み書き可能）"
 }
 
 func field(it *sbxenv.Item, key string) string {

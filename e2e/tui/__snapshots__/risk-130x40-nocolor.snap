@@ -29,8 +29,8 @@
 ││ LOW   [NET] kit:egress/network-policy@1/runtime.allow/…││ ▍公式の見解（Docker Sandboxes / sandbox-kit-spec）                   ││
 ││ LOW   kit:egress/git-identity@1 = user.name / user.ema…││   bindings はユーザー全体の credentials.yaml に結合され、sbx env rm  ││
 ││ LOW   [OPAQUE] kit:history/lifecycle@1/startup[0] = sh…││   でも既定では残ります。--prune-bindings はファイルに書かれたサービス││
-││                                                        ││   の全体の承認をまとめて消すため、同じ承認を使う他の sandbox にも影響││
-││                                                        ││   すると警告しています。                                             ││
+││                                                        ││   の全体の承認をまとめて削除するため、同じ承認を共有する他の sandbox ││
+││                                                        ││   にも影響し得ると警告しています。                                   ││
 ││                                                        ││   出典: https://docs.docker.com/ai/sandboxes/configuration/          ││
 ││                                                        ││         environment-files/#bindings                                  ││
 ││                                                        ││                                                                      ││
