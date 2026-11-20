@@ -234,3 +234,64 @@ func TestEveryCitedSectionExists(t *testing.T) {
 		}
 	}
 }
+
+// TestExternalStandardsCiteOnlyCheckedEntries fails when an OWASP
+// identifier, title, or link is not one that was read in the source.
+func TestExternalStandardsCiteOnlyCheckedEntries(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	b, err := os.ReadFile(filepath.Join("testdata", "external-standards.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := map[string]bool{}
+	for _, l := range strings.Split(string(b), "\n") {
+		if strings.TrimSpace(l) == "" || strings.HasPrefix(l, "#") {
+			continue
+		}
+		parts := strings.Split(l, "|")
+		for i := range parts {
+			parts[i] = strings.TrimSpace(parts[i])
+		}
+		checked[strings.Join(parts, "|")] = true
+	}
+	cited := 0
+
+	for _, d := range sbxenv.AllDocs() {
+		for _, x := range d.External {
+			// Act
+			key := x.ID + "|" + x.Title + "|" + x.URL
+			cited++
+
+			// Assert
+			if !checked[key] {
+				t.Errorf("%s cites %q, which is not a checked entry", d.Key, key)
+			}
+			if !containsJapanese(x.Why) || x.Standard == "" {
+				t.Errorf("%s: %+v needs a standard and a Japanese reason", d.Key, x)
+			}
+		}
+	}
+	if cited == 0 {
+		t.Fatal("no external standard is cited")
+	}
+}
+
+func TestExternalStandardsCoverTheRiskiestFields(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	want := []string{"secrets.*", "env.*", "bindings.*.apiKey", "cap:credential@1", "mcp.servers[]", "kits[]",
+		"sandboxOptions.template", "lifecycle.initialize[]", "sandboxOptions.writableEnvFiles", "cap:ssh-agent@1",
+		"workspace", "additionalWorkspaces[]", "mounts.*", "sandboxOptions.skills", "cap:host-mount@1", "cap:network-policy@1"}
+	docs := map[string]sbxenv.FieldDoc{}
+	for _, d := range sbxenv.AllDocs() {
+		docs[d.Key] = d
+	}
+
+	for _, k := range want {
+		// Act / Assert
+		if len(docs[k].External) == 0 {
+			t.Errorf("%s has no external standard", k)
+		}
+	}
+}

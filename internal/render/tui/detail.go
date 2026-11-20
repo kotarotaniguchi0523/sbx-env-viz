@@ -242,6 +242,18 @@ func (m *Model) itemDoc(d *doc, it *sbxenv.Item) {
 			d.field("  出典", doc.Reference)
 		}
 	}
+	if doc := it.Doc; doc != nil && len(doc.External) > 0 {
+		d.heading("外部セキュリティ基準の観点（OWASP 等）")
+		for _, x := range doc.External {
+			name := x.Standard + " " + x.Title
+			if x.ID != "" {
+				name = x.Standard + " " + x.ID + " " + x.Title
+			}
+			d.text("・"+name, 2)
+			d.text(x.Why, 4)
+			d.field("    出典", x.URL)
+		}
+	}
 	d.heading("このツールの判定（独自基準）")
 	d.field("  危険度", riskLine(it.Risk))
 	reason := it.RiskReason

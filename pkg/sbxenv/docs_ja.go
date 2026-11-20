@@ -66,6 +66,8 @@ type FieldDoc struct {
 	OfficialNote string `json:"officialNote,omitempty"`
 	// OfficialRefs are the sections OfficialNote is taken from.
 	OfficialRefs []string `json:"officialRefs,omitempty"`
+	// External is how external security standards (OWASP) frame the risk.
+	External []ExternalNote `json:"external,omitempty"`
 }
 
 const (
@@ -85,7 +87,7 @@ const (
 )
 
 // fieldDocs is keyed by Item.Path patterns (path.Match syntax over "." paths).
-var fieldDocs = withOfficial([]FieldDoc{
+var fieldDocs = withExternal(withOfficial([]FieldDoc{
 	d("schemaVersion", "schemaVersion", MergeReplace, false, refEnv+"#top-level-fields",
 		"このファイルの書き方のバージョン番号です。今は \"1\" しか使えず、違うと sbx はファイルを読み込みません。",
 		"kit 記述子の schemaVersion（\"3\"）とは無関係です。数値の 1 ではなく引用符付きの \"1\" で書きます。",
@@ -225,7 +227,7 @@ var fieldDocs = withOfficial([]FieldDoc{
 		"このツールが意味を解釈できない Kit の要求です。内容はそのまま表示していますが、何が起きるかは判断していません。",
 		"未知の型が必須（optional でない）なら、それを知らないホストは kit を拒否します。optional なら省略して記録されます。privileged@1 や dockerd@1 は sandbox 内での最大の昇格です。",
 		"型ごとの規則に従います（各仕様ページ参照）。"),
-})
+}))
 
 var docIndex = func() map[string]FieldDoc {
 	m := map[string]FieldDoc{}

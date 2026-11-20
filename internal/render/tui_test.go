@@ -266,7 +266,7 @@ func TestTUIDetailSectionsAndPathWrapping(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := tui.New(p, true)
-	m.Update(tea.WindowSizeMsg{Width: 120, Height: 50})
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 90})
 	u := &ui{t: t, m: m}
 
 	// Act
@@ -761,7 +761,7 @@ func TestTUIDetailPaneSpeaksPlainJapaneseOnly(t *testing.T) {
 func TestTUIItemDetailExplainsItsRisk(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	u := newUI(t, 130, 60, true).press("3", "/", "i", "n", "i", "t", "enter")
+	u := newUI(t, 130, 110, true).press("3", "/", "i", "n", "i", "t", "enter")
 
 	// Assert
 	u.want("▍公式の見解（Docker Sandboxes / sandbox-kit-spec）", "lifecycle のコマンドはホスト上であなたのユーザー権限で動きます",
@@ -901,4 +901,18 @@ func TestTUIDriftOpensSideBySideInRisk(t *testing.T) {
 	}
 	u.want("[DRIFT] ズレ: 宣言と違うエージェントで動いている", "▍宣言（sbxenv.yaml）", "▍現在の実体（sbx）", "codex",
 		"▍どうすればよいか", "sbx env rm", "▍比較の根拠", "sbx ls --json")
+}
+
+func TestTUIDetailShowsExternalStandardsSeparately(t *testing.T) {
+	t.Parallel()
+	// Arrange / Act
+	u := newUI(t, 160, 110, true).press("3", "/", "i", "n", "i", "t", "enter")
+
+	// Assert
+	u.want("▍外部セキュリティ基準の観点（OWASP 等）", "ASI05 Unexpected Code Execution (RCE)",
+		"OWASP AI Agent Security Cheat Sheet Do's and Don'ts", "出典: https://genai.owasp.org/resource/")
+	text := u.text()
+	if strings.Index(text, "▍公式の見解") > strings.Index(text, "▍外部セキュリティ基準") || strings.Index(text, "▍外部セキュリティ基準") > strings.Index(text, "▍このツールの判定") {
+		t.Errorf("order should be official view, external standards, this tool's judgement:\n%s", text)
+	}
 }

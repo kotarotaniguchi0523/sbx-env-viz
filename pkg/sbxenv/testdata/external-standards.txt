@@ -1,0 +1,26 @@
+# External standards cited by ExternalNote, checked against the primary
+# sources on 2026-11-20. One line per citation: ID | Title | URL.
+# An empty ID means a named section of a document without numbering.
+#
+# OWASP MCP Top 10 — github.com/OWASP/www-project-mcp-top-10, branch main,
+# index.md "Top 10" list and the 2025/ files. The project states it is in
+# "Phase 3 – Beta Release". MCP06 is "Intent Flow Subversion" (renamed).
+MCP01:2025 | Token Mismanagement & Secret Exposure | https://github.com/OWASP/www-project-mcp-top-10/blob/main/2025/MCP01-2025-Token-Mismanagement-and-Secret-Exposure.md
+MCP02:2025 | Privilege Escalation via Scope Creep | https://github.com/OWASP/www-project-mcp-top-10/blob/main/2025/MCP02-2025%E2%80%93Privilege-Escalation-via-Scope-Creep.md
+MCP03:2025 | Tool Poisoning | https://github.com/OWASP/www-project-mcp-top-10/blob/main/2025/MCP03-2025%E2%80%93Tool-Poisoning.md
+MCP04:2025 | Software Supply Chain Attacks & Dependency Tampering | https://github.com/OWASP/www-project-mcp-top-10/blob/main/2025/MCP04-2025%E2%80%93Software-Supply-Chain-Attacks%26Dependency-Tampering.md
+#
+# OWASP Top 10 for Agentic Applications 2026 (Version 2026, December 2025),
+# the PDF published at genai.owasp.org/download/52117/: table of contents,
+# Description and Prevention and Mitigation Guidelines of each entry.
+ASI02 | Tool Misuse and Exploitation | https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/
+ASI03 | Identity and Privilege Abuse | https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/
+ASI04 | Agentic Supply Chain Vulnerabilities | https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/
+ASI05 | Unexpected Code Execution (RCE) | https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/
+#
+# OWASP AI Agent Security Cheat Sheet — github.com/OWASP/CheatSheetSeries,
+# cheatsheets/AI_Agent_Security_Cheat_Sheet.md: "Key Risks", "1. Tool
+# Security & Least Privilege", "Do's and Don'ts".
+ | Tool Security & Least Privilege | https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/AI_Agent_Security_Cheat_Sheet.md
+ | Key Risks: Data Exfiltration / Sensitive Data Exposure | https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/AI_Agent_Security_Cheat_Sheet.md
+ | Do's and Don'ts | https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/AI_Agent_Security_Cheat_Sheet.md
