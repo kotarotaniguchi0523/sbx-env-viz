@@ -106,14 +106,14 @@ func wrap(s string, w int) []string {
 			// wide characters may break anywhere instead of leaving the
 			// rest of the line empty.
 			if line != "" && wide(word) && room >= 4 {
-				head := kinsoku(word, cutAt(word, room))
+				head := kinsoku(word, keepASCIIWord(word, cutAt(word, room)))
 				out = append(out, line+head)
 				line, word = "", word[len(head):]
 			} else if line != "" && (!long || room < w/3) {
 				flush()
 			}
 			for ansi.StringWidth(line)+ansi.StringWidth(strings.TrimRight(word, " ")) > w {
-				head := cutAt(word, w-ansi.StringWidth(line))
+				head := kinsoku(word, keepASCIIWord(word, cutAt(word, w-ansi.StringWidth(line))))
 				out = append(out, line+head)
 				line, word = "", word[len(head):]
 			}
@@ -122,6 +122,26 @@ func wrap(s string, w int) []string {
 		flush()
 	}
 	return out
+}
+
+// keepASCIIWord moves a cut that would split an ASCII word such as
+// "--skip-host-commands" back to the start of that word.
+func keepASCIIWord(word, head string) string {
+	if head == "" || len(head) >= len(word) || !asciiWord(word[len(head)]) || !asciiWord(head[len(head)-1]) {
+		return head
+	}
+	i := len(head)
+	for i > 0 && asciiWord(head[i-1]) {
+		i--
+	}
+	if i == 0 {
+		return head
+	}
+	return head[:i]
+}
+
+func asciiWord(b byte) bool {
+	return b == '-' || b == '_' || b == '.' || b == '/' || b == ':' || (b >= '0' && b <= '9') || (b|0x20 >= 'a' && b|0x20 <= 'z')
 }
 
 // kinsoku moves the last character of head to the next line when the
@@ -192,6 +212,9 @@ func (m *Model) origin(o sbxenv.Origin) string {
 	return label
 }
 
+// judgementBasis says the risk level is this tool's own yardstick.
+const judgementBasis = "※ 危険度は、sandbox の隔離境界（PC 上での実行・PC のファイルの書き換え・外部への公開・sandbox 削除後も残るもの）に基づくこのツール独自の基準で、公式の評価ではありません。"
+
 // riskLine is "高（HIGH）" style text for a severity.
 func riskLine(s sbxenv.Severity) string {
 	return sbxenv.SeverityLabel(s) + "（" + strings.ToUpper(string(s)) + "）"
@@ -200,22 +223,33 @@ func riskLine(s sbxenv.Severity) string {
 func (m *Model) itemDoc(d *doc, it *sbxenv.Item) {
 	d.title(it.ID)
 	d.field("値", it.Value)
-	d.field("危険度", riskLine(it.Risk))
 	if it.Kit != "" {
 		d.field("Kit", it.Kit)
 	}
 	for _, f := range it.Fields {
 		d.field("  "+sbxenv.FieldLabel(f.Key), sbxenv.FieldValue(f.Value))
 	}
-	d.heading("なぜこの危険度か")
+	if doc := it.Doc; doc != nil {
+		d.heading("公式の見解（Docker Sandboxes / sandbox-kit-spec）")
+		if doc.OfficialNote != "" {
+			d.text(doc.OfficialNote, 2)
+			d.field("  出典", doc.OfficialRef)
+		} else {
+			d.text("公式ドキュメントに特段の警告記載なし", 2)
+			d.field("  出典", doc.Reference)
+		}
+	}
+	d.heading("このツールの判定（独自基準）")
+	d.field("  危険度", riskLine(it.Risk))
 	reason := it.RiskReason
 	if reason == "" {
 		reason = "一般的な設定値で、sandbox の外には影響しません。"
 	}
-	d.text(reason, 2)
+	d.field("  理由", reason)
 	for _, b := range it.Badges {
 		d.text(b+" "+sbxenv.BadgeLabel(b), 2)
 	}
+	d.text(judgementBasis, 2)
 	if doc := it.Doc; doc != nil {
 		d.heading("解説（" + doc.Title + "）")
 		d.field("要は", doc.Meaning)
@@ -290,11 +324,9 @@ func (m *Model) diagDoc(d *doc, x *sbxenv.Diagnostic) {
 func (m *Model) coverageDoc(d *doc, c *sbxenv.Coverage) {
 	d.title("未展開: " + sbxenv.CoverageTitle(c.Kind))
 	d.field("対象", c.Ref)
-	d.field("危険度", riskLine(sbxenv.SeverityMedium))
 	d.heading("なぜ中身を確認していないか")
 	d.text(sbxenv.ExplainCoverage(c.Kind), 2)
-	d.heading("なぜこの危険度か")
-	d.text("中身が分からないものは安全とは言えないため、「中」として目立たせています。sbx が実際に作成するときには、この部分も適用されます。", 2)
+	d.text("これは静的解析の前提で、問題が見つかったという意味ではありません。sbx が実際に作成するときには、この部分も適用されます。", 2)
 	d.heading("どこで指定されたか")
 	d.text(m.origin(c.Origin), 2)
 }
@@ -342,7 +374,11 @@ func (m *Model) sourceDoc(d *doc, s *sbxenv.Source) {
 
 func helpDoc() doc {
 	var d doc
-	d.title("キー操作")
+	d.title("このツールについて")
+	d.text("設定ファイルの静的解析です。緑の「安全」表示は出しません。", 2)
+	d.text("静的解析の前提: PC 全体の sbx 設定（sbx policy・credentials.yaml）、sbx secret に保存した秘密、組み込みエージェントやリモート Kit の中身は読みません（ファイルに書いたリモート Kit などは 4: Sources に表示）。", 2)
+	d.text("危険度（HIGH / MEDIUM / LOW）は隔離境界に基づくこのツール独自の基準です。公式の記述は詳細の「公式の見解」に分けて表示します。", 2)
+	d.heading("キー操作")
 	for _, kv := range [][2]string{
 		{"1 / 2 / 3 / 4, [ / ]", "画面切替（Overview / Risk / Items / Sources）"},
 		{"j / k, ↑ / ↓", "移動（詳細ペインではスクロール）"},
@@ -365,8 +401,5 @@ func helpDoc() doc {
 	for _, b := range []string{sbxenv.BadgeHost, sbxenv.BadgeOpaque, sbxenv.BadgeRW, sbxenv.BadgeRO, sbxenv.BadgePersist, sbxenv.BadgeNet, sbxenv.BadgeCred, sbxenv.BadgeSSH, sbxenv.BadgeSkip, sbxenv.BadgeWarn, sbxenv.BadgeUnknown, sbxenv.BadgeLiteral} {
 		d.text(fmt.Sprintf("%-10s %s", b, sbxenv.BadgeLabel(b)), 2)
 	}
-	d = append(d, docLine{kind: docBlank})
-	d.text("これは設定ファイルの静的解析です。緑の「安全」表示は出しません。", 0)
-	d.text("中身を確認できない Kit・テンプレート・PC 全体の設定は「未展開」として常に表示します。", 0)
 	return d
 }

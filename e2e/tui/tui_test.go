@@ -21,8 +21,8 @@ func TestEightyColumnsShowsOneRoundedPanel(t *testing.T) {
 	if n := len(s.locations("╭")); n != 1 {
 		t.Errorf("%d rounded panels at 80 columns, want 1", n)
 	}
-	if !regexp.MustCompile(`未展開\d+`).MatchString(lines[1]) {
-		t.Errorf("compact summary should keep every count: %q", lines[1])
+	if !regexp.MustCompile(`Host実行\d+ 永続\d+ RW\d+ 許可\d+ E\d+ W\d+`).MatchString(lines[1]) || strings.Contains(lines[1], "未展開") {
+		t.Errorf("compact summary should keep every count but no analysis gaps: %q", lines[1])
 	}
 	if last := lines[len(lines)-1]; !strings.Contains(last, " q  終了 ") || !strings.Contains(last, " ?  ヘルプ ") {
 		t.Errorf("status bar should lead with quit and help: %q", last)
@@ -44,7 +44,7 @@ func TestOneHundredThirtyColumnsShowsTwoRoundedPanels(t *testing.T) {
 	if n := len(s.locations("╰")); n != 2 {
 		t.Errorf("%d bottom corners, want 2", n)
 	}
-	for _, chip := range []string{"[Host実行 ", "[Host永続 ", "[RWマウント ", "[外への許可 ", "[警告 ", "[未展開 "} {
+	for _, chip := range []string{"[Host実行 ", "[Host永続 ", "[RWマウント ", "[外への許可 ", "[警告 "} {
 		if !strings.Contains(lines[1], chip) {
 			t.Errorf("summary chip %q missing: %q", chip, lines[1])
 		}
@@ -55,16 +55,16 @@ func TestOneHundredThirtyColumnsShowsTwoRoundedPanels(t *testing.T) {
 func TestDetailPaneExplainsTheItemInJapanese(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	s := start(t, launch{cols: 130})
+	s := start(t, launch{cols: 130, rows: 70})
 
 	// Act: Items view, search the variable local.sbxenv.yaml overrides.
 	s.press("3", "/", "R", "E", "L", "E", "A", "S", "E", "Enter")
 
 	// Assert
-	for _, want := range []string{"env.RELEASE_CHANNEL", "危険度: 情報（INFO）", "▍なぜこの危険度か", "要は:", "▍複数ファイルでの上書き規則", "規則: マップ結合", "▍上書きの履歴", "上書きされた（無効）:", "上書き:", "~/proj/local.sbxenv.yaml の 3 行目"} {
+	for _, want := range []string{"env.RELEASE_CHANNEL", "▍公式の見解（Docker Sandboxes / sandbox-kit-spec）", "公式ドキュメントに特段の警告記載なし", "▍このツールの判定（独自基準）", "危険度: 情報（INFO）", "要は:", "▍複数ファイルでの上書き規則", "規則: マップ結合", "▍上書きの履歴", "上書きされた（無効）:", "上書き:", "~/proj/local.sbxenv.yaml の 3 行目"} {
 		s.expect(want)
 	}
-	s.snapshot("items-detail-130x40", false)
+	s.snapshot("items-detail-130x70", false)
 }
 
 func TestNarrowScreenOpensAndClosesTheDetail(t *testing.T) {
@@ -375,20 +375,25 @@ func TestMouseWheelScrollsThePanelUnderThePointer(t *testing.T) {
 
 // --- Overview ---------------------------------------------------------------
 
-func TestOverviewIsTheDefaultScreenWithSixCards(t *testing.T) {
+func TestOverviewIsTheDefaultScreenWithFiveCards(t *testing.T) {
 	t.Parallel()
 	// Arrange / Act
 	s := start(t, launch{cols: 130, rows: 70})
 
 	// Assert
-	for _, card := range []string{"▍基本構成", "▍適用される Kits", "▍ワークスペース・マウント", "▍MCP & Network", "▍資格情報・SSH・ポート・ホスト実行", "▍解析範囲外サマリー（6 件）"} {
+	for _, card := range []string{"▍基本構成", "▍適用される Kits", "▍ワークスペース・マウント", "▍MCP & Network", "▍資格情報・SSH・ポート・ホスト実行"} {
 		s.expect(card)
 	}
-	if n := len(s.locations("╭")); n != 6 {
-		t.Errorf("%d rounded cards, want 6\n%s", n, s.text())
+	if n := len(s.locations("╭")); n != 5 {
+		t.Errorf("%d rounded cards, want 5\n%s", n, s.text())
 	}
-	for _, entry := range []string{"名前: web-app", "playwright: 未展開（インターネット上のため）", "MCP docs: リモート（URL に接続）", "通信の禁止（実行中）: telemetry.example.com", "PC 上で実行: "} {
+	for _, entry := range []string{"名前: web-app", "playwright: リモートの Kit（中身は 4: Sources）", "MCP docs: リモート（URL に接続）", "通信の禁止（実行中）: telemetry.example.com", "PC 上で実行: "} {
 		s.expect(entry)
+	}
+	for _, noise := range []string{"未展開", "[COVERAGE]", "組み込み", "sbx policy"} {
+		if strings.Contains(s.text(), noise) {
+			t.Errorf("the overview shows the analysis premise %q", noise)
+		}
 	}
 	if got := activeView(t, s); got != "1:Overview" {
 		t.Errorf("active view = %q", got)
@@ -412,19 +417,30 @@ func TestOverviewEnterOpensTheSelectedItem(t *testing.T) {
 	}
 }
 
-func TestOverviewClickOnAGapExplainsItInRisk(t *testing.T) {
+func TestAnalysisGapsStayOutOfRiskAndSitQuietlyInSources(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	s := start(t, launch{cols: 130, rows: 70})
 
-	// Act
-	s.click("インターネット上の Kit: ")
-
-	// Assert
+	// Act / Assert: Risk lists findings only.
+	s.press("2")
 	s.expect("一覧 · Risk")
+	for _, noise := range []string{"未展開", "[COVERAGE]"} {
+		if strings.Contains(s.text(), noise) {
+			t.Errorf("Risk shows %q:\n%s", noise, s.text())
+		}
+	}
+
+	// Act / Assert: Sources lists the remote kit the file names, not the
+	// premises every run shares.
+	s.press("4")
+	s.expect("[未展開] docker.io/sbx/playwright:1.61.1")
+	if strings.Contains(s.text(), "sbx policy") || strings.Contains(s.text(), "組み込みエージェント") {
+		t.Errorf("Sources lists premises of every run:\n%s", s.text())
+	}
+	s.click("[未展開] docker.io/sbx/playwright")
 	s.expect("未展開: インターネット上の Kit")
-	s.expect("▍なぜ中身を確認していないか")
-	s.expect("静的解析ツール")
+	s.expect("問題が見つかったという意味ではありません")
 }
 
 func TestOverviewNarrowScreenScrollsAndOpensTheDetail(t *testing.T) {
@@ -439,11 +455,11 @@ func TestOverviewNarrowScreenScrollsAndOpensTheDetail(t *testing.T) {
 	}
 
 	// Assert
-	s.expect("▍解析範囲外サマリー")
+	s.expect("▍資格情報・SSH・ポート・ホスト実行")
 	s.gone("▍基本構成")
 	s.press("Enter")
 	s.expect("← 戻る")
-	s.expect("未展開: ")
+	s.expect("▍このツールの判定（独自基準）")
 }
 
 func TestRiskDetailExplainsTheDiagnosticInJapanese(t *testing.T) {
@@ -456,7 +472,9 @@ func TestRiskDetailExplainsTheDiagnosticInJapanese(t *testing.T) {
 	s.click("SSH 鍵で何にでも署名できる")
 
 	// Assert
-	for _, want := range []string{"重要度: 警告（危険・要確認）", "▍何が起きるか", "▍どうすればよいか", "▍対象の設定", "危険度: 高（HIGH）", "▍sandbox の外との関わり"} {
+	for _, want := range []string{"重要度: 警告（危険・要確認）", "▍何が起きるか", "▍どうすればよいか", "▍対象の設定",
+		"▍公式の見解（Docker Sandboxes / sandbox-kit-spec）", "ssh-agent@1.md",
+		"▍このツールの判定（独自基準）", "危険度: 高（HIGH）", "公式の評価ではありません", "▍sandbox の外との関わり"} {
 		s.expect(want)
 	}
 	for _, english := range []string{"SSH_AGENT_UNRESTRICTED", "can sign anything", "ssh-agent 実行/所在", "寿命="} {

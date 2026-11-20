@@ -127,7 +127,6 @@ func (m *Model) summaryBar(w int) string {
 		{"外への許可", sum.EgressAllows, false},
 		{"エラー", sum.Errors, sum.Errors > 0},
 		{"警告", sum.Warnings, sum.Warnings > 0},
-		{"未展開", sum.Unexpanded, false},
 	}
 	var full []string
 	for _, c := range chips {
@@ -142,7 +141,7 @@ func (m *Model) summaryBar(w int) string {
 		return line
 	}
 	// Too narrow for pills: keep every count in a compact line.
-	compact := fmt.Sprintf("Host実行%d 永続%d RW%d 許可%d E%d W%d 未展開%d", sum.HostExec, sum.HostPersistent, sum.RWMounts, sum.EgressAllows, sum.Errors, sum.Warnings, sum.Unexpanded)
+	compact := fmt.Sprintf("Host実行%d 永続%d RW%d 許可%d E%d W%d", sum.HostExec, sum.HostPersistent, sum.RWMounts, sum.EgressAllows, sum.Errors, sum.Warnings)
 	return trunc(m.pal.summaryValue.Render(compact), w)
 }
 

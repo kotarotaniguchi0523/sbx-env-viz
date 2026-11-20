@@ -50,15 +50,6 @@ func (m *Model) buildOverview() {
 	addItem := func(label string, it *sbxenv.Item) {
 		add(label+": "+it.Value, row{label: label, badges: it.Badges, sev: it.Risk, item: it})
 	}
-	coverOf := func(kind sbxenv.CoverageKind, ref string) *sbxenv.Coverage {
-		for i := range m.plan.Coverage {
-			c := &m.plan.Coverage[i]
-			if c.Kind == kind && (ref == "" || c.Ref == ref) {
-				return c
-			}
-		}
-		return nil
-	}
 	items := func(match func(*sbxenv.Item) bool) []*sbxenv.Item {
 		var out []*sbxenv.Item
 		for i := range m.plan.Items {
@@ -94,18 +85,13 @@ func (m *Model) buildOverview() {
 	}
 
 	newCard("適用される Kits")
-	if ag := byID["agent"]; ag != nil {
-		if c := coverOf(sbxenv.CoverageBuiltinAgent, ag.Value); c != nil {
-			add("エージェント "+ag.Value+": 組み込み（未展開）", row{label: ag.Value, badges: []string{"[COVERAGE]"}, sev: sbxenv.SeverityMedium, cover: c})
-		}
-	}
 	kits := items(pathIs("kits[]"))
 	for _, it := range kits {
 		state := "中身を確認済み"
 		if field(it, "status") != "expanded" {
 			switch field(it, "kind") {
 			case "oci", "git", "zip":
-				state = "未展開（インターネット上のため）"
+				state = "リモートの Kit（中身は 4: Sources）"
 			default:
 				state = "未展開（読み込めない）"
 			}
@@ -199,15 +185,6 @@ func (m *Model) buildOverview() {
 		info("（なし）")
 	}
 
-	newCard(fmt.Sprintf("解析範囲外サマリー（%d 件）", len(m.plan.Coverage)))
-	info("外部通信・イメージ取得・コマンド実行をしない静的解析のため、次は中身を確認していません。")
-	for i := range m.plan.Coverage {
-		c := &m.plan.Coverage[i]
-		add(sbxenv.CoverageTitle(c.Kind)+": "+c.Ref, row{label: c.Ref, badges: []string{"[COVERAGE]"}, sev: sbxenv.SeverityMedium, cover: c})
-	}
-	if len(m.plan.Coverage) == 0 {
-		info("（なし）")
-	}
 	m.rows = rows
 }
 

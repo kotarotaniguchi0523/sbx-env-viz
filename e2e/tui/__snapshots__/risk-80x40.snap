@@ -1,10 +1,10 @@
 ╭────────────────────────────────────────────────────────────────────────────────╮
 │ sbx-env-viz   1:Overview   2:Risk   3:Items   4:Sources                        │
-│Host実行2 永続4 RW2 許可3 E0 W5 未展開6                                         │
+│Host実行2 永続4 RW2 許可3 E0 W5                                                 │
 │宣言の静的解析（稼働中 sandbox の状態ではない） env-args: workspace=./web-app (…│
 │絞り込み  全て   L1   L2   K1   K2                                              │
 │╭──────────────────────────────────────────────────────────────────────────────╮│
-││● 一覧 · Risk（31 件）                                                        ││
+││● 一覧 · Risk（24 件）                                                        ││
 ││ HIGH  [WARNING] 認証情報の差し込み先が未承認                                 ││
 ││ HIGH  [WARNING] 共有フォルダが他の sandbox とも共有される                    ││
 ││ HIGH  [WARNING] ポートが外部ネットワークに公開される                         ││
@@ -19,16 +19,9 @@
 ││ MED   [CRED] secrets.example = ref: op://Private/Example/credential          ││
 ││ MED   [!][CRED][PERSIST] bindings.example.apiKey = api.example.com           ││
 ││ MED   [PERSIST] mcp.servers[docs] = url: https://mcp.example.com/sse         ││
-││ MED   [UNKNOWN] kits[docker.io/sbx/playwright:1.61.1] = docker.io/sbx/playwr…││
 ││ MED   [NET] kit:egress/network-policy@1/runtime.allow/*.cdn.example.com = ru…││
 ││ MED   [CRED] kit:egress/credential@1/example/runtime = service=example phase…││
 ││ MED   [UNKNOWN] kit:egress/io.example/telemetry@2 = io.example/telemetry@2   ││
-││ MED   [COVERAGE] 未展開 組み込みエージェントの中身: claude                   ││
-││ MED   [COVERAGE] 未展開 PC 全体の sbx 設定: sbx policy / settings / credenti…││
-││ MED   [COVERAGE] 未展開 sandbox 内の環境変数: history: ${{ kit.env.HOME }}   ││
-││ MED   [COVERAGE] 未展開 テンプレートイメージの中身: ghcr.io/example/common-c…││
-││ MED   [COVERAGE] 未展開 インターネット上の Kit: docker.io/sbx/playwright:1.6…││
-││ MED   [COVERAGE] 未展開 標準にない要求: egress: io.example/telemetry@2       ││
 ││ LOW   [!] sandboxOptions.template = ghcr.io/example/common-claude:dev        ││
 ││ LOW   kits[./kits/egress] = ./kits/egress {apiHost=api.internal.example.com} ││
 ││ LOW   kits[./kits/history] = ./kits/history                                  ││
@@ -36,6 +29,13 @@
 ││ LOW   [NET] kit:egress/network-policy@1/runtime.allow/api.internal.example.c…││
 ││ LOW   kit:egress/git-identity@1 = user.name / user.email from the host       ││
 ││ LOW   [OPAQUE] kit:history/lifecycle@1/startup[0] = sh -c ln -sf /home/agent…││
+││                                                                              ││
+││                                                                              ││
+││                                                                              ││
+││                                                                              ││
+││                                                                              ││
+││                                                                              ││
+││                                                                              ││
 ││                                                                              ││
 │╰──────────────────────────────────────────────────────────────────────────────╯│
 │ q  終了  ?  ヘルプ  1-4  画面  j/k  移動  Enter  詳細  h/l  ペイン  g  グルー… │

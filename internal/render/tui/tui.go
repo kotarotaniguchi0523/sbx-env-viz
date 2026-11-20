@@ -129,6 +129,11 @@ func (m *Model) rebuild() {
 		rows = m.rows
 	case viewRisk:
 		for _, r := range model.RiskList(m.plan) {
+			if r.Cover != nil {
+				// Gaps are premises of a static analysis, not findings;
+				// the explicit ones are listed quietly under Sources.
+				continue
+			}
 			if f := m.filter(); f != "" {
 				switch {
 				case r.Item != nil && !model.TouchesSource(r.Item, f):
@@ -184,23 +189,23 @@ func (m *Model) rebuild() {
 			if !s.Expanded {
 				state = "未展開"
 			}
-			label := fmt.Sprintf("%-7s %s [%s] %s", s.ID, s.Path, state, sbxenv.SourceKindLabel(s.Kind))
+			label := fmt.Sprintf("%-7s [%s] %s（%s）", s.ID, state, s.Path, sbxenv.SourceKindLabel(s.Kind))
 			if !m.matches(label) {
 				continue
 			}
 			rows = append(rows, row{label: label, sev: sbxenv.SeverityInfo, source: s})
 		}
-		if len(m.plan.Coverage) > 0 {
-			rows = append(rows, row{header: true, label: fmt.Sprintf("未展開・解析範囲外 (%d)", len(m.plan.Coverage))})
-			for i := range m.plan.Coverage {
-				c := &m.plan.Coverage[i]
-				label := sbxenv.CoverageTitle(c.Kind) + ": " + c.Ref
-				if f := m.filter(); f != "" && c.Origin.SourceID != f {
-					continue
-				}
-				if m.matches(label) {
-					rows = append(rows, row{label: label, badges: []string{"[COVERAGE]"}, sev: sbxenv.SeverityMedium, cover: c})
-				}
+		for i := range m.plan.Coverage {
+			c := &m.plan.Coverage[i]
+			if !sbxenv.CoverageFromFile(c.Kind) {
+				continue
+			}
+			if f := m.filter(); f != "" && c.Origin.SourceID != f {
+				continue
+			}
+			label := fmt.Sprintf("%-7s [未展開] %s（%s）", "-", c.Ref, sbxenv.CoverageTitle(c.Kind))
+			if m.matches(label) {
+				rows = append(rows, row{label: label, sev: sbxenv.SeverityInfo, cover: c})
 			}
 		}
 	}

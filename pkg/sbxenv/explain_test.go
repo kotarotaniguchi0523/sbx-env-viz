@@ -147,3 +147,44 @@ func TestDocsAvoidJargonInTheirFirstLine(t *testing.T) {
 		}
 	}
 }
+
+func TestOfficialNotesQuoteTheDocsAndNameTheirSource(t *testing.T) {
+	t.Parallel()
+	// Arrange: fields whose security premise the official docs state.
+	want := map[string]string{
+		"sandboxOptions.writableEnvFiles": "信頼できる場合にだけ",
+		"lifecycle.initialize[]":          "--skip-host-commands",
+		"mcp.servers[]":                   "--skip-host-commands",
+		"secrets.*":                       "書き込み可能な sandbox マウントの外",
+		"cap:ssh-agent@1":                 "unrestricted の既定は true",
+		"cap:network-policy@1":            "deny が優先",
+		"workspace":                       "clone: true",
+		"additionalWorkspaces[]":          "readOnly の既定は false",
+	}
+	docs := map[string]sbxenv.FieldDoc{}
+	for _, d := range sbxenv.AllDocs() {
+		docs[d.Key] = d
+	}
+
+	for key, phrase := range want {
+		// Act
+		d, ok := docs[key]
+
+		// Assert
+		if !ok {
+			t.Errorf("no doc %s", key)
+			continue
+		}
+		if !strings.Contains(d.OfficialNote, phrase) {
+			t.Errorf("%s official note %q lacks %q", key, d.OfficialNote, phrase)
+		}
+		if !strings.HasPrefix(d.OfficialRef, "https://docs.docker.com/") && !strings.HasPrefix(d.OfficialRef, "https://github.com/docker/sandbox-kit-spec/") {
+			t.Errorf("%s official note has no official source: %q", key, d.OfficialRef)
+		}
+	}
+	for _, d := range sbxenv.AllDocs() {
+		if (d.OfficialNote == "") != (d.OfficialRef == "") {
+			t.Errorf("%s: a note needs its source and a source needs its note", d.Key)
+		}
+	}
+}

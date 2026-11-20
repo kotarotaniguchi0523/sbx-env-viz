@@ -354,12 +354,12 @@ func (rs *resolver) buildWorkspace() {
 		access := "rw"
 		reason := "the primary workspace is bind-mounted read/write; the agent's edits land on the host directly"
 		it.Risk, it.Badges = SeverityMedium, []string{BadgeRW}
-		it.RiskReason = "ワークスペースのフォルダを sandbox が直接読み書きします。sandbox 内での変更があなたの PCのファイルにそのまま反映されます。"
+		it.RiskReason = "ワークスペースのフォルダを sandbox が直接読み書きします。sandbox 内での変更があなたの PC のファイルにそのまま反映されます。"
 		if clone {
 			access = "clone"
 			reason = "clone mode gives the sandbox a private Git clone; host files are not written until you fetch from it"
 			it.Risk, it.Badges = SeverityLow, nil
-			it.RiskReason = "clone モードなので sandbox は専用のコピーを編集し、あなたの PCのファイルは直接書き換わりません。"
+			it.RiskReason = "clone モードなので sandbox は専用のコピーを編集し、あなたの PC のファイルは直接書き換わりません。"
 			it.Fields = append(it.Fields, Field{"clone", "true"})
 		}
 		if rs.opts.Clone != nil {
@@ -396,7 +396,7 @@ func (rs *resolver) buildMounts() {
 	for _, k := range m.keys {
 		v := m.kv[k]
 		it := rs.addItem(Item{ID: "mounts." + k, Path: "mounts." + k, Section: SectionMounts, Risk: SeverityHigh, Badges: []string{BadgeRW, BadgePersist},
-			RiskReason: "あなたの PCのフォルダを sandbox と読み書き可能で共有し、sandbox を削除してもデータが残ります。"}, v, rs.fmtPath)
+			RiskReason: "あなたの PC のフォルダを sandbox と読み書き可能で共有し、sandbox を削除してもデータが残ります。"}, v, rs.fmtPath)
 		rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryHostMount, Where: "host", Lifetime: "host-persistent", Access: "rw",
 			Reason: "binds a kit-declared host-mount@1 path to this host directory; sandbox writes reach it and outlive the sandbox"})
 	}
@@ -429,27 +429,27 @@ func (rs *resolver) buildSandboxOptions() {
 		case "writableEnvFiles":
 			if val == "true" {
 				it.Risk, it.Badges = SeverityHigh, []string{BadgeRW, BadgeHost}
-				it.RiskReason = "sandbox から環境ファイルを書き換えられるため、次回以降にあなたの PCで実行されるコマンドを変えられてしまいます。"
+				it.RiskReason = "sandbox から環境ファイルを書き換えられるため、次回以降にあなたの PC で実行されるコマンドを変えられてしまいます。"
 				rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryHostMount, Where: "host", Lifetime: "host-persistent", Access: "rw",
 					Reason: "the sandbox can rewrite environment files, and with them the host commands later invocations run"})
 			}
 		case "skills":
 			if val == "readwrite" {
 				it.Risk, it.Badges = SeverityHigh, []string{BadgeRW, BadgePersist}
-				it.RiskReason = "あなたの PCの共有スキル置き場を sandbox から書き換えられ、他の sandbox にも影響します。"
+				it.RiskReason = "あなたの PC の共有スキル置き場を sandbox から書き換えられ、他の sandbox にも影響します。"
 				rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryHostMount, Where: "host", Lifetime: "host-persistent", Access: "rw",
 					Reason: "the shared agent skills store on the host becomes writable from this sandbox"})
 			}
 		case "gpu", "display", "fuse":
 			if val == "true" {
 				it.Risk = SeverityMedium
-				it.RiskReason = "あなたの PCの装置（GPU・画面・FUSE）を sandbox から使えるようにします。"
+				it.RiskReason = "あなたの PC の装置（GPU・画面・FUSE）を sandbox から使えるようにします。"
 				rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryDevice, Where: "host", Lifetime: "sandbox-scoped", Reason: "passes a host device or socket into the sandbox"})
 			}
 		case "usb":
 			if len(v.list()) > 0 {
 				it.Risk = SeverityMedium
-				it.RiskReason = "あなたの PCの USB 機器を sandbox から使えるようにします。"
+				it.RiskReason = "あなたの PC の USB 機器を sandbox から使えるようにします。"
 				rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryDevice, Where: "host", Lifetime: "sandbox-scoped", Reason: "passes host USB devices into the sandbox"})
 			}
 		case "template":
@@ -476,7 +476,7 @@ func (rs *resolver) buildSecrets() {
 		switch {
 		case v.has("command"):
 			it.Risk = SeverityHigh
-			it.RiskReason = "秘密を取り出すためにあなたの PCでコマンドを実行します（--skip-host-commands でも止まりません）。"
+			it.RiskReason = "秘密を取り出すためにあなたの PC でコマンドを実行します（--skip-host-commands でも止まりません）。"
 			it.Badges = append(it.Badges, BadgeHost, BadgeOpaque)
 			rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryHostExec, Where: "host", Lifetime: "invocation", Opaque: true,
 				Reason: "the command runs on the host with your privileges to produce the secret; --skip-host-commands does not skip it"})
@@ -511,7 +511,7 @@ func (rs *resolver) buildBindings() {
 				return rs.fmtPlain(n)
 			}
 			it := rs.addItem(Item{ID: id, Path: id, Section: SectionBindings, Risk: SeverityMedium, Badges: []string{BadgeCred, BadgePersist},
-				RiskReason: "認証情報を差し込んでよい通信先の承認で、あなたの PC全体の設定（credentials.yaml）に残ります。"}, mv, f)
+				RiskReason: "認証情報を差し込んでよい通信先の承認で、あなたの PC 全体の設定（credentials.yaml）に残ります。"}, mv, f)
 			if dom != nil {
 				it.Fields = append(it.Fields, Field{"domains", strings.Join(dom.dscalars(), ", ")})
 			}
@@ -543,7 +543,7 @@ func (rs *resolver) buildRegistries() {
 		for _, sub := range []string{"username", "secret"} {
 			if s := v.get(sub); s != nil && s.has("command") {
 				it.Risk = SeverityHigh
-				it.RiskReason = "認証情報を取り出すためにあなたの PCでコマンドを実行します。"
+				it.RiskReason = "認証情報を取り出すためにあなたの PC でコマンドを実行します。"
 				it.Badges = append(it.Badges, BadgeHost, BadgeOpaque)
 				rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryHostExec, Where: "host", Lifetime: "invocation", Opaque: true,
 					Reason: "the registry credential command runs on the host"})
@@ -559,7 +559,7 @@ func (rs *resolver) buildMCP() {
 		it := rs.addItem(Item{ID: "mcp.servers[" + name + "]", Path: "mcp.servers[]", Section: SectionMCP}, e, rs.fmtMCP)
 		if e.has("command") {
 			it.Risk = SeverityHigh
-			it.RiskReason = "MCP サーバーをあなたの PCの上で、あなたの権限で動かします。"
+			it.RiskReason = "MCP サーバーをあなたの PC の上で、あなたの権限で動かします。"
 			it.Badges = []string{BadgeHost, BadgeOpaque}
 			b := Boundary{ItemID: it.ID, Kind: BoundaryHostExec, Where: "host", Lifetime: "sandbox-scoped", Opaque: true,
 				Reason: "a local stdio MCP server runs on the host with your privileges whenever the sandbox's MCP gateway starts"}
@@ -573,7 +573,7 @@ func (rs *resolver) buildMCP() {
 			rs.bound(b)
 		} else {
 			it.Risk = SeverityMedium
-			it.RiskReason = "リモートの MCP サーバーをあなたの PC全体に登録します（sandbox を削除しても残ります）。"
+			it.RiskReason = "リモートの MCP サーバーをあなたの PC 全体に登録します（sandbox を削除しても残ります）。"
 			it.Badges = []string{BadgePersist}
 			rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryHostGlobal, Where: "unknown", Lifetime: "host-persistent",
 				Reason: "a remote MCP server registered with url stays host-global and survives sbx env rm; traffic goes through the MCP gateway"})
@@ -584,7 +584,7 @@ func (rs *resolver) buildMCP() {
 func (rs *resolver) buildPorts() {
 	for _, e := range rs.root.get("ports").list() {
 		it := rs.addItem(Item{ID: "ports[" + rs.portKey(e) + "]", Path: "ports[]", Section: SectionPorts, Risk: SeverityLow,
-			RiskReason: "あなたの PCの中からだけ接続できるポートです。"}, e, rs.fmtPort)
+			RiskReason: "あなたの PC の中からだけ接続できるポートです。"}, e, rs.fmtPort)
 		ip := e.str("hostIP")
 		reason := "publishes a sandbox port on the host loopback interface"
 		if ip == "0.0.0.0" || ip == "::" || ip == "[::]" {
@@ -606,7 +606,7 @@ func (rs *resolver) buildLifecycle() {
 		for i, e := range lc.get(phase).list() {
 			id := fmt.Sprintf("lifecycle.%s[%d]", phase, i)
 			it := rs.addItem(Item{ID: id, Path: "lifecycle." + phase + "[]", Section: SectionLifecycle, Risk: SeverityHigh, Badges: []string{BadgeHost, BadgeOpaque},
-				RiskReason: "sandbox の作成・削除のタイミングで、あなたの PCの上でコマンドをあなたの権限で実行します。コマンドの中身はこのツールでは確認しません。"}, e, rs.fmtLifecycle)
+				RiskReason: "sandbox の作成・削除のタイミングで、あなたの PC の上でコマンドをあなたの権限で実行します。コマンドの中身はこのツールでは確認しません。"}, e, rs.fmtLifecycle)
 			if n := e.dstr("name"); n != "" {
 				it.Fields = append(it.Fields, Field{"name", rs.r.text(n)})
 			}
@@ -636,11 +636,21 @@ func (rs *resolver) buildKitEntries() {
 		it := rs.addItem(Item{ID: id, Path: "kits[]", Section: SectionKits, Kit: k.handleShown, Risk: SeverityLow,
 			RiskReason: "ローカルの Kit で、要求している内容をこのツールで確認済みです。"}, k.entry, rs.fmtKitEntry)
 		status := "expanded"
-		if !k.expanded {
+		switch {
+		case k.expanded:
+		case k.kind == kitLocal:
+			// A local kit the user pointed at but that could not be read
+			// is a real problem worth surfacing.
 			status = "not expanded"
 			it.Risk = SeverityMedium
-			it.RiskReason = "中身を確認できない Kit です。通信・認証情報・フォルダ共有など何を要求するかは、作成時まで分かりません。"
+			it.RiskReason = "ローカルの Kit を読み込めませんでした。通信・認証情報・フォルダ共有など何を要求するかは、作成時まで分かりません。"
 			it.Badges = append(it.Badges, BadgeUnknown)
+		default:
+			// Remote kits are never fetched: that is the premise of a
+			// static analysis, not a finding, so it stays informational.
+			status = "not expanded"
+			it.Risk = SeverityInfo
+			it.RiskReason = "インターネット上の Kit です。このツールは静的解析のため中身を取得しません。作成前に sbx env plan で実行計画を確認してください。"
 		}
 		it.Fields = append(it.Fields, Field{"kind", k.kind}, Field{"handle", k.handleShown}, Field{"status", status})
 		if k.descKind != "" {
@@ -745,7 +755,7 @@ func (rs *resolver) buildCapability(c *capState) {
 			parts = append(parts, "oauth")
 		}
 		risk := SeverityMedium
-		why := "サービスの認証情報を、指定した通信先への接続に自動で差し込みます。本物の値はあなたの PCに残ります。"
+		why := "サービスの認証情報を、指定した通信先への接続に自動で差し込みます。本物の値はあなたの PC に残ります。"
 		badges := []string{BadgeCred}
 		if oa.str("passthrough") == "true" {
 			risk = SeverityHigh
@@ -768,7 +778,7 @@ func (rs *resolver) buildCapability(c *capState) {
 		rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryProxyRoute, Where: where, Lifetime: "sandbox-scoped", Reason: reason})
 	case "host-mount@1":
 		p := rs.r.text(cfg.dstr("path"))
-		it := rs.capItem(c, p, cfg.get("path"), p, SeverityHigh, "あなたの PCのフォルダを sandbox と読み書き可能で共有し、sandbox を削除してもデータが残ります。", BadgeRW, BadgePersist)
+		it := rs.capItem(c, p, cfg.get("path"), p, SeverityHigh, "あなたの PC のフォルダを sandbox と読み書き可能で共有し、sandbox を削除してもデータが残ります。", BadgeRW, BadgePersist)
 		if m := cfg.str("mode"); m != "" {
 			it.Fields = append(it.Fields, Field{"mode", m})
 		}
@@ -818,7 +828,7 @@ func (rs *resolver) buildCapability(c *capState) {
 						text = cmd.disp
 					}
 				}
-				it := rs.capItem(c, fmt.Sprintf("%s[%d]", ph, i), h, rs.r.command(text), SeverityLow, "sandbox の中でコマンドを実行します。あなたの PCには直接影響しません。", BadgeOpaque)
+				it := rs.capItem(c, fmt.Sprintf("%s[%d]", ph, i), h, rs.r.command(text), SeverityLow, "sandbox の中でコマンドを実行します。あなたの PC には直接影響しません。", BadgeOpaque)
 				if u := h.dstr("user"); u != "" {
 					it.Fields = append(it.Fields, Field{"user", u})
 				}
@@ -913,7 +923,7 @@ func (rs *resolver) buildOpaqueCap(c *capState, unknownNS bool) {
 	case "privileged@1", "dockerd@1":
 		why = "sandbox の中で最も強い権限（特権モード）を要求します。"
 	case "host-port@1":
-		why = "あなたの PCのサービスに sandbox から直接接続できるようにします。"
+		why = "あなたの PC のサービスに sandbox から直接接続できるようにします。"
 	}
 	it := rs.capItem(c, "", c.config, c.typ, risk, why, BadgeUnknown)
 	it.Fields = append(it.Fields, fields...)

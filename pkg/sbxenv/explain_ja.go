@@ -383,3 +383,15 @@ func BadgeLabel(b string) string {
 	}
 	return b
 }
+
+// CoverageFromFile reports whether a gap comes from something the files
+// name (a remote kit, a mutable template, an unknown capability) rather
+// than from a premise every run shares: host-wide policy, the built-in
+// agent, and the sbx secret store are never read by a static analysis.
+func CoverageFromFile(kind CoverageKind) bool {
+	switch kind {
+	case CoverageBuiltinAgent, CoverageHostPolicy, CoverageGlobalSecrets:
+		return false
+	}
+	return true
+}

@@ -158,10 +158,13 @@ func TestTUIHeaderShowsTabsSummaryChipsAndStatusBar(t *testing.T) {
 			t.Errorf("title bar missing %q: %q", want, lines[0])
 		}
 	}
-	for _, want := range []string{"[Host実行 ", "[Host永続 ", "[RWマウント ", "[外への許可 ", "[警告 ", "[未展開 "} {
+	for _, want := range []string{"[Host実行 ", "[Host永続 ", "[RWマウント ", "[外への許可 ", "[警告 "} {
 		if !strings.Contains(lines[1], want) {
 			t.Errorf("summary chips missing %q: %q", want, lines[1])
 		}
+	}
+	if strings.Contains(lines[1], "未展開") {
+		t.Errorf("gaps of the static analysis are not a header count: %q", lines[1])
 	}
 	if !strings.Contains(lines[2], "宣言の静的解析") {
 		t.Errorf("the static-analysis notice is missing: %q", lines[2])
@@ -269,7 +272,7 @@ func TestTUIDetailSectionsAndPathWrapping(t *testing.T) {
 	u.press("3", "/", "N", "O", "D", "E", "enter")
 
 	// Assert
-	u.want("▍なぜこの危険度か", "▍解説", "要は:", "▍複数ファイルでの上書き規則", "規則: マップ結合", "▍上書きの履歴", "▍どこで設定されたか")
+	u.want("▍公式の見解（Docker Sandboxes / sandbox-kit-spec）", "▍このツールの判定（独自基準）", "▍解説", "要は:", "▍複数ファイルでの上書き規則", "規則: マップ結合", "▍上書きの履歴", "▍どこで設定されたか")
 	wrapped := 0
 	for _, l := range u.lines() {
 		i := strings.LastIndex(l, "││")
@@ -345,7 +348,9 @@ func TestTUIKeyboardViewsGroupingFilterSearchAndHelp(t *testing.T) {
 		want []string
 		not  []string
 	}{
-		{"overview is the default", nil, []string{"▍基本構成", "▍適用される Kits", "▍ワークスペース・マウント", "▍MCP & Network", "▍資格情報・SSH・ポート・ホスト実行", "▍解析範囲外サマリー"}, []string{"一覧 · "}},
+		{"overview is the default", nil, []string{"▍基本構成", "▍適用される Kits", "▍ワークスペース・マウント", "▍MCP & Network", "▍資格情報・SSH・ポート・ホスト実行"}, []string{"一覧 · ", "解析範囲外", "未展開", "[COVERAGE]"}},
+		{"risk lists no analysis gaps", []string{"2"}, []string{"一覧 · Risk"}, []string{"未展開", "[COVERAGE]"}},
+		{"sources lists the gaps the files name, quietly", []string{"4"}, []string{"[未展開] ghcr.io/example/x:dev", "[未展開] docker.io/sbx/playwright:1.61.1", "[展開済み] ~/proj/sbxenv.yaml"}, []string{"[COVERAGE]", "組み込みエージェントの中身", "PC 全体の sbx 設定"}},
 		{"risk view", []string{"2"}, []string{"一覧 · Risk"}, nil},
 		{"items grouped by layer", []string{"3"}, []string{"一覧 · Items", "▸ 層 L1"}, nil},
 		{"g groups by boundary", []string{"3", "g"}, []string{"▸ 境界: PC 上でのコマンド実行"}, []string{"▸ 層 L1"}},
@@ -359,7 +364,7 @@ func TestTUIKeyboardViewsGroupingFilterSearchAndHelp(t *testing.T) {
 		{"f filters by the first layer", []string{"2", "f"}, []string{"絞り込み（非表示の警告・エラー", ": L1 ~/proj/sbxenv.yaml"}, nil},
 		{"search narrows the list", []string{"3", "/", "a", "g", "e", "n", "t", "enter"}, []string{"agent = claude", "検索: agent（Esc で解除）"}, []string{"ports["}},
 		{"esc clears the search", []string{"3", "/", "a", "g", "enter", "esc"}, []string{"ports["}, []string{"検索:"}},
-		{"help", []string{"?"}, []string{"キー操作", "▍マウス", "[HOST]", "あなたの PC で実行"}, nil},
+		{"help", []string{"?"}, []string{"キー操作", "▍マウス", "[HOST]", "あなたの PC で実行", "静的解析の前提"}, nil},
 		{"any key closes help", []string{"2", "?", "x"}, []string{"一覧 · Risk"}, []string{"キー操作"}},
 	}
 	for _, tc := range cases {
@@ -606,14 +611,19 @@ func TestTUIOverviewCardsAreRoundedPanelsInTwoColumns(t *testing.T) {
 			sideBySide = true
 		}
 	}
-	if corners != 6 {
-		t.Errorf("%d cards, want 6\n%s", corners, u.text())
+	if corners != 5 {
+		t.Errorf("%d cards, want 5\n%s", corners, u.text())
 	}
 	if !sideBySide {
 		t.Errorf("cards should sit in two columns at 130 columns\n%s", u.text())
 	}
 	u.want("エージェント: claude", "ワークスペース（読み書き）: ~/proj", "通信の許可（実行中）: api.example.com",
-		"PC 上で実行: echo hi", "playwright: 未展開（インターネット上のため）", "エージェント claude: 組み込み（未展開）", "テンプレートイメージの中身: ghcr.io/example/x:dev")
+		"PC 上で実行: echo hi", "playwright: リモートの Kit（中身は 4: Sources）")
+	for _, noise := range []string{"組み込み", "PC 全体の sbx 設定", "[COVERAGE]", "解析範囲外"} {
+		if u.has(noise) {
+			t.Errorf("overview shows the analysis premise %q", noise)
+		}
+	}
 }
 
 func TestTUIOverviewEnterOpensTheItemInItems(t *testing.T) {
@@ -633,22 +643,21 @@ func TestTUIOverviewEnterOpensTheItemInItems(t *testing.T) {
 	}
 }
 
-func TestTUIOverviewClickOnAGapOpensItInRisk(t *testing.T) {
+func TestTUIOverviewClickOnAFindingOpensItInItems(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	u := newUI(t, 130, 60, true)
 
 	// Act
-	u.clickOn("テンプレートイメージの中身: ", 4)
+	u.clickOn("PC 上で実行: echo hi", 4)
 
 	// Assert
-	if got := u.listTitle(); !strings.Contains(got, "Risk") {
-		t.Errorf("list title = %q, want Risk", got)
+	if got := u.listTitle(); !strings.Contains(got, "Items") {
+		t.Errorf("list title = %q, want Items", got)
 	}
-	if got := u.detailFirstLine(); got != "未展開: テンプレートイメージの中身" {
+	if got := u.detailFirstLine(); got != "lifecycle.initialize[0]" {
 		t.Errorf("detail = %q", got)
 	}
-	u.want("▍なぜ中身を確認していないか", "静的解析")
 }
 
 func TestTUIOverviewScrollsToKeepTheSelectionOnANarrowScreen(t *testing.T) {
@@ -662,12 +671,30 @@ func TestTUIOverviewScrollsToKeepTheSelectionOnANarrowScreen(t *testing.T) {
 	}
 
 	// Assert
-	u.want("▶ [COVERAGE] インターネット上の Kit", "▍解析範囲外サマリー")
+	u.want("▶ [HOST][OPAQUE] PC 上で実行: echo hi", "▍資格情報・SSH・ポート・ホスト実行")
 	if u.has("▍基本構成") {
 		t.Error("the first card should have scrolled away")
 	}
 	u.press("enter")
-	u.want("● 詳細", "← 戻る", "未展開: インターネット上の Kit")
+	u.want("● 詳細", "← 戻る", "lifecycle.initialize[0]")
+}
+
+func TestTUISourcesExplainAGapAsAPremise(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	u := newUI(t, 130, 50, true).press("4")
+
+	// Act
+	u.clickOn("[未展開] docker.io/sbx/playwright", 4)
+
+	// Assert
+	if got := u.detailFirstLine(); got != "未展開: インターネット上の Kit" {
+		t.Errorf("detail = %q", got)
+	}
+	u.want("▍なぜ中身を確認していないか", "静的解析の前提で、問題が見つかったという意味ではありません")
+	if u.has("危険度") {
+		t.Error("a premise of the analysis gets no risk level")
+	}
 }
 
 // detailText is the detail panel of a two-pane frame.
@@ -736,5 +763,16 @@ func TestTUIItemDetailExplainsItsRisk(t *testing.T) {
 	u := newUI(t, 130, 60, true).press("3", "/", "i", "n", "i", "t", "enter")
 
 	// Assert
-	u.want("危険度: 高（HIGH）", "▍なぜこの危険度か", "あなたの PC", "[HOST] あなたの PC で実行", "▍sandbox の外との関わり", "PC 上でのコマンド実行")
+	u.want("▍公式の見解（Docker Sandboxes / sandbox-kit-spec）", "lifecycle のコマンドはホスト上であなたのユーザー権限で動きます",
+		"--skip-host-commands", "#approve-or-skip-host-commands", "▍このツールの判定（独自基準）", "危険度: 高（HIGH）", "理由: ", "公式の評価ではありません",
+		"[HOST] あなたの PC で実行", "▍sandbox の外との関わり", "PC 上でのコマンド実行")
+}
+
+func TestTUIDetailSaysWhenTheDocsGiveNoWarning(t *testing.T) {
+	t.Parallel()
+	// Arrange / Act
+	u := newUI(t, 130, 60, true).press("3", "/", "N", "O", "D", "E", "enter")
+
+	// Assert
+	u.want("▍公式の見解（Docker Sandboxes / sandbox-kit-spec）", "公式ドキュメントに特段の警告記載なし", "▍このツールの判定（独自基準）", "危険度: 情報（INFO）")
 }
