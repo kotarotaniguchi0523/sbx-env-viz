@@ -2,6 +2,7 @@ package render_test
 
 import (
 	"bytes"
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -152,7 +153,7 @@ func TestTUIHeaderShowsTabsSummaryChipsAndStatusBar(t *testing.T) {
 
 	// Assert
 	lines := u.lines()
-	for _, want := range []string{"sbx-env-viz", "1:Risk", "2:Items", "3:Sources"} {
+	for _, want := range []string{"sbx-env-viz", "1:Overview", "2:Risk", "3:Items", "4:Sources"} {
 		if !strings.Contains(lines[0], want) {
 			t.Errorf("title bar missing %q: %q", want, lines[0])
 		}
@@ -183,7 +184,7 @@ func TestTUIPanelsUseRoundedBordersAndSplitAt120Columns(t *testing.T) {
 		t.Run(strconv.Itoa(tc.width), func(t *testing.T) {
 			t.Parallel()
 			// Act
-			u := newUI(t, tc.width, 30, true)
+			u := newUI(t, tc.width, 30, true).press("2")
 
 			// Assert
 			corners := 0
@@ -231,7 +232,7 @@ func borderColours(frame string) []string {
 func TestTUIFocusedPanelIsMarkedAndAccented(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	u := newUI(t, 130, 30, false)
+	u := newUI(t, 130, 30, false).press("2")
 	const accent, blur = "122;162;247", "59;66;97" // #7aa2f7, #3b4261
 
 	// Act / Assert: the list starts focused.
@@ -265,10 +266,10 @@ func TestTUIDetailSectionsAndPathWrapping(t *testing.T) {
 	u := &ui{t: t, m: m}
 
 	// Act
-	u.press("2", "/", "N", "O", "D", "E", "enter")
+	u.press("3", "/", "N", "O", "D", "E", "enter")
 
 	// Assert
-	u.want("▍解説", "要は:", "▍上書き規則", "マップ結合:", "▍上書き履歴", "▍出典")
+	u.want("▍なぜこの危険度か", "▍解説", "要は:", "▍複数ファイルでの上書き規則", "規則: マップ結合", "▍上書きの履歴", "▍どこで設定されたか")
 	wrapped := 0
 	for _, l := range u.lines() {
 		i := strings.LastIndex(l, "││")
@@ -325,7 +326,7 @@ func TestTUIEscapesControlCharactersInValues(t *testing.T) {
 	u := &ui{t: t, m: m}
 
 	// Act
-	u.press("2", "/", "E", "V", "I", "L", "enter")
+	u.press("3", "/", "E", "V", "I", "L", "enter")
 
 	// Assert
 	if strings.Contains(u.frame(), "\x1b[31m") || u.has("red\nnext") {
@@ -344,17 +345,22 @@ func TestTUIKeyboardViewsGroupingFilterSearchAndHelp(t *testing.T) {
 		want []string
 		not  []string
 	}{
-		{"items grouped by layer", []string{"2"}, []string{"一覧 · Items", "▸ 層 L1"}, nil},
-		{"g groups by boundary", []string{"2", "g"}, []string{"▸ 境界: host-exec"}, []string{"▸ 層 L1"}},
-		{"g groups by kit", []string{"2", "g", "g"}, []string{"▸ kit: net"}, nil},
-		{"g cycles back to layer", []string{"2", "g", "g", "g"}, []string{"▸ 層 L1"}, nil},
-		{"tab moves to the next view", []string{"tab"}, []string{"一覧 · Items"}, nil},
-		{"sources view", []string{"3"}, []string{"一覧 · Sources", "~/proj/sbxenv.yaml"}, nil},
-		{"f filters by the first layer", []string{"f"}, []string{"絞り込み（非表示の警告・エラー", ": L1 ~/proj/sbxenv.yaml"}, nil},
-		{"search narrows the list", []string{"2", "/", "a", "g", "e", "n", "t", "enter"}, []string{"agent = claude", "検索: agent（Esc で解除）"}, []string{"ports["}},
-		{"esc clears the search", []string{"2", "/", "a", "g", "enter", "esc"}, []string{"ports["}, []string{"検索:"}},
-		{"help", []string{"?"}, []string{"キー操作", "▍マウス", "[HOST] ホストで実行"}, nil},
-		{"any key closes help", []string{"?", "x"}, []string{"一覧 · Risk"}, []string{"キー操作"}},
+		{"overview is the default", nil, []string{"▍基本構成", "▍適用される Kits", "▍ワークスペース・マウント", "▍MCP & Network", "▍資格情報・SSH・ポート・ホスト実行", "▍解析範囲外サマリー"}, []string{"一覧 · "}},
+		{"risk view", []string{"2"}, []string{"一覧 · Risk"}, nil},
+		{"items grouped by layer", []string{"3"}, []string{"一覧 · Items", "▸ 層 L1"}, nil},
+		{"g groups by boundary", []string{"3", "g"}, []string{"▸ 境界: PC 上でのコマンド実行"}, []string{"▸ 層 L1"}},
+		{"g groups by kit", []string{"3", "g", "g"}, []string{"▸ kit: net"}, nil},
+		{"g cycles back to layer", []string{"3", "g", "g", "g"}, []string{"▸ 層 L1"}, nil},
+		{"tab moves to the next view", []string{"tab"}, []string{"一覧 · Risk"}, nil},
+		{"] moves to the next view", []string{"]", "]"}, []string{"一覧 · Items"}, nil},
+		{"[ wraps to the last view", []string{"["}, []string{"一覧 · Sources"}, nil},
+		{"1 returns to the overview", []string{"3", "1"}, []string{"▍基本構成"}, []string{"一覧 · "}},
+		{"sources view", []string{"4"}, []string{"一覧 · Sources", "~/proj/sbxenv.yaml"}, nil},
+		{"f filters by the first layer", []string{"2", "f"}, []string{"絞り込み（非表示の警告・エラー", ": L1 ~/proj/sbxenv.yaml"}, nil},
+		{"search narrows the list", []string{"3", "/", "a", "g", "e", "n", "t", "enter"}, []string{"agent = claude", "検索: agent（Esc で解除）"}, []string{"ports["}},
+		{"esc clears the search", []string{"3", "/", "a", "g", "enter", "esc"}, []string{"ports["}, []string{"検索:"}},
+		{"help", []string{"?"}, []string{"キー操作", "▍マウス", "[HOST]", "あなたの PC で実行"}, nil},
+		{"any key closes help", []string{"2", "?", "x"}, []string{"一覧 · Risk"}, []string{"キー操作"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -398,7 +404,7 @@ func TestTUIFilterHeaderKeepsTheHiddenCountOnLongPaths(t *testing.T) {
 func TestTUINarrowScreenEnterAndEscape(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	u := newUI(t, 80, 30, true)
+	u := newUI(t, 80, 30, true).press("2")
 
 	// Act / Assert
 	u.press("enter")
@@ -413,7 +419,7 @@ func TestTUINarrowScreenEnterAndEscape(t *testing.T) {
 func TestTUIDetailScrollStopsAtTheEnd(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	u := newUI(t, 130, 30, true).press("2", "l")
+	u := newUI(t, 130, 30, true).press("3", "l")
 
 	// Act
 	for i := 0; i < 200; i++ {
@@ -443,7 +449,7 @@ func TestTUIRunQuitsAndReturnsTheSummaryLine(t *testing.T) {
 	var line string
 	var err error
 	go func() {
-		line, err = tui.Run(p, strings.NewReader("2gq"), &out)
+		line, err = tui.Run(p, strings.NewReader("3gq"), &out)
 		close(done)
 	}()
 	select {
@@ -472,18 +478,20 @@ func TestTUIMouseClickOnTabsSwitchesViews(t *testing.T) {
 	u := newUI(t, 130, 30, true)
 
 	// Act / Assert
-	for _, tab := range []struct{ label, view string }{{"2:Items", "Items"}, {"3:Sources", "Sources"}, {"1:Risk", "Risk"}} {
+	for _, tab := range []struct{ label, view string }{{"3:Items", "Items"}, {"4:Sources", "Sources"}, {"2:Risk", "Risk"}} {
 		u.clickOn(tab.label, 0)
 		if got := u.listTitle(); !strings.Contains(got, tab.view) {
 			t.Errorf("click %s: list title = %q", tab.label, got)
 		}
 	}
+	u.clickOn("1:Overview", 0)
+	u.want("▍基本構成")
 }
 
 func TestTUIMouseClickOnGroupAndFilterChips(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	u := newUI(t, 130, 40, true).press("2")
+	u := newUI(t, 130, 40, true).press("3")
 
 	// Act / Assert
 	u.clickOn("境界別", 3)
@@ -501,7 +509,7 @@ func TestTUIMouseClickOnGroupAndFilterChips(t *testing.T) {
 func TestTUIMouseClickOnARowSelectsIt(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	u := newUI(t, 130, 40, true).press("2")
+	u := newUI(t, 130, 40, true).press("3")
 
 	// Act
 	u.clickOn("agent = claude", 5)
@@ -518,7 +526,7 @@ func TestTUIMouseClickOnARowSelectsIt(t *testing.T) {
 func TestTUIMouseOnANarrowScreenOpensAndClosesTheDetail(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	u := newUI(t, 80, 30, true).press("2")
+	u := newUI(t, 80, 30, true).press("3")
 
 	// Act
 	u.clickOn("agent = claude", 5)
@@ -535,7 +543,7 @@ func TestTUIMouseOnANarrowScreenOpensAndClosesTheDetail(t *testing.T) {
 func TestTUIMouseClickOnAPanelMovesFocus(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	u := newUI(t, 130, 30, true)
+	u := newUI(t, 130, 30, true).press("2")
 
 	// Act / Assert
 	x, y := u.find("詳細", 4)
@@ -553,7 +561,7 @@ func TestTUIMouseClickOnAPanelMovesFocus(t *testing.T) {
 func TestTUIMouseWheelScrollsThePanelUnderThePointer(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	u := newUI(t, 130, 30, true).press("2")
+	u := newUI(t, 130, 30, true).press("3")
 	before := u.detailFirstLine()
 	lx, ly := u.find("一覧", 4)
 
@@ -581,4 +589,152 @@ func TestTUIMouseWheelScrollsThePanelUnderThePointer(t *testing.T) {
 	if got := u.detailFirstLine(); got != top {
 		t.Errorf("wheel up returns to the top: %q, want %q", got, top)
 	}
+}
+
+// --- overview ----------------------------------------------------------------
+
+func TestTUIOverviewCardsAreRoundedPanelsInTwoColumns(t *testing.T) {
+	t.Parallel()
+	// Arrange / Act
+	u := newUI(t, 130, 60, true)
+
+	// Assert
+	corners, sideBySide := 0, false
+	for _, l := range u.lines() {
+		corners += strings.Count(l, "╭")
+		if strings.Count(l, "│") >= 4 {
+			sideBySide = true
+		}
+	}
+	if corners != 6 {
+		t.Errorf("%d cards, want 6\n%s", corners, u.text())
+	}
+	if !sideBySide {
+		t.Errorf("cards should sit in two columns at 130 columns\n%s", u.text())
+	}
+	u.want("エージェント: claude", "ワークスペース（読み書き）: ~/proj", "通信の許可（実行中）: api.example.com",
+		"PC 上で実行: echo hi", "playwright: 未展開（インターネット上のため）", "エージェント claude: 組み込み（未展開）", "テンプレートイメージの中身: ghcr.io/example/x:dev")
+}
+
+func TestTUIOverviewEnterOpensTheItemInItems(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	u := newUI(t, 130, 40, true)
+
+	// Act
+	u.press("enter")
+
+	// Assert
+	if got := u.listTitle(); !strings.Contains(got, "Items") {
+		t.Errorf("list title = %q, want Items", got)
+	}
+	if got := u.detailFirstLine(); got != "agent" {
+		t.Errorf("detail = %q, want the selected entry's item", got)
+	}
+}
+
+func TestTUIOverviewClickOnAGapOpensItInRisk(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	u := newUI(t, 130, 60, true)
+
+	// Act
+	u.clickOn("テンプレートイメージの中身: ", 4)
+
+	// Assert
+	if got := u.listTitle(); !strings.Contains(got, "Risk") {
+		t.Errorf("list title = %q, want Risk", got)
+	}
+	if got := u.detailFirstLine(); got != "未展開: テンプレートイメージの中身" {
+		t.Errorf("detail = %q", got)
+	}
+	u.want("▍なぜ中身を確認していないか", "静的解析")
+}
+
+func TestTUIOverviewScrollsToKeepTheSelectionOnANarrowScreen(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	u := newUI(t, 80, 24, true)
+
+	// Act: walk to the last entry, far below the first screen.
+	for i := 0; i < 40; i++ {
+		u.press("j")
+	}
+
+	// Assert
+	u.want("▶ [COVERAGE] インターネット上の Kit", "▍解析範囲外サマリー")
+	if u.has("▍基本構成") {
+		t.Error("the first card should have scrolled away")
+	}
+	u.press("enter")
+	u.want("● 詳細", "← 戻る", "未展開: インターネット上の Kit")
+}
+
+// detailText is the detail panel of a two-pane frame.
+func (u *ui) detailText() string {
+	var b strings.Builder
+	for _, l := range u.lines() {
+		if i := strings.LastIndex(l, "││"); i >= 0 {
+			b.WriteString(strings.TrimRight(strings.TrimSuffix(l[i+len("││"):], "│"), " "))
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
+}
+
+func TestTUIDetailPaneSpeaksPlainJapaneseOnly(t *testing.T) {
+	t.Parallel()
+	// Arrange: English machine text the Plan carries for JSON consumers.
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	var english []string
+	for _, d := range p.Diagnostics {
+		english = append(english, d.Message)
+	}
+	for _, b := range p.Boundaries {
+		english = append(english, b.Reason)
+	}
+	for _, c := range p.Coverage {
+		english = append(english, c.Reason)
+	}
+	prose := regexp.MustCompile(`[a-z]+(?: [a-z]+){3,}`)
+	if prose.FindString(strings.Join(english, "\n")) == "" {
+		t.Fatal("the fixture carries no English prose to look for")
+	}
+	machine := regexp.MustCompile(`実行/所在=|寿命=|proxyManaged|host-exec|host-persistent|network-egress|not expanded|\[(WARNING|ERROR)\]`)
+
+	for _, view := range []string{"2", "3", "4"} {
+		u := newUI(t, 250, 200, true).press(view)
+		var n int
+		if _, err := fmt.Sscanf(u.listTitle()[strings.Index(u.listTitle(), "（")+len("（"):], "%d", &n); err != nil || n == 0 {
+			t.Fatalf("view %s: list title %q", view, u.listTitle())
+		}
+		for i := 0; i < n; i++ {
+			// Act
+			d := u.detailText()
+
+			// Assert
+			for _, e := range english {
+				// A run of four plain English words is prose, not a value.
+				if w := prose.FindString(e); w != "" && strings.Contains(d, w) {
+					t.Errorf("view %s row %d shows English %q:\n%s", view, i, w, d)
+				}
+			}
+			if m := machine.FindString(d); m != "" {
+				t.Errorf("view %s row %d shows %q:\n%s", view, i, m, d)
+			}
+			if view != "4" && !strings.Contains(d, "危険度") && !strings.Contains(d, "重要度") {
+				t.Errorf("view %s row %d does not state a risk level:\n%s", view, i, d)
+			}
+			u.press("j")
+		}
+	}
+}
+
+func TestTUIItemDetailExplainsItsRisk(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	u := newUI(t, 130, 60, true).press("3", "/", "i", "n", "i", "t", "enter")
+
+	// Assert
+	u.want("危険度: 高（HIGH）", "▍なぜこの危険度か", "あなたの PC", "[HOST] あなたの PC で実行", "▍sandbox の外との関わり", "PC 上でのコマンド実行")
 }

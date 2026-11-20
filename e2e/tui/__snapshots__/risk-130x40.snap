@@ -1,42 +1,42 @@
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ sbx-env-viz   1:Risk   2:Items   3:Sources                                                                                       │
+│ sbx-env-viz   1:Overview   2:Risk   3:Items   4:Sources                                                                          │
 │ [Host実行 2]   [Host永続 4]   [RWマウント 2]   [外への許可 3]   [エラー 0]   [警告 5]   [未展開 6]                               │
 │宣言の静的解析（稼働中 sandbox の状態ではない） env-args: workspace=./web-app (default), channel=stable (default)                 │
 │絞り込み  全て   L1   L2   K1   K2                                                                                                │
 │╭────────────────────────────────────────────────────────╮╭──────────────────────────────────────────────────────────────────────╮│
 ││● 一覧 · Risk（31 件）                                  ││  詳細                                                                ││
-││ HIGH  [WARNING] BINDING_DOMAIN_MISSING bindings.exampl…││ BINDING_DOMAIN_MISSING                                               ││
-││ HIGH  [WARNING] HOST_MOUNT_SHARED kit history host-mou…││ レベル: warning                                                      ││
-││ HIGH  [WARNING] PORT_ALL_INTERFACES ports[3000/tcp4] b…││ 分類: credentials                                                    ││
-││ HIGH  [WARNING] PULL_ALWAYS_DEV sandboxOptions.templat…││ bindings.example.apiKey.domains does not approve                     ││
-││ HIGH  [WARNING] SSH_AGENT_UNRESTRICTED kit egress requ…││ api.internal.example.com used by kit egress; sbx asks for approval at││
-││ HIGH  [CRED][HOST][OPAQUE] secrets.github = command: g…││ create time (and fails unattended runs)                              ││
+││ HIGH  [WARNING] 認証情報の差し込み先が未承認           ││ 認証情報の差し込み先が未承認                                         ││
+││ HIGH  [WARNING] 共有フォルダが他の sandbox とも共有さ… ││ 重要度: 警告（危険・要確認）                                         ││
+││ HIGH  [WARNING] ポートが外部ネットワークに公開される   ││                                                                      ││
+││ HIGH  [WARNING] 中身が変わり続けるイメージを毎回取得   ││ ▍何が起きるか                                                        ││
+││ HIGH  [WARNING] SSH 鍵で何にでも署名できる             ││   Kit が認証情報を差し込みたい通信先の一部が、bindings で承認されてい││
+││ HIGH  [CRED][HOST][OPAQUE] secrets.github = command: g…││   ません。作成時に承認を求められ、自動実行では失敗します。           ││
 ││ HIGH  [!] ports[3000/tcp4] = 0.0.0.0:4000 -> sandbox:3…││                                                                      ││
-││ HIGH  [HOST][OPAQUE] lifecycle.postCreate[0] = ./hooks…││ ▍場所                                                                ││
-││ HIGH  [!][SSH][HOST] kit:egress/ssh-agent@1/runtime = …││   ~/proj/base.sbxenv.yaml:41                                         ││
-││ HIGH  [!][RW][PERSIST] kit:history/host-mount@1//home/…││   ~/proj/kits/egress/egress.yaml:19 (via L1:17 kits[./kits/egress])  ││
-││ MED   [RW] workspace = ~/proj/web-app                  ││                                                                      ││
-││ MED   [CRED] secrets.example = ref: op://Private/Examp…││ bindings.example.apiKey                                              ││
-││ MED   [!][CRED][PERSIST] bindings.example.apiKey = api…││ 値: api.example.com                                                  ││
-││ MED   [PERSIST] mcp.servers[docs] = url: https://mcp.e…││ リスク: medium  [!] [CRED] [PERSIST]                                 ││
-││ MED   [UNKNOWN] kits[docker.io/sbx/playwright:1.61.1] …││   domains: api.example.com                                           ││
-││ MED   [NET] kit:egress/network-policy@1/runtime.allow/…││                                                                      ││
-││ MED   [CRED] kit:egress/credential@1/example/runtime =…││ ▍解説（bindings.<service>.apiKey）                                   ││
-││ MED   [UNKNOWN] kit:egress/io.example/telemetry@2 = io…││ 要は: kit の credential@1（apiKey                                    ││
-││ MED   [COVERAGE] 未展開 builtin-agent: claude          ││       方式）が資格情報を差し込んでよいドメインの承認。               ││
-││ MED   [COVERAGE] 未展開 host-local-policy: sbx policy …││ 注意: ユーザー全体の credentials.yaml に結合され、sbx env rm         ││
-││ MED   [COVERAGE] 未展開 kit-env-reference: history: ${…││       でも残ります（--prune-bindings で削除、ただし他の sandbox      ││
-││ MED   [COVERAGE] 未展開 mutable-template: ghcr.io/exam…││       と共有）。秘密の値そのものは持ちません。                       ││
-││ MED   [COVERAGE] 未展開 remote-kit: docker.io/sbx/play…││                                                                      ││
-││ MED   [COVERAGE] 未展開 unknown-capability: egress: io…││ ▍上書き規則                                                          ││
-││ LOW   [!] sandboxOptions.template = ghcr.io/example/co…││ マップ結合: マップ結合。domains リストは連結されます。               ││
-││ LOW   kits[./kits/egress] = ./kits/egress {apiHost=api…││ 反映: 既存 sandbox には効かず、sbx env rm → create                   ││
-││ LOW   kits[./kits/history] = ./kits/history            ││       で作り直したときに反映されます。                               ││
-││ LOW   [NET] kit:egress/network-policy@1/install.allow/…││ 参照: https://docs.docker.com/ai/sandboxes/configuration/            ││
-││ LOW   [NET] kit:egress/network-policy@1/runtime.allow/…││       environment-files/#bindings                                    ││
-││ LOW   kit:egress/git-identity@1 = user.name / user.ema…││                                                                      ││
-││ LOW   [OPAQUE] kit:history/lifecycle@1/startup[0] = sh…││ ▍上書き履歴                                                          ││
-││                                                        ││   set     api.example.com                                            ││
+││ HIGH  [HOST][OPAQUE] lifecycle.postCreate[0] = ./hooks…││ ▍どうすればよいか                                                    ││
+││ HIGH  [!][SSH][HOST] kit:egress/ssh-agent@1/runtime = …││   bindings の domains に通信先を追加してください。                   ││
+││ HIGH  [!][RW][PERSIST] kit:history/host-mount@1//home/…││                                                                      ││
+││ MED   [RW] workspace = ~/proj/web-app                  ││ ▍場所                                                                ││
+││ MED   [CRED] secrets.example = ref: op://Private/Examp…││   ~/proj/base.sbxenv.yaml の 41 行目                                 ││
+││ MED   [!][CRED][PERSIST] bindings.example.apiKey = api…││   ~/proj/kits/egress/egress.yaml の 19 行目（L1:17                   ││
+││ MED   [PERSIST] mcp.servers[docs] = url: https://mcp.e…││   kits[./kits/egress] 経由）                                         ││
+││ MED   [UNKNOWN] kits[docker.io/sbx/playwright:1.61.1] …││                                                                      ││
+││ MED   [NET] kit:egress/network-policy@1/runtime.allow/…││ ▍対象の設定                                                          ││
+││ MED   [CRED] kit:egress/credential@1/example/runtime =…││                                                                      ││
+││ MED   [UNKNOWN] kit:egress/io.example/telemetry@2 = io…││ bindings.example.apiKey                                              ││
+││ MED   [COVERAGE] 未展開 組み込みエージェントの中身: cl…││ 値: api.example.com                                                  ││
+││ MED   [COVERAGE] 未展開 PC 全体の sbx 設定: sbx policy…││ 危険度: 中（MEDIUM）                                                 ││
+││ MED   [COVERAGE] 未展開 sandbox 内の環境変数: history:…││   承認した通信先: api.example.com                                    ││
+││ MED   [COVERAGE] 未展開 テンプレートイメージの中身: gh…││                                                                      ││
+││ MED   [COVERAGE] 未展開 インターネット上の Kit: docker…││ ▍なぜこの危険度か                                                    ││
+││ MED   [COVERAGE] 未展開 標準にない要求: egress: io.exa…││   認証情報を差し込んでよい通信先の承認で、あなたの PC全体の設定（cred││
+││ LOW   [!] sandboxOptions.template = ghcr.io/example/co…││   entials.yaml）に残ります。                                         ││
+││ LOW   kits[./kits/egress] = ./kits/egress {apiHost=api…││   [!] 指摘あり                                                       ││
+││ LOW   kits[./kits/history] = ./kits/history            ││   [CRED] 認証情報の受け渡し                                          ││
+││ LOW   [NET] kit:egress/network-policy@1/install.allow/…││   [PERSIST] sandbox を消しても PC に残る                             ││
+││ LOW   [NET] kit:egress/network-policy@1/runtime.allow/…││                                                                      ││
+││ LOW   kit:egress/git-identity@1 = user.name / user.ema…││ ▍解説（bindings.<service>.apiKey）                                   ││
+││ LOW   [OPAQUE] kit:history/lifecycle@1/startup[0] = sh…││ 要は: Kit が API キーを使ってよいことと、送ってよい通信先を承認する設││
+││                                                        ││       定です。承認はあなたの PC 全体の設定に残り、他の sandbox とも共││
 │╰────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────╯│
-│ q  終了  ?  ヘルプ  1-3  ビュー  j/k  移動  Enter  詳細  h/l  ペイン  g  グループ  f  絞り込み  /  検索  マウス: クリックで選択… │
+│ q  終了  ?  ヘルプ  1-4  画面  j/k  移動  Enter  詳細  h/l  ペイン  g  グループ  f  絞り込み  /  検索  マウス: クリックで選択・… │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

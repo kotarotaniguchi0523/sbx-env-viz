@@ -152,6 +152,10 @@ func (m *Model) contextBar(w int) string {
 
 func (m *Model) chipBar(w int) string {
 	s := &strip{m: m, y: 3}
+	if m.view == viewOverview {
+		s.text("全体の構成をカードで表示。項目を選んで Enter（またはクリック）で詳細へ移動します", m.pal.chipLabel)
+		return trunc(s.b.String(), w)
+	}
 	if m.view == viewItems {
 		s.text("グループ ", m.pal.chipLabel)
 		for i, n := range groupNames {
@@ -209,7 +213,7 @@ func (m *Model) stateLine() string {
 func (m *Model) statusBar(w int) string {
 	var b strings.Builder
 	for _, kv := range [][2]string{
-		{"q", "終了"}, {"?", "ヘルプ"}, {"1-3", "ビュー"}, {"j/k", "移動"}, {"Enter", "詳細"},
+		{"q", "終了"}, {"?", "ヘルプ"}, {"1-4", "画面"}, {"j/k", "移動"}, {"Enter", "詳細"},
 		{"h/l", "ペイン"}, {"g", "グループ"}, {"f", "絞り込み"}, {"/", "検索"},
 	} {
 		b.WriteString(m.pal.keyCap.Render(kv[0]))
@@ -225,6 +229,8 @@ func (m *Model) panes(w, top, ph int) string {
 	switch {
 	case m.help:
 		return m.box(w, ph, m.helpLines(w-2), true)
+	case m.view == viewOverview:
+		return m.overviewPanes(w, top, ph)
 	case m.twoPane():
 		lw := w * 45 / 100
 		rw := w - lw

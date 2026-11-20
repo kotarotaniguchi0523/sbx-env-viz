@@ -90,7 +90,7 @@ func (rs *resolver) markSkippedGroups(k *kitState) {
 		b := bindings.get(c.config.str("service"))
 		for _, mech := range []string{"apiKey", "oauth"} {
 			if c.config.get(mech) != nil && b.get(mech) == nil {
-				return fmt.Sprintf("credential %s has no bindings.%s.%s", rs.r.text(c.config.dstr("service")), rs.r.text(c.config.dstr("service")), mech)
+				return fmt.Sprintf("認証情報 %s の使用が承認されていない（bindings.%s.%s がない）ため、この任意の要求は省略されます", rs.r.text(c.config.dstr("service")), rs.r.text(c.config.dstr("service")), mech)
 			}
 		}
 		return ""
@@ -112,7 +112,7 @@ func (rs *resolver) markSkippedGroups(k *kitState) {
 		for _, m := range members {
 			if why := unbound(m); why != "" {
 				for _, x := range members {
-					x.skipped, x.skipReason = true, "its optional group is skipped because "+why
+					x.skipped, x.skipReason = true, "同じグループの要求を満たせないため、グループごと省略されます: "+why
 				}
 				break
 			}

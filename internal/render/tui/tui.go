@@ -1,7 +1,7 @@
 // Package tui is the interactive Bubble Tea v2 view of a Plan.
 //
-// Views: 1 Risk (default), 2 Items (g cycles layer / boundary / kit
-// grouping), 3 Sources. At 120 columns or wider the list and the detail
+// Views: 1 Overview (default; cards that jump to details), 2 Risk, 3 Items
+// (g cycles layer / boundary / kit grouping), 4 Sources. At 120 columns or wider the list and the detail
 // pane sit side by side in rounded panels; narrower terminals show one pane
 // at a time. Tabs, chips, list rows, and panes respond to the mouse.
 package tui
@@ -25,12 +25,14 @@ const TwoPaneMinWidth = 120
 type viewID int
 
 const (
-	viewRisk viewID = iota
+	viewOverview viewID = iota
+	viewRisk
 	viewItems
 	viewSources
+	viewCount
 )
 
-var viewNames = []string{"1:Risk", "2:Items", "3:Sources"}
+var viewNames = []string{"1:Overview", "2:Risk", "3:Items", "4:Sources"}
 
 type groupMode int
 
@@ -59,7 +61,7 @@ type Model struct {
 	idx     map[string]sbxenv.Source
 	view    viewID
 	group   groupMode
-	cursor  [3]int
+	cursor  [viewCount]int
 	width   int
 	height  int
 	focus   int // 0 list, 1 detail
@@ -73,8 +75,11 @@ type Model struct {
 	searching bool
 	query     string
 
-	pal  palette
-	rows []row
+	pal   palette
+	rows  []row
+	cards []card
+	// oScroll is the first visible canvas line of the Overview.
+	oScroll int
 	// zones are the clickable regions of the last frame; mouse events are
 	// resolved against them so drawing and hit-testing never disagree.
 	zones []zone
@@ -119,6 +124,9 @@ func (m *Model) itemVisible(it *sbxenv.Item) bool {
 func (m *Model) rebuild() {
 	var rows []row
 	switch m.view {
+	case viewOverview:
+		m.buildOverview()
+		rows = m.rows
 	case viewRisk:
 		for _, r := range model.RiskList(m.plan) {
 			if f := m.filter(); f != "" {
@@ -131,10 +139,19 @@ func (m *Model) rebuild() {
 					continue
 				}
 			}
-			if !m.matches(strings.Join(r.Badges, "") + " " + r.Label) {
+			label, search := r.Label, r.Label
+			switch {
+			case r.Diag != nil:
+				label = sbxenv.ExplainDiagnostic(r.Diag.Code).Title
+				search = label + " " + r.Label
+			case r.Cover != nil:
+				label = "未展開 " + sbxenv.CoverageTitle(r.Cover.Kind) + ": " + r.Cover.Ref
+				search = label + " " + r.Label
+			}
+			if !m.matches(strings.Join(r.Badges, "") + " " + search) {
 				continue
 			}
-			rows = append(rows, row{label: r.Label, badges: r.Badges, sev: r.Severity, item: r.Item, diag: r.Diag, cover: r.Cover})
+			rows = append(rows, row{label: label, badges: r.Badges, sev: r.Severity, item: r.Item, diag: r.Diag, cover: r.Cover})
 		}
 	case viewItems:
 		groups := map[string][]*sbxenv.Item{}
@@ -167,7 +184,7 @@ func (m *Model) rebuild() {
 			if !s.Expanded {
 				state = "未展開"
 			}
-			label := fmt.Sprintf("%-7s %-13s %s [%s]", s.ID, s.Kind, s.Path, state)
+			label := fmt.Sprintf("%-7s %s [%s] %s", s.ID, s.Path, state, sbxenv.SourceKindLabel(s.Kind))
 			if !m.matches(label) {
 				continue
 			}
@@ -177,7 +194,7 @@ func (m *Model) rebuild() {
 			rows = append(rows, row{header: true, label: fmt.Sprintf("未展開・解析範囲外 (%d)", len(m.plan.Coverage))})
 			for i := range m.plan.Coverage {
 				c := &m.plan.Coverage[i]
-				label := fmt.Sprintf("[%s] %s", c.Kind, c.Ref)
+				label := sbxenv.CoverageTitle(c.Kind) + ": " + c.Ref
 				if f := m.filter(); f != "" && c.Origin.SourceID != f {
 					continue
 				}
@@ -207,12 +224,12 @@ func (m *Model) groupKey(it *sbxenv.Item) string {
 		if len(bs) == 0 {
 			return "境界: なし（sandbox 内の設定）"
 		}
-		return fmt.Sprintf("境界: %s (%s)", bs[0].Kind, bs[0].Where)
+		return "境界: " + sbxenv.BoundaryTitle(bs[0].Kind)
 	case groupKit:
 		if it.Kit != "" {
 			return "kit: " + it.Kit
 		}
-		return "kit: (環境ファイル直書き)"
+		return "kit: （環境ファイルに直接書いた設定）"
 	}
 	o := model.LastOrigin(it)
 	if s, ok := m.idx[o.SourceID]; ok {
@@ -303,6 +320,12 @@ func (m *Model) click(x, y int) {
 			m.rebuild()
 		}
 	case zoneRow:
+		if m.view == viewOverview {
+			if m.selectRow(z.value) {
+				m.jump()
+			}
+			return
+		}
 		if m.selectRow(z.value) {
 			m.focus = 0
 			if !m.twoPane() {
@@ -376,12 +399,12 @@ func (m *Model) key(k string) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "?":
 		m.help = true
-	case "1", "2", "3":
+	case "1", "2", "3", "4":
 		m.setView(viewID(k[0] - '1'))
 	case "]", "tab":
-		m.setView((m.view + 1) % 3)
+		m.setView((m.view + 1) % viewCount)
 	case "[", "shift+tab":
-		m.setView((m.view + 2) % 3)
+		m.setView((m.view + viewCount - 1) % viewCount)
 	case "j", "down":
 		if m.inDetail() {
 			m.scrollDetail(1)
@@ -416,7 +439,9 @@ func (m *Model) key(k string) (tea.Model, tea.Cmd) {
 		m.query = ""
 		m.rebuild()
 	case "l", "right", "enter":
-		if m.twoPane() {
+		if m.view == viewOverview {
+			m.jump()
+		} else if m.twoPane() {
 			m.focus = 1
 		} else {
 			m.detail = true
@@ -441,6 +466,9 @@ func (m *Model) key(k string) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) inDetail() bool {
+	if m.view == viewOverview {
+		return false
+	}
 	if m.twoPane() {
 		return m.focus == 1
 	}

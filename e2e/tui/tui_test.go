@@ -14,6 +14,7 @@ func TestEightyColumnsShowsOneRoundedPanel(t *testing.T) {
 	t.Parallel()
 	// Arrange / Act
 	s := start(t, launch{cols: 80})
+	s.press("2")
 
 	// Assert
 	lines := s.lines()
@@ -33,6 +34,7 @@ func TestOneHundredThirtyColumnsShowsTwoRoundedPanels(t *testing.T) {
 	t.Parallel()
 	// Arrange / Act
 	s := start(t, launch{cols: 130})
+	s.press("2")
 
 	// Assert
 	lines := s.lines()
@@ -56,10 +58,10 @@ func TestDetailPaneExplainsTheItemInJapanese(t *testing.T) {
 	s := start(t, launch{cols: 130})
 
 	// Act: Items view, search the variable local.sbxenv.yaml overrides.
-	s.press("2", "/", "R", "E", "L", "E", "A", "S", "E", "Enter")
+	s.press("3", "/", "R", "E", "L", "E", "A", "S", "E", "Enter")
 
 	// Assert
-	for _, want := range []string{"env.RELEASE_CHANNEL", "要は:", "▍上書き規則", "マップ結合:", "▍上書き履歴", "shadow", "replace", "~/proj/local.sbxenv.yaml:3"} {
+	for _, want := range []string{"env.RELEASE_CHANNEL", "危険度: 情報（INFO）", "▍なぜこの危険度か", "要は:", "▍複数ファイルでの上書き規則", "規則: マップ結合", "▍上書きの履歴", "上書きされた（無効）:", "上書き:", "~/proj/local.sbxenv.yaml の 3 行目"} {
 		s.expect(want)
 	}
 	s.snapshot("items-detail-130x40", false)
@@ -69,6 +71,7 @@ func TestNarrowScreenOpensAndClosesTheDetail(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	s := start(t, launch{cols: 80})
+	s.press("2")
 
 	// Act / Assert
 	s.press("Enter")
@@ -134,7 +137,10 @@ func TestNumberKeysSwitchViews(t *testing.T) {
 	s := start(t, launch{cols: 130})
 
 	// Act / Assert
-	for _, step := range []struct{ key, want string }{{"", "1:Risk"}, {"2", "2:Items"}, {"3", "3:Sources"}, {"1", "1:Risk"}} {
+	for _, step := range []struct{ key, want string }{
+		{"", "1:Overview"}, {"2", "2:Risk"}, {"3", "3:Items"}, {"4", "4:Sources"}, {"1", "1:Overview"},
+		{"]", "2:Risk"}, {"[", "1:Overview"}, {"[", "4:Sources"},
+	} {
 		if step.key != "" {
 			s.press(step.key)
 		}
@@ -148,12 +154,12 @@ func TestGroupingCyclesThroughLayerBoundaryKit(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	s := start(t, launch{cols: 130})
-	s.press("2")
+	s.press("3")
 
 	// Act / Assert
 	s.expect("▸ 層 L1 ~/proj/base.sbxenv.yaml")
 	s.press("g")
-	s.expect("▸ 境界: host-exec (host)")
+	s.expect("▸ 境界: PC 上でのコマンド実行")
 	s.press("g")
 	s.expect("▸ kit: egress")
 	s.press("g")
@@ -164,6 +170,7 @@ func TestLayerFilterReportsHiddenWarnings(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	s := start(t, launch{cols: 130})
+	s.press("2")
 
 	// Act
 	s.press("f")
@@ -181,7 +188,7 @@ func TestSearchNarrowsAndEscapeClears(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	s := start(t, launch{cols: 130})
-	s.press("2")
+	s.press("3")
 
 	// Act
 	s.press("/", "a", "g", "e", "n", "t", "Enter")
@@ -205,25 +212,25 @@ func TestHelpOpensAndAnyKeyCloses(t *testing.T) {
 	// Act / Assert
 	s.press("?")
 	s.expect("キー操作")
-	s.expect("[HOST] ホストで実行")
+	s.expect("あなたの PC で実行")
 	s.press("x")
 	s.gone("キー操作")
 }
 
-// click presses the left button on the first cell of the first occurrence
-// of text. It passes coordinates rather than MouseClickOptions.OnText,
-// which fails on linux/amd64 in tui-test v0.1.1 ("null native string with
-// nonzero length").
+// click presses and releases the left button on the first cell of the
+// first occurrence of text. The press is written as the SGR mouse sequence
+// a terminal sends (1-based coordinates): tui-test v0.1.1's Mouse.Click
+// fails on linux/amd64 with "null native string with nonzero length".
 func (s *screen) click(text string) {
 	s.t.Helper()
 	loc := s.locations(text)
 	if len(loc) == 0 {
 		s.t.Fatalf("click %q: not on screen\n%s", text, s.text())
 	}
-	x, y := uint16(loc[0].Start.Column), uint16(loc[0].Start.Row)
+	x, y := loc[0].Start.Column+1, loc[0].Start.Row+1
 	before := s.text()
-	if err := s.term.Mouse.Click(tuitest.MouseClickOptions{X: &x, Y: &y}); err != nil {
-		s.t.Fatalf("click %q at %d,%d: %v", text, x, y, err)
+	if err := s.term.Write(fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<0;%d;%dm", x, y, x, y)); err != nil {
+		s.t.Fatalf("click %q: %v", text, err)
 	}
 	s.settle(before)
 }
@@ -274,7 +281,7 @@ func TestMouseClickOnTabsSwitchesViews(t *testing.T) {
 	s := start(t, launch{cols: 130})
 
 	// Act / Assert
-	for _, tab := range []struct{ label, title string }{{"2:Items", "一覧 · Items"}, {"3:Sources", "一覧 · Sources"}, {"1:Risk", "一覧 · Risk"}} {
+	for _, tab := range []struct{ label, title string }{{"3:Items", "一覧 · Items"}, {"4:Sources", "一覧 · Sources"}, {"2:Risk", "一覧 · Risk"}, {"1:Overview", "▍基本構成"}} {
 		s.click(tab.label)
 		s.expect(tab.title)
 		if got := activeView(t, s); got != tab.label {
@@ -287,11 +294,11 @@ func TestMouseClickOnGroupAndFilterChips(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	s := start(t, launch{cols: 130})
-	s.press("2")
+	s.press("3")
 
 	// Act / Assert
 	s.click("境界別")
-	s.expect("▸ 境界: host-exec (host)")
+	s.expect("▸ 境界: PC 上でのコマンド実行")
 	s.click("kit別")
 	s.expect("▸ kit: egress")
 	s.click("L2")
@@ -304,7 +311,7 @@ func TestMouseClickOnARowShowsItsDetail(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	s := start(t, launch{cols: 130})
-	s.press("2")
+	s.press("3")
 
 	// Act
 	s.click("agent = claude")
@@ -318,7 +325,7 @@ func TestMouseOnANarrowScreenOpensAndClosesTheDetail(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	s := start(t, launch{cols: 80})
-	s.press("2")
+	s.press("3")
 
 	// Act / Assert
 	s.click("agent = claude")
@@ -332,6 +339,7 @@ func TestMouseClickOnThePanelsMovesFocus(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	s := start(t, launch{cols: 130})
+	s.press("2")
 
 	// Act / Assert
 	s.click("詳細")
@@ -344,23 +352,116 @@ func TestMouseWheelScrollsThePanelUnderThePointer(t *testing.T) {
 	t.Parallel()
 	// Arrange: 20 rows, so the detail is taller than its panel and can scroll.
 	s := start(t, launch{cols: 130, rows: 20})
-	s.press("2")
+	s.press("3")
 	// "INFO  " only prefixes list rows; the detail title repeats the ID.
 	row := "INFO  kit:egress/network-policy@1/runtime.deny"
 	s.click(row)
-	s.expect("▍解説（network-policy@1）")
+	s.expect("値: runtime deny telemetry.example.com")
 
 	// Act: the wheel over the list moves the selection to the next row.
 	s.wheel(row, true, 1)
 
 	// Assert
-	s.expect("▍解説（credential@1）")
+	s.expect("値: service=example")
 	s.expect("● 一覧")
 
-	// Act: the wheel over the detail scrolls it past its first heading.
-	s.wheel("▍解説（credential@1）", true, 3)
+	// Act: the wheel over the detail scrolls it past its first lines.
+	s.wheel("値: service=example", true, 3)
 
 	// Assert
-	s.gone("▍解説（credential@1）")
+	s.gone("値: service=example")
 	s.expect("● 一覧")
+}
+
+// --- Overview ---------------------------------------------------------------
+
+func TestOverviewIsTheDefaultScreenWithSixCards(t *testing.T) {
+	t.Parallel()
+	// Arrange / Act
+	s := start(t, launch{cols: 130, rows: 70})
+
+	// Assert
+	for _, card := range []string{"▍基本構成", "▍適用される Kits", "▍ワークスペース・マウント", "▍MCP & Network", "▍資格情報・SSH・ポート・ホスト実行", "▍解析範囲外サマリー（6 件）"} {
+		s.expect(card)
+	}
+	if n := len(s.locations("╭")); n != 6 {
+		t.Errorf("%d rounded cards, want 6\n%s", n, s.text())
+	}
+	for _, entry := range []string{"名前: web-app", "playwright: 未展開（インターネット上のため）", "MCP docs: リモート（URL に接続）", "通信の禁止（実行中）: telemetry.example.com", "PC 上で実行: "} {
+		s.expect(entry)
+	}
+	if got := activeView(t, s); got != "1:Overview" {
+		t.Errorf("active view = %q", got)
+	}
+	s.snapshot("overview-130x70", false)
+}
+
+func TestOverviewEnterOpensTheSelectedItem(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	s := start(t, launch{cols: 130})
+
+	// Act
+	s.press("j", "Enter")
+
+	// Assert: the second entry of 基本構成 is the agent.
+	s.expect("一覧 · Items")
+	s.expect("▍解説（agent）")
+	if got := activeView(t, s); got != "3:Items" {
+		t.Errorf("active view = %q", got)
+	}
+}
+
+func TestOverviewClickOnAGapExplainsItInRisk(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	s := start(t, launch{cols: 130, rows: 70})
+
+	// Act
+	s.click("インターネット上の Kit: ")
+
+	// Assert
+	s.expect("一覧 · Risk")
+	s.expect("未展開: インターネット上の Kit")
+	s.expect("▍なぜ中身を確認していないか")
+	s.expect("静的解析ツール")
+}
+
+func TestOverviewNarrowScreenScrollsAndOpensTheDetail(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	s := start(t, launch{cols: 80, rows: 30})
+	s.expect("▍基本構成")
+
+	// Act: walk past the first screen.
+	for i := 0; i < 50; i++ {
+		s.press("j")
+	}
+
+	// Assert
+	s.expect("▍解析範囲外サマリー")
+	s.gone("▍基本構成")
+	s.press("Enter")
+	s.expect("← 戻る")
+	s.expect("未展開: ")
+}
+
+func TestRiskDetailExplainsTheDiagnosticInJapanese(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	s := start(t, launch{cols: 130, rows: 100})
+	s.press("2")
+
+	// Act
+	s.click("SSH 鍵で何にでも署名できる")
+
+	// Assert
+	for _, want := range []string{"重要度: 警告（危険・要確認）", "▍何が起きるか", "▍どうすればよいか", "▍対象の設定", "危険度: 高（HIGH）", "▍sandbox の外との関わり"} {
+		s.expect(want)
+	}
+	for _, english := range []string{"SSH_AGENT_UNRESTRICTED", "can sign anything", "ssh-agent 実行/所在", "寿命="} {
+		if strings.Contains(s.text(), english) {
+			t.Errorf("detail shows %q:\n%s", english, s.text())
+		}
+	}
 }

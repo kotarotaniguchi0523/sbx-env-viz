@@ -1,17 +1,17 @@
 ╭────────────────────────────────────────────────────────────────────────────────╮
-│ sbx-env-viz   1:Risk   2:Items   3:Sources                                     │
+│ sbx-env-viz   1:Overview   2:Risk   3:Items   4:Sources                        │
 │Host実行2 永続4 RW2 許可3 E0 W5 未展開6                                         │
 │宣言の静的解析（稼働中 sandbox の状態ではない） env-args: workspace=./web-app (…│
 │絞り込み  全て   L1   L2   K1   K2                                              │
 │╭──────────────────────────────────────────────────────────────────────────────╮│
 ││● 一覧 · Risk（31 件）                                                        ││
-││ HIGH  [WARNING] BINDING_DOMAIN_MISSING bindings.example.apiKey.domains does …││
-││ HIGH  [WARNING] HOST_MOUNT_SHARED kit history host-mount@1 /home/agent/.hist…││
-││ HIGH  [WARNING] PORT_ALL_INTERFACES ports[3000/tcp4] binds every host interf…││
-││ HIGH  [WARNING] PULL_ALWAYS_DEV sandboxOptions.template uses the mutable :de…││
-││ HIGH  [WARNING] SSH_AGENT_UNRESTRICTED kit egress requests ssh-agent@1 unres…││
+││ HIGH  [WARNING] 認証情報の差し込み先が未承認                                 ││
+││ HIGH  [WARNING] 共有フォルダが他の sandbox とも共有される                    ││
+││ HIGH  [WARNING] ポートが外部ネットワークに公開される                         ││
+││ HIGH  [WARNING] 中身が変わり続けるイメージを毎回取得                         ││
+││ HIGH  [WARNING] SSH 鍵で何にでも署名できる                                   ││
 ││ HIGH  [CRED][HOST][OPAQUE] secrets.github = command: gh auth token           ││
-││ HIGH  [!] ports[3000/tcp4] = 0.0.0.0:4000 -> sandbox:3000/tcp4	       	      ││
+││ HIGH  [!] ports[3000/tcp4] = 0.0.0.0:4000 -> sandbox:3000/tcp4               ││
 ││ HIGH  [HOST][OPAQUE] lifecycle.postCreate[0] = ./hooks/load-secrets.sh       ││
 ││ HIGH  [!][SSH][HOST] kit:egress/ssh-agent@1/runtime = phase=runtime unrestri…││
 ││ HIGH  [!][RW][PERSIST] kit:history/host-mount@1//home/agent/.history = /home…││
@@ -23,12 +23,12 @@
 ││ MED   [NET] kit:egress/network-policy@1/runtime.allow/*.cdn.example.com = ru…││
 ││ MED   [CRED] kit:egress/credential@1/example/runtime = service=example phase…││
 ││ MED   [UNKNOWN] kit:egress/io.example/telemetry@2 = io.example/telemetry@2   ││
-││ MED   [COVERAGE] 未展開 builtin-agent: claude                                ││
-││ MED   [COVERAGE] 未展開 host-local-policy: sbx policy / settings / credentia…││
-││ MED   [COVERAGE] 未展開 kit-env-reference: history: ${{ kit.env.HOME }}      ││
-││ MED   [COVERAGE] 未展開 mutable-template: ghcr.io/example/common-claude:dev  ││
-││ MED   [COVERAGE] 未展開 remote-kit: docker.io/sbx/playwright:1.61.1          ││
-││ MED   [COVERAGE] 未展開 unknown-capability: egress: io.example/telemetry@2   ││
+││ MED   [COVERAGE] 未展開 組み込みエージェントの中身: claude                   ││
+││ MED   [COVERAGE] 未展開 PC 全体の sbx 設定: sbx policy / settings / credenti…││
+││ MED   [COVERAGE] 未展開 sandbox 内の環境変数: history: ${{ kit.env.HOME }}   ││
+││ MED   [COVERAGE] 未展開 テンプレートイメージの中身: ghcr.io/example/common-c…││
+││ MED   [COVERAGE] 未展開 インターネット上の Kit: docker.io/sbx/playwright:1.6…││
+││ MED   [COVERAGE] 未展開 標準にない要求: egress: io.example/telemetry@2       ││
 ││ LOW   [!] sandboxOptions.template = ghcr.io/example/common-claude:dev        ││
 ││ LOW   kits[./kits/egress] = ./kits/egress {apiHost=api.internal.example.com} ││
 ││ LOW   kits[./kits/history] = ./kits/history                                  ││
@@ -38,5 +38,5 @@
 ││ LOW   [OPAQUE] kit:history/lifecycle@1/startup[0] = sh -c ln -sf /home/agent…││
 ││                                                                              ││
 │╰──────────────────────────────────────────────────────────────────────────────╯│
-│ q  終了  ?  ヘルプ  1-3  ビュー  j/k  移動  Enter  詳細  h/l  ペイン  g  グル… │
+│ q  終了  ?  ヘルプ  1-4  画面  j/k  移動  Enter  詳細  h/l  ペイン  g  グルー… │
 ╰────────────────────────────────────────────────────────────────────────────────╯

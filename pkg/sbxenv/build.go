@@ -65,6 +65,9 @@ func (rs *resolver) addItem(it Item, v *vnode, f fmtFn) *Item {
 	if it.Risk == "" {
 		it.Risk = SeverityInfo
 	}
+	if it.RiskReason == "" && it.Risk == SeverityInfo {
+		it.RiskReason = "一般的な設定値で、sandbox の外には影響しません。"
+	}
 	rs.items = append(rs.items, it)
 	rs.itemIndex[it.ID] = len(rs.items) - 1
 	return &rs.items[len(rs.items)-1]
@@ -351,10 +354,12 @@ func (rs *resolver) buildWorkspace() {
 		access := "rw"
 		reason := "the primary workspace is bind-mounted read/write; the agent's edits land on the host directly"
 		it.Risk, it.Badges = SeverityMedium, []string{BadgeRW}
+		it.RiskReason = "ワークスペースのフォルダを sandbox が直接読み書きします。sandbox 内での変更があなたの PCのファイルにそのまま反映されます。"
 		if clone {
 			access = "clone"
 			reason = "clone mode gives the sandbox a private Git clone; host files are not written until you fetch from it"
 			it.Risk, it.Badges = SeverityLow, nil
+			it.RiskReason = "clone モードなので sandbox は専用のコピーを編集し、あなたの PCのファイルは直接書き換わりません。"
 			it.Fields = append(it.Fields, Field{"clone", "true"})
 		}
 		if rs.opts.Clone != nil {
@@ -372,9 +377,11 @@ func (rs *resolver) buildWorkspace() {
 		it := rs.addItem(Item{ID: id, Path: "additionalWorkspaces[]", Section: SectionWorkspace}, e, rs.fmtWorkspaceEntry)
 		access := "rw"
 		it.Risk, it.Badges = SeverityMedium, []string{BadgeRW}
+		it.RiskReason = "追加のフォルダを sandbox が直接読み書きします。"
 		if e.str("readOnly") == "true" {
 			access = "ro"
 			it.Risk, it.Badges = SeverityLow, []string{BadgeRO}
+			it.RiskReason = "読み取り専用のマウントなので、sandbox からは書き換えられません。"
 		}
 		rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryHostMount, Where: "host", Lifetime: "host-persistent", Access: access,
 			Reason: "an additional host directory is mounted directly, even when the primary workspace uses clone mode"})
@@ -388,7 +395,8 @@ func (rs *resolver) buildMounts() {
 	}
 	for _, k := range m.keys {
 		v := m.kv[k]
-		it := rs.addItem(Item{ID: "mounts." + k, Path: "mounts." + k, Section: SectionMounts, Risk: SeverityHigh, Badges: []string{BadgeRW, BadgePersist}}, v, rs.fmtPath)
+		it := rs.addItem(Item{ID: "mounts." + k, Path: "mounts." + k, Section: SectionMounts, Risk: SeverityHigh, Badges: []string{BadgeRW, BadgePersist},
+			RiskReason: "あなたの PCのフォルダを sandbox と読み書き可能で共有し、sandbox を削除してもデータが残ります。"}, v, rs.fmtPath)
 		rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryHostMount, Where: "host", Lifetime: "host-persistent", Access: "rw",
 			Reason: "binds a kit-declared host-mount@1 path to this host directory; sandbox writes reach it and outlive the sandbox"})
 	}
@@ -421,27 +429,32 @@ func (rs *resolver) buildSandboxOptions() {
 		case "writableEnvFiles":
 			if val == "true" {
 				it.Risk, it.Badges = SeverityHigh, []string{BadgeRW, BadgeHost}
+				it.RiskReason = "sandbox から環境ファイルを書き換えられるため、次回以降にあなたの PCで実行されるコマンドを変えられてしまいます。"
 				rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryHostMount, Where: "host", Lifetime: "host-persistent", Access: "rw",
 					Reason: "the sandbox can rewrite environment files, and with them the host commands later invocations run"})
 			}
 		case "skills":
 			if val == "readwrite" {
 				it.Risk, it.Badges = SeverityHigh, []string{BadgeRW, BadgePersist}
+				it.RiskReason = "あなたの PCの共有スキル置き場を sandbox から書き換えられ、他の sandbox にも影響します。"
 				rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryHostMount, Where: "host", Lifetime: "host-persistent", Access: "rw",
 					Reason: "the shared agent skills store on the host becomes writable from this sandbox"})
 			}
 		case "gpu", "display", "fuse":
 			if val == "true" {
 				it.Risk = SeverityMedium
+				it.RiskReason = "あなたの PCの装置（GPU・画面・FUSE）を sandbox から使えるようにします。"
 				rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryDevice, Where: "host", Lifetime: "sandbox-scoped", Reason: "passes a host device or socket into the sandbox"})
 			}
 		case "usb":
 			if len(v.list()) > 0 {
 				it.Risk = SeverityMedium
+				it.RiskReason = "あなたの PCの USB 機器を sandbox から使えるようにします。"
 				rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryDevice, Where: "host", Lifetime: "sandbox-scoped", Reason: "passes host USB devices into the sandbox"})
 			}
 		case "template":
 			it.Risk = SeverityLow
+			it.RiskReason = "sandbox の土台になるイメージの指定です。イメージの中身はこのツールでは確認できません。"
 		}
 	}
 }
@@ -453,7 +466,8 @@ func (rs *resolver) buildSecrets() {
 	}
 	for _, svc := range m.keys {
 		v := m.kv[svc]
-		it := rs.addItem(Item{ID: "secrets." + svc, Path: "secrets." + svc, Section: SectionSecrets, Risk: SeverityMedium, Badges: []string{BadgeCred}}, v, rs.fmtSecretSource)
+		it := rs.addItem(Item{ID: "secrets." + svc, Path: "secrets." + svc, Section: SectionSecrets, Risk: SeverityMedium, Badges: []string{BadgeCred},
+			RiskReason: "サービスの認証情報（API キーなど）を sandbox からの通信に使います。"}, v, rs.fmtSecretSource)
 		for _, k := range []string{"snapshot", "refresh", "backend", "noVerify"} {
 			if v.has(k) {
 				it.Fields = append(it.Fields, Field{k, rs.r.text(v.dstr(k))})
@@ -462,11 +476,13 @@ func (rs *resolver) buildSecrets() {
 		switch {
 		case v.has("command"):
 			it.Risk = SeverityHigh
+			it.RiskReason = "秘密を取り出すためにあなたの PCでコマンドを実行します（--skip-host-commands でも止まりません）。"
 			it.Badges = append(it.Badges, BadgeHost, BadgeOpaque)
 			rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryHostExec, Where: "host", Lifetime: "invocation", Opaque: true,
 				Reason: "the command runs on the host with your privileges to produce the secret; --skip-host-commands does not skip it"})
 		case v.has("value"):
 			it.Risk = SeverityHigh
+			it.RiskReason = "秘密が平文でファイルに直接書かれています。ファイルを読める人なら誰でも見られます。"
 			it.Badges = append(it.Badges, BadgeLiteral)
 		}
 		rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryProxyRoute, Where: "host", Lifetime: "sandbox-scoped",
@@ -494,7 +510,8 @@ func (rs *resolver) buildBindings() {
 				}
 				return rs.fmtPlain(n)
 			}
-			it := rs.addItem(Item{ID: id, Path: id, Section: SectionBindings, Risk: SeverityMedium, Badges: []string{BadgeCred, BadgePersist}}, mv, f)
+			it := rs.addItem(Item{ID: id, Path: id, Section: SectionBindings, Risk: SeverityMedium, Badges: []string{BadgeCred, BadgePersist},
+				RiskReason: "認証情報を差し込んでよい通信先の承認で、あなたの PC全体の設定（credentials.yaml）に残ります。"}, mv, f)
 			if dom != nil {
 				it.Fields = append(it.Fields, Field{"domains", strings.Join(dom.dscalars(), ", ")})
 			}
@@ -521,10 +538,12 @@ func (rs *resolver) buildRegistries() {
 			}
 			return strings.Join(parts, "; ")
 		}
-		it := rs.addItem(Item{ID: "registries." + host, Path: "registries." + host, Section: SectionRegistries, Risk: SeverityMedium, Badges: []string{BadgeCred}}, v, f)
+		it := rs.addItem(Item{ID: "registries." + host, Path: "registries." + host, Section: SectionRegistries, Risk: SeverityMedium, Badges: []string{BadgeCred},
+			RiskReason: "イメージを取得するための認証情報を使います。"}, v, f)
 		for _, sub := range []string{"username", "secret"} {
 			if s := v.get(sub); s != nil && s.has("command") {
 				it.Risk = SeverityHigh
+				it.RiskReason = "認証情報を取り出すためにあなたの PCでコマンドを実行します。"
 				it.Badges = append(it.Badges, BadgeHost, BadgeOpaque)
 				rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryHostExec, Where: "host", Lifetime: "invocation", Opaque: true,
 					Reason: "the registry credential command runs on the host"})
@@ -540,18 +559,21 @@ func (rs *resolver) buildMCP() {
 		it := rs.addItem(Item{ID: "mcp.servers[" + name + "]", Path: "mcp.servers[]", Section: SectionMCP}, e, rs.fmtMCP)
 		if e.has("command") {
 			it.Risk = SeverityHigh
+			it.RiskReason = "MCP サーバーをあなたの PCの上で、あなたの権限で動かします。"
 			it.Badges = []string{BadgeHost, BadgeOpaque}
 			b := Boundary{ItemID: it.ID, Kind: BoundaryHostExec, Where: "host", Lifetime: "sandbox-scoped", Opaque: true,
 				Reason: "a local stdio MCP server runs on the host with your privileges whenever the sandbox's MCP gateway starts"}
 			if rs.opts.SkipHostCommands {
 				b.Skipped = true
 				it.Risk = SeverityLow
+				it.RiskReason = "--skip-host-commands を付けているため、このコマンドは実行されません。"
 				it.Badges = append(it.Badges, BadgeSkip)
 				b.Reason += " (disabled by --skip-host-commands)"
 			}
 			rs.bound(b)
 		} else {
 			it.Risk = SeverityMedium
+			it.RiskReason = "リモートの MCP サーバーをあなたの PC全体に登録します（sandbox を削除しても残ります）。"
 			it.Badges = []string{BadgePersist}
 			rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryHostGlobal, Where: "unknown", Lifetime: "host-persistent",
 				Reason: "a remote MCP server registered with url stays host-global and survives sbx env rm; traffic goes through the MCP gateway"})
@@ -561,14 +583,17 @@ func (rs *resolver) buildMCP() {
 
 func (rs *resolver) buildPorts() {
 	for _, e := range rs.root.get("ports").list() {
-		it := rs.addItem(Item{ID: "ports[" + rs.portKey(e) + "]", Path: "ports[]", Section: SectionPorts, Risk: SeverityLow}, e, rs.fmtPort)
+		it := rs.addItem(Item{ID: "ports[" + rs.portKey(e) + "]", Path: "ports[]", Section: SectionPorts, Risk: SeverityLow,
+			RiskReason: "あなたの PCの中からだけ接続できるポートです。"}, e, rs.fmtPort)
 		ip := e.str("hostIP")
 		reason := "publishes a sandbox port on the host loopback interface"
 		if ip == "0.0.0.0" || ip == "::" || ip == "[::]" {
 			it.Risk = SeverityHigh
+			it.RiskReason = "LAN など外部のネットワークから、このポートに接続できます。"
 			reason = "publishes a sandbox port on every host interface, reachable from the network"
 		} else if ip != "" && ip != "127.0.0.1" && ip != "::1" {
 			it.Risk = SeverityMedium
+			it.RiskReason = "特定のネットワークアドレスに公開されるため、そのネットワーク上の他の機械から接続できる場合があります。"
 			reason = "publishes a sandbox port on a non-loopback host address"
 		}
 		rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryHostPort, Where: "host", Lifetime: "sandbox-scoped", Reason: reason})
@@ -580,7 +605,8 @@ func (rs *resolver) buildLifecycle() {
 	for _, phase := range []string{"initialize", "postCreate", "preRemove"} {
 		for i, e := range lc.get(phase).list() {
 			id := fmt.Sprintf("lifecycle.%s[%d]", phase, i)
-			it := rs.addItem(Item{ID: id, Path: "lifecycle." + phase + "[]", Section: SectionLifecycle, Risk: SeverityHigh, Badges: []string{BadgeHost, BadgeOpaque}}, e, rs.fmtLifecycle)
+			it := rs.addItem(Item{ID: id, Path: "lifecycle." + phase + "[]", Section: SectionLifecycle, Risk: SeverityHigh, Badges: []string{BadgeHost, BadgeOpaque},
+				RiskReason: "sandbox の作成・削除のタイミングで、あなたの PCの上でコマンドをあなたの権限で実行します。コマンドの中身はこのツールでは確認しません。"}, e, rs.fmtLifecycle)
 			if n := e.dstr("name"); n != "" {
 				it.Fields = append(it.Fields, Field{"name", rs.r.text(n)})
 			}
@@ -596,6 +622,7 @@ func (rs *resolver) buildLifecycle() {
 				b.Skipped = true
 				b.Reason += " (skipped by --skip-host-commands)"
 				it.Risk = SeverityLow
+				it.RiskReason = "--skip-host-commands を付けているため、このコマンドは実行されません。"
 				it.Badges = append(it.Badges, BadgeSkip)
 			}
 			rs.bound(b)
@@ -606,11 +633,13 @@ func (rs *resolver) buildLifecycle() {
 func (rs *resolver) buildKitEntries() {
 	for _, k := range rs.kits {
 		id := "kits[" + k.shown + "]"
-		it := rs.addItem(Item{ID: id, Path: "kits[]", Section: SectionKits, Kit: k.handleShown, Risk: SeverityLow}, k.entry, rs.fmtKitEntry)
+		it := rs.addItem(Item{ID: id, Path: "kits[]", Section: SectionKits, Kit: k.handleShown, Risk: SeverityLow,
+			RiskReason: "ローカルの Kit で、要求している内容をこのツールで確認済みです。"}, k.entry, rs.fmtKitEntry)
 		status := "expanded"
 		if !k.expanded {
 			status = "not expanded"
 			it.Risk = SeverityMedium
+			it.RiskReason = "中身を確認できない Kit です。通信・認証情報・フォルダ共有など何を要求するかは、作成時まで分かりません。"
 			it.Badges = append(it.Badges, BadgeUnknown)
 		}
 		it.Fields = append(it.Fields, Field{"kind", k.kind}, Field{"handle", k.handleShown}, Field{"status", status})
@@ -642,12 +671,12 @@ func phases(v *vnode) []string {
 	return v.scalars()
 }
 
-func (rs *resolver) capItem(c *capState, suffix string, v *vnode, value string, risk Severity, badges ...string) *Item {
+func (rs *resolver) capItem(c *capState, suffix string, v *vnode, value string, risk Severity, reason string, badges ...string) *Item {
 	id := "kit:" + c.kit.handleShown + "/" + c.short
 	if suffix != "" {
 		id += "/" + suffix
 	}
-	it := Item{ID: id, Path: "cap:" + c.short, Section: SectionCapabilities, Kit: c.kit.handleShown, Value: value, Risk: risk, Badges: badges}
+	it := Item{ID: id, Path: "cap:" + c.short, Section: SectionCapabilities, Kit: c.kit.handleShown, Value: value, Risk: risk, RiskReason: reason, Badges: badges}
 	o := c.origin
 	if v != nil {
 		o = Origin{SourceID: v.src, Line: v.pos.Line, Col: v.pos.Col, Via: c.kit.via()}
@@ -665,6 +694,7 @@ func (rs *resolver) capItem(c *capState, suffix string, v *vnode, value string, 
 	}
 	if c.skipped {
 		it.Risk = SeverityInfo
+		it.RiskReason = "条件を満たさず省略されるため、この要求は何も許可しません。"
 		it.Badges = []string{BadgeSkip}
 		it.Fields = append(it.Fields, Field{"skipped", c.skipReason})
 	}
@@ -715,11 +745,13 @@ func (rs *resolver) buildCapability(c *capState) {
 			parts = append(parts, "oauth")
 		}
 		risk := SeverityMedium
+		why := "サービスの認証情報を、指定した通信先への接続に自動で差し込みます。本物の値はあなたの PCに残ります。"
 		badges := []string{BadgeCred}
 		if oa.str("passthrough") == "true" {
 			risk = SeverityHigh
+			why = "本物のトークンがそのまま sandbox に渡ります。"
 		}
-		it := rs.capItem(c, svc+"/"+strings.Join(ph, ","), cfg, strings.Join(parts, " "), risk, badges...)
+		it := rs.capItem(c, svc+"/"+strings.Join(ph, ","), cfg, strings.Join(parts, " "), risk, why, badges...)
 		if ak != nil {
 			it.Fields = append(it.Fields, Field{"proxyManaged", orDefault(ak.str("proxyManaged"), "false")})
 		}
@@ -731,11 +763,12 @@ func (rs *resolver) buildCapability(c *capState) {
 		if ak != nil && ak.str("proxyManaged") != "true" && ak.str("name") != "" {
 			reason = "the " + svc + " credential is not proxy-managed, so the sandbox environment variable may carry the real value"
 			it.Risk = SeverityHigh
+			it.RiskReason = "本物の認証情報が sandbox の環境変数に入る可能性があります。"
 		}
 		rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryProxyRoute, Where: where, Lifetime: "sandbox-scoped", Reason: reason})
 	case "host-mount@1":
 		p := rs.r.text(cfg.dstr("path"))
-		it := rs.capItem(c, p, cfg.get("path"), p, SeverityHigh, BadgeRW, BadgePersist)
+		it := rs.capItem(c, p, cfg.get("path"), p, SeverityHigh, "あなたの PCのフォルダを sandbox と読み書き可能で共有し、sandbox を削除してもデータが残ります。", BadgeRW, BadgePersist)
 		if m := cfg.str("mode"); m != "" {
 			it.Fields = append(it.Fields, Field{"mode", m})
 		}
@@ -762,11 +795,15 @@ func (rs *resolver) buildCapability(c *capState) {
 				value += " authenticate=" + strings.Join(a, ",")
 			}
 		}
-		it := rs.capItem(c, strings.Join(ph, ","), cfg, value, risk, BadgeSSH, BadgeHost)
+		why := "あなたの SSH 鍵を、許可した用途（署名・ログイン先）に限って sandbox から使えます。"
+		if unrestricted {
+			why = "あなたの SSH 鍵を使って、sandbox から何にでも署名できてしまいます。"
+		}
+		it := rs.capItem(c, strings.Join(ph, ","), cfg, value, risk, why, BadgeSSH, BadgeHost)
 		rs.bound(Boundary{ItemID: it.ID, Kind: BoundarySSHAgent, Where: "host", Lifetime: "sandbox-scoped",
 			Reason: "relays signing requests to the host SSH agent; private keys stay on the host but the sandbox can use them"})
 	case "git-identity@1":
-		it := rs.capItem(c, "", nil, "user.name / user.email from the host", SeverityLow)
+		it := rs.capItem(c, "", nil, "user.name / user.email from the host", SeverityLow, "あなたの Git の名前とメールアドレスを sandbox に伝えます（認証や署名の権限は含みません）。")
 		rs.bound(Boundary{ItemID: it.ID, Kind: BoundaryIdentity, Where: "host", Lifetime: "sandbox-scoped",
 			Reason: "discloses your selected Git name and email to the sandbox (attribution only, not authentication)"})
 	case "lifecycle@1":
@@ -781,7 +818,7 @@ func (rs *resolver) buildCapability(c *capState) {
 						text = cmd.disp
 					}
 				}
-				it := rs.capItem(c, fmt.Sprintf("%s[%d]", ph, i), h, rs.r.command(text), SeverityLow, BadgeOpaque)
+				it := rs.capItem(c, fmt.Sprintf("%s[%d]", ph, i), h, rs.r.command(text), SeverityLow, "sandbox の中でコマンドを実行します。あなたの PCには直接影響しません。", BadgeOpaque)
 				if u := h.dstr("user"); u != "" {
 					it.Fields = append(it.Fields, Field{"user", u})
 				}
@@ -796,13 +833,13 @@ func (rs *resolver) buildCapability(c *capState) {
 			}
 		}
 		for i, f := range cfg.get("files").list() {
-			it := rs.capItem(c, fmt.Sprintf("files[%d]", i), f, rs.r.text(f.dstr("path")), SeverityInfo)
+			it := rs.capItem(c, fmt.Sprintf("files[%d]", i), f, rs.r.text(f.dstr("path")), SeverityInfo, "sandbox の中にファイルを書き込む設定です。")
 			if m := f.str("mode"); m != "" {
 				it.Fields = append(it.Fields, Field{"mode", m})
 			}
 		}
 		if inter := cfg.get("interactive"); inter != nil {
-			rs.capItem(c, "interactive", inter, rs.r.command(strings.Join(inter.dscalars(), " ")), SeverityInfo)
+			rs.capItem(c, "interactive", inter, rs.r.command(strings.Join(inter.dscalars(), " ")), SeverityInfo, "対話モードで起動するときの引数です。")
 		}
 	default:
 		rs.buildOpaqueCap(c, false)
@@ -821,26 +858,34 @@ func (rs *resolver) buildNetEntry(c *capState, e *netEntry) {
 		}
 	}
 	risk, badges := SeverityLow, []string{BadgeNet}
+	why := "sandbox からこの通信先への接続を許可します。"
 	pat := e.host.val
 	switch {
 	case e.list == "deny":
 		risk, badges = SeverityInfo, nil
+		why = "この通信先への接続を禁止します（安全側の設定です）。"
 	case (pat == "*" || pat == "**") && !e.bounded():
 		risk = SeverityHigh
+		why = "インターネット上のすべての通信先への接続を許可します。"
 	case strings.Contains(pat, "*") && e.phase == "runtime":
 		risk = SeverityMedium
+		why = "ワイルドカード（*）で、複数の通信先をまとめて許可します。"
+	}
+	if e.list == "allow" && e.phase == "install" && risk == SeverityLow {
+		why = "インストール処理の間だけ、この通信先への接続を許可します。"
 	}
 	var deny *netEntry
 	if e.list == "allow" {
 		deny = rs.deniedBy(e.phase, pat)
 		if deny != nil {
 			risk, badges = SeverityInfo, nil
+			why = "許可されていますが、別の禁止設定が優先されるため、実際には接続できません。"
 		}
 	}
-	it := rs.capItem(c, e.phase+"."+e.list+"/"+shown, e.host, value, risk, badges...)
+	it := rs.capItem(c, e.phase+"."+e.list+"/"+shown, e.host, value, risk, why, badges...)
 	e.itemID = it.ID
 	if deny != nil {
-		it.Fields = append(it.Fields, Field{"denied by", "kit " + deny.cap.kit.handleShown + " " + deny.phase + " deny " + rs.r.text(deny.host.disp)})
+		it.Fields = append(it.Fields, Field{"denied by", "Kit " + deny.cap.kit.handleShown + " の" + phaseJA(deny.phase) + "の通信禁止 " + rs.r.text(deny.host.disp)})
 		return
 	}
 	if e.list == "allow" {
@@ -863,7 +908,14 @@ func (rs *resolver) buildOpaqueCap(c *capState, unknownNS bool) {
 	case "host-port@1":
 		risk = SeverityHigh
 	}
-	it := rs.capItem(c, "", c.config, c.typ, risk, BadgeUnknown)
+	why := "このツールが意味を解釈していない設定です。内容はそのまま表示していますが、影響は確認できません。"
+	switch c.short {
+	case "privileged@1", "dockerd@1":
+		why = "sandbox の中で最も強い権限（特権モード）を要求します。"
+	case "host-port@1":
+		why = "あなたの PCのサービスに sandbox から直接接続できるようにします。"
+	}
+	it := rs.capItem(c, "", c.config, c.typ, risk, why, BadgeUnknown)
 	it.Fields = append(it.Fields, fields...)
 	kind := CoverageUnmodeledCap
 	reason := "this capability type is preserved as-is but its effect is not modelled"

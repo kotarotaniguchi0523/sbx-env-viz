@@ -10,7 +10,7 @@ func TestWideCharactersOccupyTwoColumnsAndKeepPanesAligned(t *testing.T) {
 	// Arrange: the Items view puts Japanese group headers in the left pane
 	// and a Japanese explanation in the right pane.
 	s := start(t, launch{cols: 130})
-	s.press("2", "/", "R", "E", "L", "E", "A", "S", "E", "Enter")
+	s.press("3", "/", "R", "E", "L", "E", "A", "S", "E", "Enter")
 
 	// Act
 	// The right panel's left border follows the left panel's right border
@@ -40,6 +40,7 @@ func TestColoursByDefault(t *testing.T) {
 	t.Parallel()
 	// Arrange / Act
 	s := start(t, launch{cols: 130, color: true})
+	s.press("2")
 	s.snapshot("risk-130x40-color", true)
 
 	// Assert
@@ -58,6 +59,7 @@ func TestNoColorLeavesDefaultColours(t *testing.T) {
 	t.Parallel()
 	// Arrange / Act
 	s := start(t, launch{cols: 130})
+	s.press("2")
 	s.snapshot("risk-130x40-nocolor", true)
 
 	// Assert
@@ -94,7 +96,7 @@ func TestControlCharactersCannotDriveTheTerminal(t *testing.T) {
 	s := start(t, launch{cols: 130, color: true, args: []string{"evil.yaml"}, files: map[string]string{"evil.yaml": evil}})
 
 	// Act
-	s.press("2")
+	s.press("3")
 	s.snapshot("evil-items-130x40-color", true)
 
 	// Assert

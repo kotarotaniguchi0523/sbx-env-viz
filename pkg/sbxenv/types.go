@@ -289,8 +289,10 @@ type Item struct {
 	Origins []Origin       `json:"origins"`
 	History []HistoryEntry `json:"history"`
 	Risk    Severity       `json:"risk"`
-	Badges  []string       `json:"badges,omitempty"`
-	Doc     *FieldDoc      `json:"doc,omitempty"`
+	// RiskReason says in plain Japanese why the item got its risk level.
+	RiskReason string    `json:"riskReason,omitempty"`
+	Badges     []string  `json:"badges,omitempty"`
+	Doc        *FieldDoc `json:"doc,omitempty"`
 }
 
 // Field is a key/value pair inside a compound item.
