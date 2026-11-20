@@ -13,13 +13,17 @@ func TestWideCharactersOccupyTwoColumnsAndKeepPanesAligned(t *testing.T) {
 	s.press("2", "/", "R", "E", "L", "E", "A", "S", "E", "Enter")
 
 	// Act
-	separators := s.locations("│")
+	// The right panel's left border follows the left panel's right border
+	// ("││"); both must sit in the same column on every row.
+	separators := s.locations("││")
 	label := s.locations("要は: ")
 
 	// Assert
 	columns := map[uint32]bool{}
 	for _, l := range separators {
-		columns[l.Start.Column] = true
+		if l.Start.Column < 129 { // the last column is the right panel's own edge
+			columns[l.Start.Column] = true
+		}
 	}
 	if len(separators) < 30 || len(columns) != 1 {
 		t.Errorf("separator on %d rows in columns %v; want one column on every row", len(separators), columns)
@@ -109,8 +113,15 @@ func TestControlCharactersCannotDriveTheTerminal(t *testing.T) {
 	if len(red) != 1 {
 		t.Fatalf("env.RED not on screen:\n%s", s.text())
 	}
+	// Only the list panel's interior counts: its border has its own colour.
+	edge := uint32(130)
+	for _, l := range s.locations("││") {
+		if l.Start.Row == red[0].Start.Row && l.Start.Column < edge {
+			edge = l.Start.Column
+		}
+	}
 	for _, c := range s.styles("evil-items-130x40-color") {
-		if uint32(c.Row) == red[0].Start.Row && uint32(c.Col) > red[0].Start.Column && coloured(c) {
+		if uint32(c.Row) == red[0].Start.Row && uint32(c.Col) > red[0].Start.Column && uint32(c.Col) < edge && coloured(c) {
 			t.Errorf("the value's colour sequence coloured the row from column %d (fg=%s)", c.Col, c.FG)
 		}
 	}

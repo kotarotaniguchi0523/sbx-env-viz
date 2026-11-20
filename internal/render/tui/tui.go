@@ -2,7 +2,8 @@
 //
 // Views: 1 Risk (default), 2 Items (g cycles layer / boundary / kit
 // grouping), 3 Sources. At 120 columns or wider the list and the detail
-// pane sit side by side; narrower terminals show one pane at a time.
+// pane sit side by side in rounded panels; narrower terminals show one pane
+// at a time. Tabs, chips, list rows, and panes respond to the mouse.
 package tui
 
 import (
@@ -13,8 +14,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/model"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
@@ -46,6 +45,7 @@ var groupNames = []string{"層別", "境界別", "kit別"}
 type row struct {
 	header bool
 	label  string
+	badges []string
 	sev    sbxenv.Severity
 	item   *sbxenv.Item
 	diag   *sbxenv.Diagnostic
@@ -73,39 +73,18 @@ type Model struct {
 	searching bool
 	query     string
 
-	noColor bool
-	st      styles
-	rows    []row
+	pal  palette
+	rows []row
+	// zones are the clickable regions of the last frame; mouse events are
+	// resolved against them so drawing and hit-testing never disagree.
+	zones []zone
 }
 
-type styles struct {
-	title, dim, sel, header, crit, high, med, low, info, focus lipgloss.Style
-}
-
-func newStyles(noColor bool) styles {
-	s := styles{
-		title:  lipgloss.NewStyle().Bold(true),
-		dim:    lipgloss.NewStyle().Faint(true),
-		sel:    lipgloss.NewStyle().Reverse(true),
-		header: lipgloss.NewStyle().Bold(true),
-		focus:  lipgloss.NewStyle().Bold(true),
-	}
-	if noColor {
-		s.crit, s.high, s.med, s.low, s.info = s.title, s.title, lipgloss.NewStyle(), lipgloss.NewStyle(), s.dim
-		return s
-	}
-	s.crit = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5f5f")).Bold(true)
-	s.high = lipgloss.NewStyle().Foreground(lipgloss.Color("#ffaf00")).Bold(true)
-	s.med = lipgloss.NewStyle().Foreground(lipgloss.Color("#d7d75f"))
-	s.low = lipgloss.NewStyle().Foreground(lipgloss.Color("#87afd7"))
-	s.info = lipgloss.NewStyle().Foreground(lipgloss.Color("#8a8a8a"))
-	return s
-}
-
-// New builds a model. noColor disables all colors (NO_COLOR).
+// New builds a model. noColor disables all colours (NO_COLOR); structure,
+// borders, bold, and reverse video remain.
 func New(p *sbxenv.Plan, noColor bool) *Model {
 	p = model.ForTerminal(p)
-	m := &Model{plan: p, idx: model.SourceIndex(p), width: 100, height: 30, noColor: noColor, st: newStyles(noColor)}
+	m := &Model{plan: p, idx: model.SourceIndex(p), width: 100, height: 30, pal: newPalette(noColor)}
 	m.filters = []string{""}
 	for _, s := range p.Meta.Sources {
 		if s.Kind == sbxenv.SourceEnv || s.Kind == sbxenv.SourceUserDefaults || s.Kind == sbxenv.SourceKit {
@@ -152,11 +131,10 @@ func (m *Model) rebuild() {
 					continue
 				}
 			}
-			label := strings.TrimSpace(strings.Join(r.Badges, "") + " " + r.Label)
-			if !m.matches(label) {
+			if !m.matches(strings.Join(r.Badges, "") + " " + r.Label) {
 				continue
 			}
-			rows = append(rows, row{label: label, sev: r.Severity, item: r.Item, diag: r.Diag, cover: r.Cover})
+			rows = append(rows, row{label: r.Label, badges: r.Badges, sev: r.Severity, item: r.Item, diag: r.Diag, cover: r.Cover})
 		}
 	case viewItems:
 		groups := map[string][]*sbxenv.Item{}
@@ -176,8 +154,7 @@ func (m *Model) rebuild() {
 		for _, k := range keys {
 			rows = append(rows, row{header: true, label: k})
 			for _, it := range groups[k] {
-				label := strings.TrimSpace(strings.Join(it.Badges, "") + " " + it.ID + " = " + it.Value)
-				rows = append(rows, row{label: label, sev: it.Risk, item: it})
+				rows = append(rows, row{label: it.ID + " = " + it.Value, badges: it.Badges, sev: it.Risk, item: it})
 			}
 		}
 	case viewSources:
@@ -205,7 +182,7 @@ func (m *Model) rebuild() {
 					continue
 				}
 				if m.matches(label) {
-					rows = append(rows, row{label: label, sev: sbxenv.SeverityMedium, cover: c})
+					rows = append(rows, row{label: label, badges: []string{"[COVERAGE]"}, sev: sbxenv.SeverityMedium, cover: c})
 				}
 			}
 		}
@@ -267,16 +244,100 @@ func (m *Model) move(delta int) {
 	m.dScroll = 0
 }
 
+// selectRow puts the cursor on row i if it is selectable.
+func (m *Model) selectRow(i int) bool {
+	if i < 0 || i >= len(m.rows) || m.rows[i].header {
+		return false
+	}
+	if m.cursor[m.view] != i {
+		m.cursor[m.view] = i
+		m.dScroll = 0
+	}
+	return true
+}
+
 // Update implements tea.Model.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		return m, nil
 	case tea.KeyPressMsg:
 		return m.key(msg.String())
+	case tea.MouseClickMsg:
+		if msg.Button == tea.MouseLeft {
+			m.click(msg.X, msg.Y)
+		}
+	case tea.MouseWheelMsg:
+		switch msg.Button {
+		case tea.MouseWheelUp:
+			m.wheel(msg.X, msg.Y, -1)
+		case tea.MouseWheelDown:
+			m.wheel(msg.X, msg.Y, 1)
+		}
 	}
 	return m, nil
+}
+
+// click acts on the zone under (x, y) in the last frame.
+func (m *Model) click(x, y int) {
+	z, ok := m.zoneAt(x, y)
+	if !ok {
+		return
+	}
+	if m.help {
+		m.help = false
+		return
+	}
+	switch z.kind {
+	case zoneTab:
+		m.setView(viewID(z.value))
+	case zoneGroup:
+		if m.group != groupMode(z.value) {
+			m.group = groupMode(z.value)
+			m.cursor[viewItems] = 0
+			m.rebuild()
+		}
+	case zoneFilter:
+		if m.filterIdx != z.value {
+			m.filterIdx = z.value
+			m.rebuild()
+		}
+	case zoneRow:
+		if m.selectRow(z.value) {
+			m.focus = 0
+			if !m.twoPane() {
+				m.detail = true
+			}
+		}
+	case zoneListPane:
+		m.focus = 0
+	case zoneDetailPane:
+		m.focus = 1
+	case zoneBack:
+		m.detail = false
+		m.focus = 0
+	}
+}
+
+// wheel scrolls the pane under the pointer without moving focus.
+func (m *Model) wheel(x, y, delta int) {
+	z, ok := m.zoneAt(x, y)
+	if !ok {
+		return
+	}
+	switch z.kind {
+	case zoneRow, zoneListPane:
+		m.move(delta)
+	case zoneDetailPane:
+		m.scrollDetail(delta * 3)
+	}
+}
+
+func (m *Model) scrollDetail(delta int) {
+	m.dScroll += delta
+	if m.dScroll < 0 {
+		m.dScroll = 0
+	}
 }
 
 func (m *Model) key(k string) (tea.Model, tea.Cmd) {
@@ -323,15 +384,13 @@ func (m *Model) key(k string) (tea.Model, tea.Cmd) {
 		m.setView((m.view + 2) % 3)
 	case "j", "down":
 		if m.inDetail() {
-			m.dScroll++
+			m.scrollDetail(1)
 		} else {
 			m.move(1)
 		}
 	case "k", "up":
 		if m.inDetail() {
-			if m.dScroll > 0 {
-				m.dScroll--
-			}
+			m.scrollDetail(-1)
 		} else {
 			m.move(-1)
 		}
@@ -400,354 +459,9 @@ func (m *Model) setView(v viewID) {
 func (m *Model) View() tea.View {
 	v := tea.NewView(m.Render())
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 	v.WindowTitle = "sbx-env-viz"
 	return v
-}
-
-// Render returns the screen as a string (used by View and tests).
-func (m *Model) Render() string {
-	w, h := m.width, m.height
-	if w < 20 {
-		w = 20
-	}
-	if h < 8 {
-		h = 8
-	}
-	header := m.headerLines(w)
-	footer := m.footer(w)
-	bodyH := h - len(header) - 1
-	if bodyH < 3 {
-		bodyH = 3
-	}
-	var body string
-	switch {
-	case m.help:
-		body = m.helpText(w, bodyH)
-	case m.twoPane():
-		lw := w * 45 / 100
-		rw := w - lw - 3
-		list := m.listLines(lw, bodyH)
-		det := m.detailLines(rw, bodyH)
-		sep := "│"
-		var b strings.Builder
-		for i := 0; i < bodyH; i++ {
-			l, r := "", ""
-			if i < len(list) {
-				l = list[i]
-			}
-			if i < len(det) {
-				r = det[i]
-			}
-			b.WriteString(pad(l, lw) + " " + m.st.dim.Render(sep) + " " + r)
-			if i < bodyH-1 {
-				b.WriteString("\n")
-			}
-		}
-		body = b.String()
-	case m.detail:
-		body = strings.Join(m.detailLines(w, bodyH), "\n")
-	default:
-		body = strings.Join(m.listLines(w, bodyH), "\n")
-	}
-	return strings.Join(header, "\n") + "\n" + body + "\n" + footer
-}
-
-func (m *Model) headerLines(w int) []string {
-	p := m.plan
-	var tabs []string
-	for i, n := range viewNames {
-		if viewID(i) == m.view {
-			tabs = append(tabs, m.st.sel.Render(" "+n+" "))
-		} else {
-			tabs = append(tabs, " "+n+" ")
-		}
-	}
-	extra := ""
-	if m.view == viewItems {
-		extra = "  g:" + groupNames[m.group]
-	}
-	lines := []string{
-		trunc(m.st.title.Render("sbx-env-viz")+" "+strings.Join(tabs, "")+extra, w),
-		trunc(summaryFor(p.Summary, w), w),
-		trunc(m.st.dim.Render("宣言の静的解析（稼働中 sandbox の状態ではない） ")+model.ArgsLine(p), w),
-	}
-	var state []string
-	if f := m.filter(); f != "" {
-		hidden := 0
-		for i := range p.Diagnostics {
-			d := &p.Diagnostics[i]
-			if d.Level != sbxenv.LevelInfo && !model.DiagTouchesSource(d, f) {
-				hidden++
-			}
-		}
-		label := f
-		if s, ok := m.idx[f]; ok {
-			label = f + " " + s.Path
-		}
-		state = append(state, fmt.Sprintf("絞り込み（非表示の警告・エラー %d 件）: %s", hidden, label))
-	}
-	if m.searching {
-		state = append(state, "検索: "+m.query+"▏")
-	} else if m.query != "" {
-		state = append(state, "検索: "+m.query+"（Esc で解除）")
-	}
-	if len(state) > 0 {
-		lines = append(lines, trunc(m.st.focus.Render(strings.Join(state, "  ")), w))
-	}
-	return lines
-}
-
-func (m *Model) footer(w int) string {
-	keys := "q:終了 ?:ヘルプ 1-3/[]:ビュー j/k:移動 Enter:詳細 h/l:ペイン g:グループ f:絞り込み /:検索"
-	return trunc(m.st.dim.Render(keys), w)
-}
-
-func (m *Model) sevStyle(s sbxenv.Severity) lipgloss.Style {
-	switch s {
-	case sbxenv.SeverityCritical:
-		return m.st.crit
-	case sbxenv.SeverityHigh:
-		return m.st.high
-	case sbxenv.SeverityMedium:
-		return m.st.med
-	case sbxenv.SeverityLow:
-		return m.st.low
-	}
-	return m.st.info
-}
-
-func (m *Model) listLines(w, h int) []string {
-	if len(m.rows) == 0 {
-		return []string{m.st.dim.Render("(該当なし)")}
-	}
-	cur := m.cursor[m.view]
-	start := 0
-	if cur >= h {
-		start = cur - h + 1
-	}
-	var out []string
-	for i := start; i < len(m.rows) && len(out) < h; i++ {
-		r := m.rows[i]
-		if r.header {
-			out = append(out, m.st.header.Render(trunc(r.label, w)))
-			continue
-		}
-		tag := model.SeverityTag(r.sev)
-		text := trunc(tag+" "+r.label, w-2)
-		if i == cur {
-			prefix := "> "
-			if m.twoPane() && m.focus == 1 {
-				prefix = "* "
-			}
-			out = append(out, m.st.sel.Render(pad(prefix+text, w)))
-			continue
-		}
-		out = append(out, "  "+m.sevStyle(r.sev).Render(tag)+trimPrefixWidth(text, len(tag)))
-	}
-	return out
-}
-
-func trimPrefixWidth(s string, n int) string {
-	if len(s) <= n {
-		return ""
-	}
-	return s[n:]
-}
-
-func (m *Model) current() *row {
-	if len(m.rows) == 0 {
-		return nil
-	}
-	return &m.rows[m.cursor[m.view]]
-}
-
-func (m *Model) detailLines(w, h int) []string {
-	r := m.current()
-	if r == nil {
-		return []string{m.st.dim.Render("(項目がありません)")}
-	}
-	var b strings.Builder
-	switch {
-	case r.item != nil:
-		m.writeItem(&b, r.item)
-	case r.diag != nil:
-		m.writeDiag(&b, r.diag)
-	case r.cover != nil:
-		c := r.cover
-		fmt.Fprintf(&b, "%s\n\n種別: %s\n対象: %s\n理由: %s\n出典: %s\n", m.st.title.Render("解析範囲外（Coverage）"), c.Kind, c.Ref, c.Reason, model.FormatOrigin(m.idx, c.Origin))
-		b.WriteString("\nこの部分は推測で埋めず、未解析として常に表示しています。\n")
-	case r.source != nil:
-		m.writeSource(&b, r.source)
-	}
-	wrapped := lipgloss.NewStyle().Width(w).Render(strings.TrimRight(b.String(), "\n"))
-	lines := strings.Split(wrapped, "\n")
-	for len(lines) > 0 && strings.TrimSpace(ansi.Strip(lines[len(lines)-1])) == "" {
-		lines = lines[:len(lines)-1]
-	}
-	if limit := max(0, len(lines)-h); m.dScroll > limit {
-		m.dScroll = limit
-	}
-	lines = lines[m.dScroll:]
-	if len(lines) > h {
-		lines = lines[:h]
-	}
-	return lines
-}
-
-func (m *Model) writeItem(b *strings.Builder, it *sbxenv.Item) {
-	fmt.Fprintf(b, "%s\n", m.st.title.Render(it.ID))
-	fmt.Fprintf(b, "値: %s\n", it.Value)
-	fmt.Fprintf(b, "リスク: %s  %s\n", it.Risk, strings.Join(it.Badges, " "))
-	if it.Kit != "" {
-		fmt.Fprintf(b, "kit: %s\n", it.Kit)
-	}
-	for _, f := range it.Fields {
-		fmt.Fprintf(b, "  %s: %s\n", f.Key, f.Value)
-	}
-	if d := it.Doc; d != nil {
-		fmt.Fprintf(b, "\n%s\n", m.st.header.Render("解説（"+d.Title+"）"))
-		fmt.Fprintf(b, "要は: %s\n", d.Meaning)
-		if d.Detail != "" {
-			fmt.Fprintf(b, "注意: %s\n", d.Detail)
-		}
-		fmt.Fprintf(b, "上書き規則: %s — %s\n", d.MergeLabel, d.MergeDetail)
-		if d.Recreate {
-			b.WriteString("反映: 既存 sandbox には効かず、sbx env rm → create で作り直したときに反映されます。\n")
-		}
-		fmt.Fprintf(b, "参照: %s\n", d.Reference)
-	}
-	fmt.Fprintf(b, "\n%s\n", m.st.header.Render("上書き履歴"))
-	for _, h := range it.History {
-		fmt.Fprintf(b, "  %-7s %s  @ %s\n", h.Op, h.Value, model.FormatOrigin(m.idx, h.Origin))
-	}
-	fmt.Fprintf(b, "\n%s\n", m.st.header.Render("出典"))
-	for _, o := range it.Origins {
-		fmt.Fprintf(b, "  %s\n", model.FormatOrigin(m.idx, o))
-	}
-	if bs := model.BoundariesFor(m.plan, it.ID); len(bs) > 0 {
-		fmt.Fprintf(b, "\n%s\n", m.st.header.Render("境界"))
-		for _, x := range bs {
-			flags := ""
-			if x.Opaque {
-				flags += " [OPAQUE]"
-			}
-			if x.Skipped {
-				flags += " [SKIP]"
-			}
-			access := ""
-			if x.Access != "" {
-				access = " " + x.Access
-			}
-			fmt.Fprintf(b, "  %s 実行/所在=%s 寿命=%s%s%s\n    %s\n", x.Kind, x.Where, x.Lifetime, access, flags, x.Reason)
-		}
-	}
-	if ds := model.DiagnosticsFor(m.plan, it.ID); len(ds) > 0 {
-		fmt.Fprintf(b, "\n%s\n", m.st.header.Render("診断"))
-		for _, d := range ds {
-			fmt.Fprintf(b, "  [%s] %s: %s\n", d.Level, d.Code, d.Message)
-		}
-	}
-}
-
-func (m *Model) writeDiag(b *strings.Builder, d *sbxenv.Diagnostic) {
-	fmt.Fprintf(b, "%s\n\nレベル: %s\n分類: %s\n\n%s\n", m.st.title.Render(d.Code), d.Level, d.Category, d.Message)
-	if len(d.Origins) > 0 {
-		fmt.Fprintf(b, "\n%s\n", m.st.header.Render("場所"))
-		for _, o := range d.Origins {
-			fmt.Fprintf(b, "  %s\n", model.FormatOrigin(m.idx, o))
-		}
-	}
-	if d.ItemID != "" {
-		for i := range m.plan.Items {
-			if m.plan.Items[i].ID == d.ItemID {
-				b.WriteString("\n")
-				m.writeItem(b, &m.plan.Items[i])
-				break
-			}
-		}
-	}
-}
-
-func (m *Model) writeSource(b *strings.Builder, s *sbxenv.Source) {
-	fmt.Fprintf(b, "%s\n\n種別: %s\nパス: %s\n", m.st.title.Render(s.ID), s.Kind, s.Path)
-	if s.SHA256 != "" {
-		fmt.Fprintf(b, "sha256: %s\n", s.SHA256)
-	}
-	if s.Layer > 0 {
-		fmt.Fprintf(b, "マージ順: %d（大きいほど後勝ち）\n", s.Layer)
-	}
-	state := "展開済み"
-	if !s.Expanded {
-		state = "未展開"
-	}
-	fmt.Fprintf(b, "状態: %s %s\n", state, s.Status)
-	n := 0
-	for i := range m.plan.Items {
-		if model.TouchesSource(&m.plan.Items[i], s.ID) {
-			n++
-		}
-	}
-	fmt.Fprintf(b, "この入力が関わる項目: %d 件（f で絞り込み）\n", n)
-	var lines []string
-	for i := range m.plan.Items {
-		it := &m.plan.Items[i]
-		for _, h := range it.History {
-			if h.Origin.SourceID == s.ID && h.Origin.Line > 0 {
-				lines = append(lines, fmt.Sprintf("  %5d  %s", h.Origin.Line, it.ID))
-				break
-			}
-		}
-	}
-	if len(lines) > 0 {
-		fmt.Fprintf(b, "\n%s\n%s\n", m.st.header.Render("行番号"), strings.Join(lines, "\n"))
-	}
-}
-
-func (m *Model) helpText(w, h int) string {
-	t := `キー操作
-  1 / 2 / 3, [ / ]   ビュー切替（Risk / Items / Sources）
-  j / k, ↑ / ↓       移動（詳細ペインではスクロール）
-  h / l              ペイン移動（80 桁以下の 1 ペインでは戻る / 詳細）
-  Enter / Esc        詳細を開く / 戻る・検索解除
-  g                  Items のグループ切替（層別 / 境界別 / kit別）
-  f                  レイヤー絞り込み（入力ファイル・kit を順に切替）
-  /                  検索（Enter で確定、Esc で解除）
-  ?                  このヘルプ
-  q                  終了（1 行要約を出力）
-
-バッジ
-  [HOST] ホストで実行   [OPAQUE] 中身を解析しないコマンド   [RW]/[RO] マウント
-  [PERSIST] ホストに残る   [NET] 外向き通信の許可   [CRED] 資格情報経路
-  [SSH] SSH エージェント   [SKIP] --skip-host-commands で無効   [!] 診断あり
-  [UNKNOWN] 未解析   [LITERAL] 平文の秘密
-
-これは宣言の静的解析です。緑の「安全」表示は出しません。
-未展開の kit・テンプレート・ホスト共通ポリシーは Coverage として常に表示します。`
-	return lipgloss.NewStyle().Width(w).MaxHeight(h).Render(t)
-}
-
-// summaryFor picks the full summary line, or a compact one that keeps
-// every count when the terminal is too narrow for the full labels.
-func summaryFor(s sbxenv.Summary, w int) string {
-	if full := sbxenv.SummaryLine(s); lipgloss.Width(full) <= w {
-		return full
-	}
-	return fmt.Sprintf("Host実行%d 永続%d RW%d 許可%d E%d W%d 未展開%d", s.HostExec, s.HostPersistent, s.RWMounts, s.EgressAllows, s.Errors, s.Warnings, s.Unexpanded)
-}
-
-func trunc(s string, w int) string {
-	if w <= 0 {
-		return ""
-	}
-	return ansi.Truncate(s, w, "…")
-}
-
-func pad(s string, w int) string {
-	s = trunc(s, w)
-	if n := lipgloss.Width(s); n < w {
-		s += strings.Repeat(" ", w-n)
-	}
-	return s
 }
 
 // Run starts the TUI and returns the one-line summary to print on exit.

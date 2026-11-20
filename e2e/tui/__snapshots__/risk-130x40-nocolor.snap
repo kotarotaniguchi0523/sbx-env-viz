@@ -1,382 +1,514 @@
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│sbx-env-viz  1:Risk  2:Items  3:Sources                                                                                           │
-│Host実行 2 | Host永続 4 | RWマウント 2 | 外への許可 3 | エラー 0 | 警告 5 | 未展開 6                                              │
+│ sbx-env-viz   1:Risk   2:Items   3:Sources                                                                                       │
+│ [Host実行 2]   [Host永続 4]   [RWマウント 2]   [外への許可 3]   [エラー 0]   [警告 5]   [未展開 6]                               │
 │宣言の静的解析（稼働中 sandbox の状態ではない） env-args: workspace=./web-app (default), channel=stable (default)                 │
-│> HIGH [WARNING] BINDING_DOMAIN_MISSING bindings.example.… │ BINDING_DOMAIN_MISSING                                               │
-│  HIGH [WARNING] HOST_MOUNT_SHARED kit history host-mount… │                                                                      │
-│  HIGH [WARNING] PORT_ALL_INTERFACES ports[3000/tcp4] bin… │ レベル: warning                                                      │
-│  HIGH [WARNING] PULL_ALWAYS_DEV sandboxOptions.template … │ 分類: credentials                                                    │
-│  HIGH [WARNING] SSH_AGENT_UNRESTRICTED kit egress reques… │                                                                      │
-│  HIGH [CRED][HOST][OPAQUE] secrets.github = command: gh … │ bindings.example.apiKey.domains does not approve                     │
-│  HIGH [!] ports[3000/tcp4] = 0.0.0.0:4000 -> sandbox:300… │ api.internal.example.com used by kit egress; sbx asks for approval at│
-│  HIGH [HOST][OPAQUE] lifecycle.postCreate[0] = ./hooks/l… │ create time (and fails unattended runs)                              │
-│  HIGH [!][SSH][HOST] kit:egress/ssh-agent@1/runtime = ph… │                                                                      │
-│  HIGH [!][RW][PERSIST] kit:history/host-mount@1//home/ag… │ 場所                                                                 │
-│  MED  [RW] workspace = ~/proj/web-app                     │   ~/proj/base.sbxenv.yaml:41                                         │
-│  MED  [CRED] secrets.example = ref: op://Private/Example… │   ~/proj/kits/egress/egress.yaml:19 (via L1:17 kits[./kits/egress])  │
-│  MED  [!][CRED][PERSIST] bindings.example.apiKey = api.e… │                                                                      │
-│  MED  [PERSIST] mcp.servers[docs] = url: https://mcp.exa… │ bindings.example.apiKey                                              │
-│  MED  [UNKNOWN] kits[docker.io/sbx/playwright:1.61.1] = … │ 値: api.example.com                                                  │
-│  MED  [NET] kit:egress/network-policy@1/runtime.allow/*.… │ リスク: medium  [!] [CRED] [PERSIST]                                 │
-│  MED  [CRED] kit:egress/credential@1/example/runtime = s… │   domains: api.example.com                                           │
-│  MED  [UNKNOWN] kit:egress/io.example/telemetry@2 = io.e… │                                                                      │
-│  MED  [COVERAGE] 未展開 builtin-agent: claude             │ 解説（bindings.<service>.apiKey）                                    │
-│  MED  [COVERAGE] 未展開 host-local-policy: sbx policy / … │ 要は: kit の credential@1（apiKey                                    │
-│  MED  [COVERAGE] 未展開 kit-env-reference: history: ${{ … │ 方式）が資格情報を差し込んでよいドメインの承認。                     │
-│  MED  [COVERAGE] 未展開 mutable-template: ghcr.io/exampl… │ 注意: ユーザー全体の credentials.yaml に結合され、sbx env rm         │
-│  MED  [COVERAGE] 未展開 remote-kit: docker.io/sbx/playwr… │ でも残ります（--prune-bindings で削除、ただし他の sandbox            │
-│  MED  [COVERAGE] 未展開 unknown-capability: egress: io.e… │ と共有）。秘密の値そのものは持ちません。                             │
-│  LOW  [!] sandboxOptions.template = ghcr.io/example/comm… │ 上書き規則: マップ結合 — マップ結合。domains リストは連結されます。  │
-│  LOW  kits[./kits/egress] = ./kits/egress {apiHost=api.i… │ 反映: 既存 sandbox には効かず、sbx env rm → create                   │
-│  LOW  kits[./kits/history] = ./kits/history               │ で作り直したときに反映されます。                                     │
-│  LOW  [NET] kit:egress/network-policy@1/install.allow/re… │ 参照: https://docs.docker.com/ai/sandboxes/configuration/environment-│
-│  LOW  [NET] kit:egress/network-policy@1/runtime.allow/ap… │ files/#bindings                                                      │
-│  LOW  kit:egress/git-identity@1 = user.name / user.email… │                                                                      │
-│  LOW  [OPAQUE] kit:history/lifecycle@1/startup[0] = sh -… │ 上書き履歴                                                           │
-│                                                           │   set     api.example.com  @ ~/proj/base.sbxenv.yaml:41              │
-│                                                           │                                                                      │
-│                                                           │ 出典                                                                 │
-│                                                           │   ~/proj/base.sbxenv.yaml:41                                         │
-│                                                           │                                                                      │
-│q:終了 ?:ヘルプ 1-3/[]:ビュー j/k:移動 Enter:詳細 h/l:ペイン g:グループ f:絞り込み /:検索                                         │
+│絞り込み  全て   L1   L2   K1   K2                                                                                                │
+│╭────────────────────────────────────────────────────────╮╭──────────────────────────────────────────────────────────────────────╮│
+││● 一覧 · Risk（31 件）                                  ││  詳細                                                                ││
+││ HIGH  [WARNING] BINDING_DOMAIN_MISSING bindings.exampl…││ BINDING_DOMAIN_MISSING                                               ││
+││ HIGH  [WARNING] HOST_MOUNT_SHARED kit history host-mou…││ レベル: warning                                                      ││
+││ HIGH  [WARNING] PORT_ALL_INTERFACES ports[3000/tcp4] b…││ 分類: credentials                                                    ││
+││ HIGH  [WARNING] PULL_ALWAYS_DEV sandboxOptions.templat…││ bindings.example.apiKey.domains does not approve                     ││
+││ HIGH  [WARNING] SSH_AGENT_UNRESTRICTED kit egress requ…││ api.internal.example.com used by kit egress; sbx asks for approval at││
+││ HIGH  [CRED][HOST][OPAQUE] secrets.github = command: g…││ create time (and fails unattended runs)                              ││
+││ HIGH  [!] ports[3000/tcp4] = 0.0.0.0:4000 -> sandbox:3…││                                                                      ││
+││ HIGH  [HOST][OPAQUE] lifecycle.postCreate[0] = ./hooks…││ ▍場所                                                                ││
+││ HIGH  [!][SSH][HOST] kit:egress/ssh-agent@1/runtime = …││   ~/proj/base.sbxenv.yaml:41                                         ││
+││ HIGH  [!][RW][PERSIST] kit:history/host-mount@1//home/…││   ~/proj/kits/egress/egress.yaml:19 (via L1:17 kits[./kits/egress])  ││
+││ MED   [RW] workspace = ~/proj/web-app                  ││                                                                      ││
+││ MED   [CRED] secrets.example = ref: op://Private/Examp…││ bindings.example.apiKey                                              ││
+││ MED   [!][CRED][PERSIST] bindings.example.apiKey = api…││ 値: api.example.com                                                  ││
+││ MED   [PERSIST] mcp.servers[docs] = url: https://mcp.e…││ リスク: medium  [!] [CRED] [PERSIST]                                 ││
+││ MED   [UNKNOWN] kits[docker.io/sbx/playwright:1.61.1] …││   domains: api.example.com                                           ││
+││ MED   [NET] kit:egress/network-policy@1/runtime.allow/…││                                                                      ││
+││ MED   [CRED] kit:egress/credential@1/example/runtime =…││ ▍解説（bindings.<service>.apiKey）                                   ││
+││ MED   [UNKNOWN] kit:egress/io.example/telemetry@2 = io…││ 要は: kit の credential@1（apiKey                                    ││
+││ MED   [COVERAGE] 未展開 builtin-agent: claude          ││       方式）が資格情報を差し込んでよいドメインの承認。               ││
+││ MED   [COVERAGE] 未展開 host-local-policy: sbx policy …││ 注意: ユーザー全体の credentials.yaml に結合され、sbx env rm         ││
+││ MED   [COVERAGE] 未展開 kit-env-reference: history: ${…││       でも残ります（--prune-bindings で削除、ただし他の sandbox      ││
+││ MED   [COVERAGE] 未展開 mutable-template: ghcr.io/exam…││       と共有）。秘密の値そのものは持ちません。                       ││
+││ MED   [COVERAGE] 未展開 remote-kit: docker.io/sbx/play…││                                                                      ││
+││ MED   [COVERAGE] 未展開 unknown-capability: egress: io…││ ▍上書き規則                                                          ││
+││ LOW   [!] sandboxOptions.template = ghcr.io/example/co…││ マップ結合: マップ結合。domains リストは連結されます。               ││
+││ LOW   kits[./kits/egress] = ./kits/egress {apiHost=api…││ 反映: 既存 sandbox には効かず、sbx env rm → create                   ││
+││ LOW   kits[./kits/history] = ./kits/history            ││       で作り直したときに反映されます。                               ││
+││ LOW   [NET] kit:egress/network-policy@1/install.allow/…││ 参照: https://docs.docker.com/ai/sandboxes/configuration/            ││
+││ LOW   [NET] kit:egress/network-policy@1/runtime.allow/…││       environment-files/#bindings                                    ││
+││ LOW   kit:egress/git-identity@1 = user.name / user.ema…││                                                                      ││
+││ LOW   [OPAQUE] kit:history/lifecycle@1/startup[0] = sh…││ ▍上書き履歴                                                          ││
+││                                                        ││   set     api.example.com                                            ││
+│╰────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────╯│
+│ q  終了  ?  ヘルプ  1-3  ビュー  j/k  移動  Enter  詳細  h/l  ペイン  g  グループ  f  絞り込み  /  検索  マウス: クリックで選択… │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 {
   "colors": {
-    "0,0": {
-      "bold": true
-    },
     "0,2": {
       "dim": true
     },
     "0,3": {
-      "inverse": true
-    },
-    "0,39": {
       "dim": true
     },
-    "11,0": {
+    "0,39": {
+      "inverse": true
+    },
+    "1,0": {
+      "bold": true
+    },
+    "1,1": {
+      "bold": true
+    },
+    "1,10": {
+      "bold": true
+    },
+    "1,11": {
+      "bold": true
+    },
+    "1,12": {
+      "bold": true
+    },
+    "1,13": {
+      "bold": true
+    },
+    "1,14": {
+      "bold": true
+    },
+    "1,15": {
+      "bold": true
+    },
+    "1,5": {
+      "bold": true
+    },
+    "1,6": {
+      "inverse": true
+    },
+    "1,7": {
+      "bold": true
+    },
+    "1,8": {
+      "bold": true
+    },
+    "1,9": {
+      "bold": true
+    },
+    "10,3": {
+      "bold": true
+    },
+    "11,12": {
+      "bold": false
+    },
+    "11,30": {
       "bold": false
     },
     "12,0": {
+      "bold": false
+    },
+    "12,16": {
+      "bold": false
+    },
+    "12,39": {
+      "dim": true,
+      "inverse": false
+    },
+    "129,39": {
+      "dim": false
+    },
+    "13,1": {
+      "bold": false
+    },
+    "13,21": {
+      "bold": false
+    },
+    "13,33": {
+      "bold": false
+    },
+    "13,34": {
+      "bold": false
+    },
+    "14,0": {
       "inverse": true
     },
-    "2,10": {
+    "14,17": {
+      "bold": false
+    },
+    "14,22": {
+      "bold": false
+    },
+    "14,3": {
+      "bold": false
+    },
+    "15,0": {
       "bold": true
     },
-    "2,11": {
-      "bold": true
-    },
-    "2,12": {
-      "bold": true
-    },
-    "2,4": {
-      "bold": true
-    },
-    "2,5": {
-      "bold": true
-    },
-    "2,6": {
-      "bold": true
-    },
-    "2,7": {
-      "bold": true
-    },
-    "2,8": {
-      "bold": true
-    },
-    "2,9": {
-      "bold": true
-    },
-    "20,0": {
+    "15,3": {
       "inverse": false
+    },
+    "16,1": {
+      "bold": true
+    },
+    "16,36": {
+      "bold": false
+    },
+    "17,10": {
+      "bold": false
+    },
+    "17,19": {
+      "bold": false
+    },
+    "17,20": {
+      "bold": false
+    },
+    "17,23": {
+      "bold": false
+    },
+    "17,7": {
+      "bold": false
+    },
+    "17,8": {
+      "bold": false
+    },
+    "17,9": {
+      "bold": false
+    },
+    "18,24": {
+      "bold": false
+    },
+    "18,25": {
+      "bold": false
+    },
+    "18,26": {
+      "bold": false
+    },
+    "18,27": {
+      "bold": false
+    },
+    "18,28": {
+      "bold": false
+    },
+    "18,29": {
+      "bold": false
+    },
+    "20,39": {
+      "dim": false,
+      "inverse": true
+    },
+    "21,0": {
+      "bold": false
+    },
+    "22,0": {
+      "inverse": false
+    },
+    "22,13": {
+      "bold": false
+    },
+    "22,14": {
+      "bold": false
+    },
+    "23,5": {
+      "bold": false
+    },
+    "24,15": {
+      "bold": false
+    },
+    "25,39": {
+      "dim": true,
+      "inverse": false
+    },
+    "26,18": {
+      "bold": false
+    },
+    "28,1": {
+      "bold": false
+    },
+    "28,11": {
+      "bold": false
+    },
+    "3,39": {
+      "dim": true,
+      "inverse": false
+    },
+    "31,1": {
+      "bold": true
+    },
+    "33,39": {
+      "dim": false,
+      "inverse": true
+    },
+    "38,39": {
+      "dim": true,
+      "inverse": false
+    },
+    "44,39": {
+      "dim": false,
+      "inverse": true
+    },
+    "45,1": {
+      "bold": false
     },
     "48,2": {
       "dim": false
     },
-    "58,3": {
+    "51,39": {
+      "dim": true,
       "inverse": false
     },
-    "59,10": {
-      "dim": true
+    "57,39": {
+      "dim": false,
+      "inverse": true
     },
-    "59,11": {
-      "dim": true
-    },
-    "59,12": {
-      "dim": true
-    },
-    "59,13": {
-      "dim": true
-    },
-    "59,14": {
-      "dim": true
-    },
-    "59,15": {
-      "dim": true
-    },
-    "59,16": {
-      "dim": true
-    },
-    "59,17": {
-      "dim": true
-    },
-    "59,18": {
-      "dim": true
-    },
-    "59,19": {
-      "dim": true
-    },
-    "59,20": {
-      "dim": true
-    },
-    "59,21": {
-      "dim": true
-    },
-    "59,22": {
-      "dim": true
-    },
-    "59,23": {
-      "dim": true
-    },
-    "59,24": {
-      "dim": true
-    },
-    "59,25": {
-      "dim": true
-    },
-    "59,26": {
-      "dim": true
-    },
-    "59,27": {
-      "dim": true
-    },
-    "59,28": {
-      "dim": true
-    },
-    "59,29": {
-      "dim": true
-    },
-    "59,3": {
-      "dim": true
-    },
-    "59,30": {
-      "dim": true
-    },
-    "59,31": {
-      "dim": true
-    },
-    "59,32": {
-      "dim": true
-    },
-    "59,33": {
-      "dim": true
-    },
-    "59,34": {
-      "dim": true
-    },
-    "59,35": {
-      "dim": true
-    },
-    "59,36": {
-      "dim": true
-    },
-    "59,37": {
-      "dim": true
-    },
-    "59,38": {
-      "dim": true
-    },
-    "59,4": {
-      "dim": true
+    "57,6": {
+      "inverse": false
     },
     "59,5": {
-      "dim": true
-    },
-    "59,6": {
-      "dim": true
-    },
-    "59,7": {
-      "dim": true
-    },
-    "59,8": {
-      "dim": true
-    },
-    "59,9": {
-      "dim": true
-    },
-    "6,10": {
-      "bold": false
-    },
-    "6,11": {
-      "bold": false
-    },
-    "6,12": {
-      "bold": false
-    },
-    "6,4": {
-      "bold": false
-    },
-    "6,5": {
-      "bold": false
-    },
-    "6,6": {
-      "bold": false
-    },
-    "6,7": {
-      "bold": false
-    },
-    "6,8": {
-      "bold": false
-    },
-    "6,9": {
-      "bold": false
-    },
-    "60,10": {
-      "dim": false
-    },
-    "60,11": {
-      "dim": false
-    },
-    "60,12": {
-      "dim": false
+      "bold": true
     },
     "60,13": {
-      "dim": false
-    },
-    "60,14": {
-      "dim": false
-    },
-    "60,15": {
-      "dim": false
-    },
-    "60,16": {
-      "dim": false
+      "bold": true
     },
     "60,17": {
-      "dim": false
+      "bold": true
     },
     "60,18": {
-      "dim": false
+      "dim": true
     },
     "60,19": {
-      "dim": false
+      "dim": true
     },
     "60,20": {
-      "dim": false
-    },
-    "60,21": {
-      "dim": false
+      "dim": true
     },
     "60,22": {
-      "dim": false
+      "bold": true
     },
     "60,23": {
-      "dim": false
-    },
-    "60,24": {
-      "dim": false
+      "dim": true
     },
     "60,25": {
-      "dim": false
-    },
-    "60,26": {
-      "dim": false
-    },
-    "60,27": {
-      "dim": false
-    },
-    "60,28": {
-      "dim": false
+      "dim": true
     },
     "60,29": {
-      "dim": false
-    },
-    "60,3": {
-      "dim": false
+      "bold": true
     },
     "60,30": {
-      "dim": false
+      "dim": true
     },
     "60,31": {
-      "dim": false
-    },
-    "60,32": {
-      "dim": false
+      "dim": true
     },
     "60,33": {
-      "dim": false
-    },
-    "60,34": {
-      "dim": false
-    },
-    "60,35": {
-      "dim": false
+      "dim": true
     },
     "60,36": {
-      "dim": false
-    },
-    "60,37": {
-      "dim": false
-    },
-    "60,38": {
-      "dim": false
-    },
-    "60,4": {
-      "dim": false
-    },
-    "60,5": {
-      "dim": false
+      "bold": true
     },
     "60,6": {
-      "dim": false
+      "bold": true
     },
     "60,7": {
-      "dim": false
+      "dim": true
     },
     "60,8": {
+      "dim": true
+    },
+    "62,39": {
+      "dim": true,
+      "inverse": false
+    },
+    "64,18": {
       "dim": false
     },
-    "60,9": {
+    "65,13": {
+      "bold": false
+    },
+    "65,5": {
+      "bold": false
+    },
+    "66,23": {
       "dim": false
     },
-    "61,12": {
-      "bold": true
-    },
-    "61,16": {
-      "bold": true
-    },
-    "61,21": {
-      "bold": true
-    },
-    "61,3": {
-      "bold": true
-    },
-    "61,33": {
-      "bold": true
-    },
-    "61,36": {
-      "bold": true
-    },
-    "65,12": {
-      "bold": false
-    },
-    "65,36": {
-      "bold": false
-    },
-    "71,33": {
-      "bold": false
-    },
-    "83,3": {
-      "bold": false
-    },
-    "84,16": {
-      "bold": false
-    },
-    "89,39": {
+    "66,25": {
       "dim": false
     },
-    "94,21": {
+    "66,31": {
+      "dim": false
+    },
+    "66,33": {
+      "dim": false
+    },
+    "66,8": {
+      "dim": false
+    },
+    "68,19": {
+      "dim": false
+    },
+    "68,7": {
+      "dim": false
+    },
+    "7,10": {
       "bold": false
+    },
+    "7,11": {
+      "bold": false
+    },
+    "7,12": {
+      "bold": false
+    },
+    "7,13": {
+      "bold": false
+    },
+    "7,14": {
+      "bold": false
+    },
+    "7,15": {
+      "bold": false
+    },
+    "7,7": {
+      "bold": false
+    },
+    "7,8": {
+      "bold": false
+    },
+    "7,9": {
+      "bold": false
+    },
+    "70,39": {
+      "dim": false,
+      "inverse": true
+    },
+    "71,20": {
+      "dim": false
+    },
+    "71,29": {
+      "bold": false
+    },
+    "71,36": {
+      "bold": false
+    },
+    "72,30": {
+      "dim": false
+    },
+    "73,39": {
+      "dim": true,
+      "inverse": false
+    },
+    "78,1": {
+      "bold": true
+    },
+    "8,10": {
+      "bold": true
+    },
+    "8,11": {
+      "bold": true
+    },
+    "8,12": {
+      "bold": true
+    },
+    "8,13": {
+      "bold": true
+    },
+    "8,14": {
+      "bold": true
+    },
+    "8,15": {
+      "bold": true
+    },
+    "8,16": {
+      "bold": true
+    },
+    "8,17": {
+      "bold": true
+    },
+    "8,18": {
+      "bold": true
+    },
+    "8,19": {
+      "bold": true
+    },
+    "8,20": {
+      "bold": true
+    },
+    "8,21": {
+      "bold": true
+    },
+    "8,22": {
+      "bold": true
+    },
+    "8,23": {
+      "bold": true
+    },
+    "8,24": {
+      "bold": true
+    },
+    "8,25": {
+      "bold": true
+    },
+    "8,26": {
+      "bold": true
+    },
+    "8,27": {
+      "bold": true
+    },
+    "8,28": {
+      "bold": true
+    },
+    "8,29": {
+      "bold": true
+    },
+    "8,30": {
+      "bold": true
+    },
+    "8,33": {
+      "bold": true
+    },
+    "8,34": {
+      "bold": true
+    },
+    "8,36": {
+      "bold": true
+    },
+    "8,7": {
+      "bold": true
+    },
+    "8,8": {
+      "bold": true
+    },
+    "8,9": {
+      "bold": true
+    },
+    "82,6": {
+      "bold": false
+    },
+    "83,17": {
+      "bold": false
+    },
+    "83,39": {
+      "dim": false,
+      "inverse": true
+    },
+    "86,1": {
+      "bold": false
+    },
+    "86,39": {
+      "dim": true,
+      "inverse": false
+    },
+    "9,3": {
+      "dim": false,
+      "inverse": true
+    },
+    "9,39": {
+      "dim": false,
+      "inverse": true
+    },
+    "94,22": {
+      "bold": false
+    },
+    "96,39": {
+      "dim": false,
+      "inverse": true
+    },
+    "99,39": {
+      "dim": true,
+      "inverse": false
     }
   }
 }

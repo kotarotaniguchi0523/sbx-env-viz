@@ -1,526 +1,1540 @@
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│sbx-env-viz  1:Risk  2:Items  3:Sources                                                                                           │
-│Host実行 2 | Host永続 4 | RWマウント 2 | 外への許可 3 | エラー 0 | 警告 5 | 未展開 6                                              │
+│ sbx-env-viz   1:Risk   2:Items   3:Sources                                                                                       │
+│ Host実行 2   Host永続 4   RWマウント 2   外への許可 3   エラー 0   警告 5   未展開 6                                             │
 │宣言の静的解析（稼働中 sandbox の状態ではない） env-args: workspace=./web-app (default), channel=stable (default)                 │
-│> HIGH [WARNING] BINDING_DOMAIN_MISSING bindings.example.… │ BINDING_DOMAIN_MISSING                                               │
-│  HIGH [WARNING] HOST_MOUNT_SHARED kit history host-mount… │                                                                      │
-│  HIGH [WARNING] PORT_ALL_INTERFACES ports[3000/tcp4] bin… │ レベル: warning                                                      │
-│  HIGH [WARNING] PULL_ALWAYS_DEV sandboxOptions.template … │ 分類: credentials                                                    │
-│  HIGH [WARNING] SSH_AGENT_UNRESTRICTED kit egress reques… │                                                                      │
-│  HIGH [CRED][HOST][OPAQUE] secrets.github = command: gh … │ bindings.example.apiKey.domains does not approve                     │
-│  HIGH [!] ports[3000/tcp4] = 0.0.0.0:4000 -> sandbox:300… │ api.internal.example.com used by kit egress; sbx asks for approval at│
-│  HIGH [HOST][OPAQUE] lifecycle.postCreate[0] = ./hooks/l… │ create time (and fails unattended runs)                              │
-│  HIGH [!][SSH][HOST] kit:egress/ssh-agent@1/runtime = ph… │                                                                      │
-│  HIGH [!][RW][PERSIST] kit:history/host-mount@1//home/ag… │ 場所                                                                 │
-│  MED  [RW] workspace = ~/proj/web-app                     │   ~/proj/base.sbxenv.yaml:41                                         │
-│  MED  [CRED] secrets.example = ref: op://Private/Example… │   ~/proj/kits/egress/egress.yaml:19 (via L1:17 kits[./kits/egress])  │
-│  MED  [!][CRED][PERSIST] bindings.example.apiKey = api.e… │                                                                      │
-│  MED  [PERSIST] mcp.servers[docs] = url: https://mcp.exa… │ bindings.example.apiKey                                              │
-│  MED  [UNKNOWN] kits[docker.io/sbx/playwright:1.61.1] = … │ 値: api.example.com                                                  │
-│  MED  [NET] kit:egress/network-policy@1/runtime.allow/*.… │ リスク: medium  [!] [CRED] [PERSIST]                                 │
-│  MED  [CRED] kit:egress/credential@1/example/runtime = s… │   domains: api.example.com                                           │
-│  MED  [UNKNOWN] kit:egress/io.example/telemetry@2 = io.e… │                                                                      │
-│  MED  [COVERAGE] 未展開 builtin-agent: claude             │ 解説（bindings.<service>.apiKey）                                    │
-│  MED  [COVERAGE] 未展開 host-local-policy: sbx policy / … │ 要は: kit の credential@1（apiKey                                    │
-│  MED  [COVERAGE] 未展開 kit-env-reference: history: ${{ … │ 方式）が資格情報を差し込んでよいドメインの承認。                     │
-│  MED  [COVERAGE] 未展開 mutable-template: ghcr.io/exampl… │ 注意: ユーザー全体の credentials.yaml に結合され、sbx env rm         │
-│  MED  [COVERAGE] 未展開 remote-kit: docker.io/sbx/playwr… │ でも残ります（--prune-bindings で削除、ただし他の sandbox            │
-│  MED  [COVERAGE] 未展開 unknown-capability: egress: io.e… │ と共有）。秘密の値そのものは持ちません。                             │
-│  LOW  [!] sandboxOptions.template = ghcr.io/example/comm… │ 上書き規則: マップ結合 — マップ結合。domains リストは連結されます。  │
-│  LOW  kits[./kits/egress] = ./kits/egress {apiHost=api.i… │ 反映: 既存 sandbox には効かず、sbx env rm → create                   │
-│  LOW  kits[./kits/history] = ./kits/history               │ で作り直したときに反映されます。                                     │
-│  LOW  [NET] kit:egress/network-policy@1/install.allow/re… │ 参照: https://docs.docker.com/ai/sandboxes/configuration/environment-│
-│  LOW  [NET] kit:egress/network-policy@1/runtime.allow/ap… │ files/#bindings                                                      │
-│  LOW  kit:egress/git-identity@1 = user.name / user.email… │                                                                      │
-│  LOW  [OPAQUE] kit:history/lifecycle@1/startup[0] = sh -… │ 上書き履歴                                                           │
-│                                                           │   set     api.example.com  @ ~/proj/base.sbxenv.yaml:41              │
-│                                                           │                                                                      │
-│                                                           │ 出典                                                                 │
-│                                                           │   ~/proj/base.sbxenv.yaml:41                                         │
-│                                                           │                                                                      │
-│q:終了 ?:ヘルプ 1-3/[]:ビュー j/k:移動 Enter:詳細 h/l:ペイン g:グループ f:絞り込み /:検索                                         │
+│絞り込み  全て   L1   L2   K1   K2                                                                                                │
+│╭────────────────────────────────────────────────────────╮╭──────────────────────────────────────────────────────────────────────╮│
+││● 一覧 · Risk（31 件）                                  ││  詳細                                                                ││
+││ HIGH  [WARNING] BINDING_DOMAIN_MISSING bindings.exampl…││ BINDING_DOMAIN_MISSING                                               ││
+││ HIGH  [WARNING] HOST_MOUNT_SHARED kit history host-mou…││ レベル: warning                                                      ││
+││ HIGH  [WARNING] PORT_ALL_INTERFACES ports[3000/tcp4] b…││ 分類: credentials                                                    ││
+││ HIGH  [WARNING] PULL_ALWAYS_DEV sandboxOptions.templat…││ bindings.example.apiKey.domains does not approve                     ││
+││ HIGH  [WARNING] SSH_AGENT_UNRESTRICTED kit egress requ…││ api.internal.example.com used by kit egress; sbx asks for approval at││
+││ HIGH  [CRED][HOST][OPAQUE] secrets.github = command: g…││ create time (and fails unattended runs)                              ││
+││ HIGH  [!] ports[3000/tcp4] = 0.0.0.0:4000 -> sandbox:3…││                                                                      ││
+││ HIGH  [HOST][OPAQUE] lifecycle.postCreate[0] = ./hooks…││ ▍場所                                                                ││
+││ HIGH  [!][SSH][HOST] kit:egress/ssh-agent@1/runtime = …││   ~/proj/base.sbxenv.yaml:41                                         ││
+││ HIGH  [!][RW][PERSIST] kit:history/host-mount@1//home/…││   ~/proj/kits/egress/egress.yaml:19 (via L1:17 kits[./kits/egress])  ││
+││ MED   [RW] workspace = ~/proj/web-app                  ││                                                                      ││
+││ MED   [CRED] secrets.example = ref: op://Private/Examp…││ bindings.example.apiKey                                              ││
+││ MED   [!][CRED][PERSIST] bindings.example.apiKey = api…││ 値: api.example.com                                                  ││
+││ MED   [PERSIST] mcp.servers[docs] = url: https://mcp.e…││ リスク: medium  [!] [CRED] [PERSIST]                                 ││
+││ MED   [UNKNOWN] kits[docker.io/sbx/playwright:1.61.1] …││   domains: api.example.com                                           ││
+││ MED   [NET] kit:egress/network-policy@1/runtime.allow/…││                                                                      ││
+││ MED   [CRED] kit:egress/credential@1/example/runtime =…││ ▍解説（bindings.<service>.apiKey）                                   ││
+││ MED   [UNKNOWN] kit:egress/io.example/telemetry@2 = io…││ 要は: kit の credential@1（apiKey                                    ││
+││ MED   [COVERAGE] 未展開 builtin-agent: claude          ││       方式）が資格情報を差し込んでよいドメインの承認。               ││
+││ MED   [COVERAGE] 未展開 host-local-policy: sbx policy …││ 注意: ユーザー全体の credentials.yaml に結合され、sbx env rm         ││
+││ MED   [COVERAGE] 未展開 kit-env-reference: history: ${…││       でも残ります（--prune-bindings で削除、ただし他の sandbox      ││
+││ MED   [COVERAGE] 未展開 mutable-template: ghcr.io/exam…││       と共有）。秘密の値そのものは持ちません。                       ││
+││ MED   [COVERAGE] 未展開 remote-kit: docker.io/sbx/play…││                                                                      ││
+││ MED   [COVERAGE] 未展開 unknown-capability: egress: io…││ ▍上書き規則                                                          ││
+││ LOW   [!] sandboxOptions.template = ghcr.io/example/co…││ マップ結合: マップ結合。domains リストは連結されます。               ││
+││ LOW   kits[./kits/egress] = ./kits/egress {apiHost=api…││ 反映: 既存 sandbox には効かず、sbx env rm → create                   ││
+││ LOW   kits[./kits/history] = ./kits/history            ││       で作り直したときに反映されます。                               ││
+││ LOW   [NET] kit:egress/network-policy@1/install.allow/…││ 参照: https://docs.docker.com/ai/sandboxes/configuration/            ││
+││ LOW   [NET] kit:egress/network-policy@1/runtime.allow/…││       environment-files/#bindings                                    ││
+││ LOW   kit:egress/git-identity@1 = user.name / user.ema…││                                                                      ││
+││ LOW   [OPAQUE] kit:history/lifecycle@1/startup[0] = sh…││ ▍上書き履歴                                                          ││
+││                                                        ││   set     api.example.com                                            ││
+│╰────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────╯│
+│ q  終了  ?  ヘルプ  1-3  ビュー  j/k  移動  Enter  詳細  h/l  ペイン  g  グループ  f  絞り込み  /  検索  マウス: クリックで選択… │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 {
   "colors": {
     "0,0": {
-      "bold": true
+      "bg": "#7aa2f7"
+    },
+    "0,1": {
+      "bg": "#ff9e64"
+    },
+    "0,10": {
+      "fg": "#7aa2f7"
+    },
+    "0,11": {
+      "fg": "#7aa2f7"
+    },
+    "0,12": {
+      "fg": "#7aa2f7"
+    },
+    "0,13": {
+      "fg": "#7aa2f7"
+    },
+    "0,14": {
+      "fg": "#7aa2f7"
+    },
+    "0,15": {
+      "fg": "#7aa2f7"
+    },
+    "0,16": {
+      "fg": "#7aa2f7"
+    },
+    "0,17": {
+      "fg": "#7aa2f7"
+    },
+    "0,18": {
+      "fg": "#7aa2f7"
+    },
+    "0,19": {
+      "fg": "#7aa2f7"
     },
     "0,2": {
-      "dim": true
+      "fg": "#737aa2"
+    },
+    "0,20": {
+      "fg": "#7aa2f7"
+    },
+    "0,21": {
+      "fg": "#7aa2f7"
+    },
+    "0,22": {
+      "fg": "#7aa2f7"
+    },
+    "0,23": {
+      "fg": "#7aa2f7"
+    },
+    "0,24": {
+      "fg": "#7aa2f7"
+    },
+    "0,25": {
+      "fg": "#7aa2f7"
+    },
+    "0,26": {
+      "fg": "#7aa2f7"
+    },
+    "0,27": {
+      "fg": "#7aa2f7"
+    },
+    "0,28": {
+      "fg": "#7aa2f7"
+    },
+    "0,29": {
+      "fg": "#7aa2f7"
     },
     "0,3": {
-      "inverse": true
+      "fg": "#737aa2"
+    },
+    "0,30": {
+      "fg": "#7aa2f7"
+    },
+    "0,31": {
+      "fg": "#7aa2f7"
+    },
+    "0,32": {
+      "fg": "#7aa2f7"
+    },
+    "0,33": {
+      "fg": "#7aa2f7"
+    },
+    "0,34": {
+      "fg": "#7aa2f7"
+    },
+    "0,35": {
+      "fg": "#7aa2f7"
+    },
+    "0,36": {
+      "fg": "#7aa2f7"
+    },
+    "0,37": {
+      "fg": "#7aa2f7"
+    },
+    "0,38": {
+      "fg": "#7aa2f7"
     },
     "0,39": {
-      "dim": true
+      "bg": "#24283b",
+      "fg": "default"
     },
-    "11,0": {
-      "bold": false
+    "0,4": {
+      "fg": "#7aa2f7"
+    },
+    "0,5": {
+      "fg": "#7aa2f7"
+    },
+    "0,6": {
+      "fg": "#7aa2f7"
+    },
+    "0,7": {
+      "fg": "#7aa2f7"
+    },
+    "0,8": {
+      "fg": "#7aa2f7"
+    },
+    "0,9": {
+      "fg": "#7aa2f7"
+    },
+    "1,0": {
+      "bold": true,
+      "fg": "#1a1b26"
+    },
+    "1,1": {
+      "bold": true,
+      "fg": "#1a1b26"
+    },
+    "1,10": {
+      "bg": "#ff9e64",
+      "bold": true,
+      "fg": "#1a1b26"
+    },
+    "1,11": {
+      "bg": "#ff9e64",
+      "bold": true,
+      "fg": "#1a1b26"
+    },
+    "1,12": {
+      "bg": "#ff9e64",
+      "bold": true,
+      "fg": "#1a1b26"
+    },
+    "1,13": {
+      "bg": "#ff9e64",
+      "bold": true,
+      "fg": "#1a1b26"
+    },
+    "1,14": {
+      "bg": "#ff9e64",
+      "bold": true,
+      "fg": "#1a1b26"
+    },
+    "1,15": {
+      "bg": "#ff9e64",
+      "bold": true,
+      "fg": "#1a1b26"
+    },
+    "1,16": {
+      "bg": "#e0af68",
+      "fg": "#1a1b26"
+    },
+    "1,17": {
+      "bg": "#e0af68",
+      "fg": "#1a1b26"
+    },
+    "1,18": {
+      "bg": "#e0af68",
+      "fg": "#1a1b26"
+    },
+    "1,19": {
+      "bg": "#e0af68",
+      "fg": "#1a1b26"
+    },
+    "1,20": {
+      "bg": "#e0af68",
+      "fg": "#1a1b26"
+    },
+    "1,21": {
+      "bg": "#e0af68",
+      "fg": "#1a1b26"
+    },
+    "1,22": {
+      "bg": "#e0af68",
+      "fg": "#1a1b26"
+    },
+    "1,23": {
+      "bg": "#e0af68",
+      "fg": "#1a1b26"
+    },
+    "1,24": {
+      "bg": "#e0af68",
+      "fg": "#1a1b26"
+    },
+    "1,25": {
+      "bg": "#e0af68",
+      "fg": "#1a1b26"
+    },
+    "1,26": {
+      "bg": "#e0af68",
+      "fg": "#1a1b26"
+    },
+    "1,27": {
+      "bg": "#e0af68",
+      "fg": "#1a1b26"
+    },
+    "1,28": {
+      "bg": "#e0af68",
+      "fg": "#1a1b26"
+    },
+    "1,29": {
+      "bg": "#e0af68",
+      "fg": "#1a1b26"
+    },
+    "1,30": {
+      "bg": "#7aa2f7",
+      "fg": "#1a1b26"
+    },
+    "1,31": {
+      "bg": "#7aa2f7",
+      "fg": "#1a1b26"
+    },
+    "1,32": {
+      "bg": "#7aa2f7",
+      "fg": "#1a1b26"
+    },
+    "1,33": {
+      "bg": "#7aa2f7",
+      "fg": "#1a1b26"
+    },
+    "1,34": {
+      "bg": "#7aa2f7",
+      "fg": "#1a1b26"
+    },
+    "1,35": {
+      "bg": "#7aa2f7",
+      "fg": "#1a1b26"
+    },
+    "1,36": {
+      "bg": "#7aa2f7",
+      "fg": "#1a1b26"
+    },
+    "1,37": {
+      "fg": "default"
+    },
+    "1,39": {
+      "bold": true,
+      "fg": "#7aa2f7"
+    },
+    "1,5": {
+      "bold": true,
+      "fg": "#c0caf5"
+    },
+    "1,6": {
+      "bg": "#2e3c64",
+      "fg": "#ffffff"
+    },
+    "1,7": {
+      "bg": "#ff9e64",
+      "bold": true,
+      "fg": "#1a1b26"
+    },
+    "1,8": {
+      "bg": "#ff9e64",
+      "bold": true,
+      "fg": "#1a1b26"
+    },
+    "1,9": {
+      "bg": "#ff9e64",
+      "bold": true,
+      "fg": "#1a1b26"
+    },
+    "10,3": {
+      "bold": true,
+      "fg": "#1a1b26"
+    },
+    "10,39": {
+      "bold": true,
+      "fg": "#7aa2f7"
+    },
+    "11,1": {
+      "bold": false,
+      "fg": "default"
+    },
+    "11,12": {
+      "bold": false,
+      "fg": "default"
+    },
+    "11,15": {
+      "fg": "#ff9e64"
+    },
+    "11,18": {
+      "fg": "#e0af68"
+    },
+    "11,30": {
+      "bold": false,
+      "fg": "default"
+    },
+    "11,39": {
+      "bold": false,
+      "fg": "default"
     },
     "12,0": {
-      "inverse": true
+      "bold": false,
+      "fg": "default"
     },
-    "2,10": {
+    "12,1": {
+      "bg": "default"
+    },
+    "12,16": {
+      "bold": false,
+      "fg": "default"
+    },
+    "12,39": {
+      "bg": "default",
+      "fg": "#737aa2"
+    },
+    "129,10": {
+      "fg": "#3b4261"
+    },
+    "129,11": {
+      "fg": "#3b4261"
+    },
+    "129,12": {
+      "fg": "#3b4261"
+    },
+    "129,13": {
+      "fg": "#3b4261"
+    },
+    "129,14": {
+      "fg": "#3b4261"
+    },
+    "129,15": {
+      "fg": "#3b4261"
+    },
+    "129,16": {
+      "fg": "#3b4261"
+    },
+    "129,17": {
+      "fg": "#3b4261"
+    },
+    "129,18": {
+      "fg": "#3b4261"
+    },
+    "129,19": {
+      "fg": "#3b4261"
+    },
+    "129,20": {
+      "fg": "#3b4261"
+    },
+    "129,21": {
+      "fg": "#3b4261"
+    },
+    "129,22": {
+      "fg": "#3b4261"
+    },
+    "129,23": {
+      "fg": "#3b4261"
+    },
+    "129,24": {
+      "fg": "#3b4261"
+    },
+    "129,25": {
+      "fg": "#3b4261"
+    },
+    "129,26": {
+      "fg": "#3b4261"
+    },
+    "129,27": {
+      "fg": "#3b4261"
+    },
+    "129,28": {
+      "fg": "#3b4261"
+    },
+    "129,29": {
+      "fg": "#3b4261"
+    },
+    "129,30": {
+      "fg": "#3b4261"
+    },
+    "129,31": {
+      "fg": "#3b4261"
+    },
+    "129,32": {
+      "fg": "#3b4261"
+    },
+    "129,33": {
+      "fg": "#3b4261"
+    },
+    "129,34": {
+      "fg": "#3b4261"
+    },
+    "129,35": {
+      "fg": "#3b4261"
+    },
+    "129,36": {
+      "fg": "#3b4261"
+    },
+    "129,37": {
+      "fg": "#3b4261"
+    },
+    "129,39": {
+      "fg": "default"
+    },
+    "129,5": {
+      "fg": "#3b4261"
+    },
+    "129,6": {
+      "fg": "#3b4261"
+    },
+    "129,7": {
+      "fg": "#3b4261"
+    },
+    "129,8": {
+      "fg": "#3b4261"
+    },
+    "129,9": {
+      "fg": "#3b4261"
+    },
+    "13,0": {
+      "bg": "default"
+    },
+    "13,1": {
+      "bg": "#ff9e64"
+    },
+    "13,21": {
+      "bold": false,
+      "fg": "default"
+    },
+    "13,33": {
+      "bold": false,
+      "fg": "default"
+    },
+    "13,34": {
+      "bold": false,
+      "fg": "default"
+    },
+    "14,0": {
+      "bg": "#bb9af7"
+    },
+    "14,1": {
       "bold": true,
-      "fg": "#ffaf00"
+      "fg": "#1a1b26"
     },
-    "2,11": {
+    "14,11": {
+      "fg": "#f7768e"
+    },
+    "14,13": {
+      "fg": "#bb9af7"
+    },
+    "14,17": {
+      "bold": false,
+      "fg": "default"
+    },
+    "14,22": {
+      "bold": false,
+      "fg": "default"
+    },
+    "14,3": {
+      "bold": false,
+      "fg": "default"
+    },
+    "15,0": {
       "bold": true,
-      "fg": "#ffaf00"
+      "fg": "#1a1b26"
     },
-    "2,12": {
+    "15,15": {
+      "fg": "#bb9af7"
+    },
+    "15,3": {
+      "bg": "default"
+    },
+    "16,3": {
+      "bg": "#24283b"
+    },
+    "16,36": {
+      "bold": false,
+      "fg": "default"
+    },
+    "17,10": {
+      "bold": false,
+      "fg": "default"
+    },
+    "17,18": {
+      "fg": "#bb9af7"
+    },
+    "17,19": {
+      "bold": false,
+      "fg": "default"
+    },
+    "17,20": {
+      "bold": false,
+      "fg": "default"
+    },
+    "17,23": {
+      "bold": false,
+      "fg": "default"
+    },
+    "17,3": {
+      "fg": "#c0caf5"
+    },
+    "17,7": {
+      "bold": false,
+      "fg": "default"
+    },
+    "17,8": {
+      "bold": false,
+      "fg": "default"
+    },
+    "17,9": {
+      "bold": false,
+      "fg": "default"
+    },
+    "18,24": {
+      "bold": false,
+      "fg": "default"
+    },
+    "18,25": {
+      "bold": false,
+      "fg": "default"
+    },
+    "18,26": {
+      "bold": false,
+      "fg": "default"
+    },
+    "18,27": {
+      "bold": false,
+      "fg": "default"
+    },
+    "18,28": {
+      "bold": false,
+      "fg": "default"
+    },
+    "18,29": {
+      "bold": false,
+      "fg": "default"
+    },
+    "19,3": {
+      "fg": "default"
+    },
+    "2,39": {
+      "bold": false,
+      "fg": "default"
+    },
+    "20,11": {
+      "fg": "#bb9af7"
+    },
+    "20,3": {
+      "bg": "default"
+    },
+    "20,39": {
+      "bg": "#24283b",
+      "fg": "default"
+    },
+    "21,0": {
+      "bold": false,
+      "fg": "default"
+    },
+    "21,3": {
+      "bg": "#24283b"
+    },
+    "21,39": {
       "bold": true,
-      "fg": "#ffaf00"
+      "fg": "#7aa2f7"
     },
-    "2,13": {
-      "fg": "#d7d75f"
+    "22,0": {
+      "bg": "default"
     },
-    "2,14": {
-      "fg": "#d7d75f"
+    "22,13": {
+      "bold": false,
+      "fg": "default"
     },
-    "2,15": {
-      "fg": "#d7d75f"
+    "22,14": {
+      "bold": false,
+      "fg": "default"
     },
-    "2,16": {
-      "fg": "#d7d75f"
+    "22,3": {
+      "fg": "#c0caf5"
     },
-    "2,17": {
-      "fg": "#d7d75f"
+    "23,0": {
+      "bg": "#24283b"
     },
-    "2,18": {
-      "fg": "#d7d75f"
+    "23,5": {
+      "bold": false,
+      "fg": "default"
     },
-    "2,19": {
-      "fg": "#d7d75f"
+    "24,0": {
+      "fg": "#c0caf5"
     },
-    "2,20": {
-      "fg": "#d7d75f"
+    "24,1": {
+      "bold": false,
+      "fg": "default"
     },
-    "2,21": {
-      "fg": "#d7d75f"
+    "24,15": {
+      "bold": false,
+      "fg": "default"
     },
-    "2,22": {
-      "fg": "#d7d75f"
+    "24,3": {
+      "fg": "default"
     },
-    "2,23": {
-      "fg": "#d7d75f"
+    "24,39": {
+      "bold": false,
+      "fg": "default"
     },
-    "2,24": {
-      "fg": "#d7d75f"
+    "25,1": {
+      "bg": "default"
     },
-    "2,25": {
-      "fg": "#d7d75f"
+    "25,3": {
+      "bg": "default"
     },
-    "2,26": {
-      "fg": "#d7d75f"
+    "25,39": {
+      "bg": "default",
+      "fg": "#737aa2"
     },
-    "2,27": {
-      "fg": "#87afd7"
+    "26,1": {
+      "bg": "#ff9e64"
     },
-    "2,28": {
-      "fg": "#87afd7"
+    "26,18": {
+      "bold": false,
+      "fg": "default"
     },
-    "2,29": {
-      "fg": "#87afd7"
+    "26,3": {
+      "bg": "#24283b"
     },
-    "2,30": {
-      "fg": "#87afd7"
-    },
-    "2,31": {
-      "fg": "#87afd7"
-    },
-    "2,32": {
-      "fg": "#87afd7"
-    },
-    "2,33": {
-      "fg": "#87afd7"
-    },
-    "2,4": {
+    "27,1": {
       "bold": true,
-      "fg": "#ffaf00"
+      "fg": "#1a1b26"
     },
-    "2,5": {
+    "27,3": {
+      "fg": "#c0caf5"
+    },
+    "28,11": {
+      "bold": false,
+      "fg": "default"
+    },
+    "29,3": {
+      "fg": "default"
+    },
+    "3,39": {
+      "bg": "default",
+      "fg": "#737aa2"
+    },
+    "30,3": {
+      "bg": "default"
+    },
+    "31,0": {
+      "fg": "default"
+    },
+    "31,3": {
+      "bg": "#24283b"
+    },
+    "32,0": {
+      "bg": "default"
+    },
+    "32,3": {
+      "fg": "#c0caf5"
+    },
+    "33,0": {
+      "bg": "#24283b"
+    },
+    "33,39": {
+      "bg": "#24283b",
+      "fg": "default"
+    },
+    "34,0": {
+      "fg": "#c0caf5"
+    },
+    "34,3": {
+      "fg": "default"
+    },
+    "34,39": {
       "bold": true,
-      "fg": "#ffaf00"
+      "fg": "#7aa2f7"
     },
-    "2,6": {
+    "35,3": {
+      "bg": "default"
+    },
+    "37,39": {
+      "bold": false,
+      "fg": "default"
+    },
+    "38,39": {
+      "bg": "default",
+      "fg": "#737aa2"
+    },
+    "39,1": {
+      "bold": false,
+      "fg": "default"
+    },
+    "40,1": {
+      "bg": "default"
+    },
+    "41,1": {
+      "bg": "#24283b"
+    },
+    "42,1": {
+      "fg": "#c0caf5"
+    },
+    "43,0": {
+      "fg": "default"
+    },
+    "44,0": {
+      "bg": "default"
+    },
+    "44,39": {
+      "bg": "#24283b",
+      "fg": "default"
+    },
+    "45,39": {
       "bold": true,
-      "fg": "#ffaf00"
-    },
-    "2,7": {
-      "bold": true,
-      "fg": "#ffaf00"
-    },
-    "2,8": {
-      "bold": true,
-      "fg": "#ffaf00"
-    },
-    "2,9": {
-      "bold": true,
-      "fg": "#ffaf00"
-    },
-    "20,0": {
-      "inverse": false
+      "fg": "#7aa2f7"
     },
     "48,2": {
-      "dim": false
+      "fg": "default"
     },
-    "58,3": {
-      "inverse": false
+    "50,39": {
+      "bold": false,
+      "fg": "default"
+    },
+    "51,39": {
+      "bg": "default",
+      "fg": "#737aa2"
+    },
+    "54,1": {
+      "fg": "default"
+    },
+    "55,1": {
+      "bg": "default"
+    },
+    "56,1": {
+      "bg": "#24283b"
+    },
+    "57,1": {
+      "fg": "#c0caf5"
+    },
+    "57,10": {
+      "fg": "#7aa2f7"
+    },
+    "57,11": {
+      "fg": "#7aa2f7"
+    },
+    "57,12": {
+      "fg": "#7aa2f7"
+    },
+    "57,13": {
+      "fg": "#7aa2f7"
+    },
+    "57,14": {
+      "fg": "#7aa2f7"
+    },
+    "57,15": {
+      "fg": "#7aa2f7"
+    },
+    "57,16": {
+      "fg": "#7aa2f7"
+    },
+    "57,17": {
+      "fg": "#7aa2f7"
+    },
+    "57,18": {
+      "fg": "#7aa2f7"
+    },
+    "57,19": {
+      "fg": "#7aa2f7"
+    },
+    "57,20": {
+      "fg": "#7aa2f7"
+    },
+    "57,21": {
+      "fg": "#7aa2f7"
+    },
+    "57,22": {
+      "fg": "#7aa2f7"
+    },
+    "57,23": {
+      "fg": "#7aa2f7"
+    },
+    "57,24": {
+      "fg": "#7aa2f7"
+    },
+    "57,25": {
+      "fg": "#7aa2f7"
+    },
+    "57,26": {
+      "fg": "#7aa2f7"
+    },
+    "57,27": {
+      "fg": "#7aa2f7"
+    },
+    "57,28": {
+      "fg": "#7aa2f7"
+    },
+    "57,29": {
+      "fg": "#7aa2f7"
+    },
+    "57,30": {
+      "fg": "#7aa2f7"
+    },
+    "57,31": {
+      "fg": "#7aa2f7"
+    },
+    "57,32": {
+      "fg": "#7aa2f7"
+    },
+    "57,33": {
+      "fg": "#7aa2f7"
+    },
+    "57,34": {
+      "fg": "#7aa2f7"
+    },
+    "57,35": {
+      "fg": "#7aa2f7"
+    },
+    "57,36": {
+      "fg": "#7aa2f7"
+    },
+    "57,37": {
+      "fg": "#7aa2f7"
+    },
+    "57,39": {
+      "bg": "#24283b",
+      "fg": "default"
+    },
+    "57,5": {
+      "fg": "#7aa2f7"
+    },
+    "57,6": {
+      "bg": "default",
+      "fg": "#7aa2f7"
+    },
+    "57,7": {
+      "fg": "#7aa2f7"
+    },
+    "57,8": {
+      "fg": "#7aa2f7"
+    },
+    "57,9": {
+      "fg": "#7aa2f7"
+    },
+    "58,10": {
+      "fg": "#3b4261"
+    },
+    "58,11": {
+      "fg": "#3b4261"
+    },
+    "58,12": {
+      "fg": "#3b4261"
+    },
+    "58,13": {
+      "fg": "#3b4261"
+    },
+    "58,14": {
+      "fg": "#3b4261"
+    },
+    "58,15": {
+      "fg": "#3b4261"
+    },
+    "58,16": {
+      "fg": "#3b4261"
+    },
+    "58,17": {
+      "fg": "#3b4261"
+    },
+    "58,18": {
+      "fg": "#3b4261"
+    },
+    "58,19": {
+      "fg": "#3b4261"
+    },
+    "58,20": {
+      "fg": "#3b4261"
+    },
+    "58,21": {
+      "fg": "#3b4261"
+    },
+    "58,22": {
+      "fg": "#3b4261"
+    },
+    "58,23": {
+      "fg": "#3b4261"
+    },
+    "58,24": {
+      "fg": "#3b4261"
+    },
+    "58,25": {
+      "fg": "#3b4261"
+    },
+    "58,26": {
+      "fg": "#3b4261"
+    },
+    "58,27": {
+      "fg": "#3b4261"
+    },
+    "58,28": {
+      "fg": "#3b4261"
+    },
+    "58,29": {
+      "fg": "#3b4261"
+    },
+    "58,30": {
+      "fg": "#3b4261"
+    },
+    "58,31": {
+      "fg": "#3b4261"
+    },
+    "58,32": {
+      "fg": "#3b4261"
+    },
+    "58,33": {
+      "fg": "#3b4261"
+    },
+    "58,34": {
+      "fg": "#3b4261"
+    },
+    "58,35": {
+      "fg": "#3b4261"
+    },
+    "58,36": {
+      "fg": "#3b4261"
+    },
+    "58,37": {
+      "fg": "#3b4261"
+    },
+    "58,38": {
+      "fg": "#3b4261"
+    },
+    "58,39": {
+      "bold": true,
+      "fg": "#7aa2f7"
+    },
+    "58,4": {
+      "fg": "#3b4261"
+    },
+    "58,5": {
+      "fg": "#3b4261"
+    },
+    "58,6": {
+      "fg": "#3b4261"
+    },
+    "58,7": {
+      "fg": "#3b4261"
+    },
+    "58,8": {
+      "fg": "#3b4261"
+    },
+    "58,9": {
+      "fg": "#3b4261"
     },
     "59,10": {
-      "dim": true
+      "fg": "default"
     },
     "59,11": {
-      "dim": true
+      "fg": "default"
     },
     "59,12": {
-      "dim": true
+      "fg": "default"
     },
     "59,13": {
-      "dim": true
+      "fg": "default"
     },
     "59,14": {
-      "dim": true
+      "fg": "default"
     },
     "59,15": {
-      "dim": true
+      "fg": "default"
     },
     "59,16": {
-      "dim": true
+      "fg": "default"
     },
     "59,17": {
-      "dim": true
+      "fg": "default"
     },
     "59,18": {
-      "dim": true
+      "fg": "default"
     },
     "59,19": {
-      "dim": true
+      "fg": "default"
     },
     "59,20": {
-      "dim": true
+      "fg": "default"
     },
     "59,21": {
-      "dim": true
+      "fg": "default"
     },
     "59,22": {
-      "dim": true
+      "fg": "default"
     },
     "59,23": {
-      "dim": true
+      "fg": "default"
     },
     "59,24": {
-      "dim": true
+      "fg": "default"
     },
     "59,25": {
-      "dim": true
+      "fg": "default"
     },
     "59,26": {
-      "dim": true
+      "fg": "default"
     },
     "59,27": {
-      "dim": true
+      "fg": "default"
     },
     "59,28": {
-      "dim": true
+      "fg": "default"
     },
     "59,29": {
-      "dim": true
-    },
-    "59,3": {
-      "dim": true
+      "fg": "default"
     },
     "59,30": {
-      "dim": true
+      "fg": "default"
     },
     "59,31": {
-      "dim": true
+      "fg": "default"
     },
     "59,32": {
-      "dim": true
+      "fg": "default"
     },
     "59,33": {
-      "dim": true
+      "fg": "default"
     },
     "59,34": {
-      "dim": true
+      "fg": "default"
     },
     "59,35": {
-      "dim": true
+      "fg": "default"
     },
     "59,36": {
-      "dim": true
+      "fg": "default"
     },
     "59,37": {
-      "dim": true
-    },
-    "59,38": {
-      "dim": true
-    },
-    "59,4": {
-      "dim": true
+      "fg": "default"
     },
     "59,5": {
-      "dim": true
+      "bold": true,
+      "fg": "#c0caf5"
     },
     "59,6": {
-      "dim": true
+      "fg": "default"
     },
     "59,7": {
-      "dim": true
+      "fg": "default"
     },
     "59,8": {
-      "dim": true
+      "fg": "default"
     },
     "59,9": {
-      "dim": true
-    },
-    "6,10": {
-      "bold": false,
       "fg": "default"
-    },
-    "6,11": {
-      "bold": false,
-      "fg": "default"
-    },
-    "6,12": {
-      "bold": false,
-      "fg": "default"
-    },
-    "6,13": {
-      "fg": "default"
-    },
-    "6,14": {
-      "fg": "default"
-    },
-    "6,15": {
-      "fg": "default"
-    },
-    "6,16": {
-      "fg": "default"
-    },
-    "6,17": {
-      "fg": "default"
-    },
-    "6,18": {
-      "fg": "default"
-    },
-    "6,19": {
-      "fg": "default"
-    },
-    "6,20": {
-      "fg": "default"
-    },
-    "6,21": {
-      "fg": "default"
-    },
-    "6,22": {
-      "fg": "default"
-    },
-    "6,23": {
-      "fg": "default"
-    },
-    "6,24": {
-      "fg": "default"
-    },
-    "6,25": {
-      "fg": "default"
-    },
-    "6,26": {
-      "fg": "default"
-    },
-    "6,27": {
-      "fg": "default"
-    },
-    "6,28": {
-      "fg": "default"
-    },
-    "6,29": {
-      "fg": "default"
-    },
-    "6,30": {
-      "fg": "default"
-    },
-    "6,31": {
-      "fg": "default"
-    },
-    "6,32": {
-      "fg": "default"
-    },
-    "6,33": {
-      "fg": "default"
-    },
-    "6,4": {
-      "bold": false,
-      "fg": "default"
-    },
-    "6,5": {
-      "bold": false,
-      "fg": "default"
-    },
-    "6,6": {
-      "bold": false,
-      "fg": "default"
-    },
-    "6,7": {
-      "bold": false,
-      "fg": "default"
-    },
-    "6,8": {
-      "bold": false,
-      "fg": "default"
-    },
-    "6,9": {
-      "bold": false,
-      "fg": "default"
-    },
-    "60,10": {
-      "dim": false
-    },
-    "60,11": {
-      "dim": false
-    },
-    "60,12": {
-      "dim": false
     },
     "60,13": {
-      "dim": false
-    },
-    "60,14": {
-      "dim": false
-    },
-    "60,15": {
-      "dim": false
-    },
-    "60,16": {
-      "dim": false
+      "bold": true,
+      "fg": "#7aa2f7"
     },
     "60,17": {
-      "dim": false
+      "bold": true,
+      "fg": "#c0caf5"
     },
     "60,18": {
-      "dim": false
+      "fg": "#737aa2"
     },
     "60,19": {
-      "dim": false
+      "fg": "#737aa2"
     },
     "60,20": {
-      "dim": false
-    },
-    "60,21": {
-      "dim": false
+      "fg": "#737aa2"
     },
     "60,22": {
-      "dim": false
+      "bold": true,
+      "fg": "#7aa2f7"
     },
     "60,23": {
-      "dim": false
-    },
-    "60,24": {
-      "dim": false
+      "fg": "#737aa2"
     },
     "60,25": {
-      "dim": false
-    },
-    "60,26": {
-      "dim": false
-    },
-    "60,27": {
-      "dim": false
-    },
-    "60,28": {
-      "dim": false
+      "fg": "#737aa2"
     },
     "60,29": {
-      "dim": false
-    },
-    "60,3": {
-      "dim": false
+      "bold": true,
+      "fg": "#7aa2f7"
     },
     "60,30": {
-      "dim": false
+      "fg": "#737aa2"
     },
     "60,31": {
-      "dim": false
-    },
-    "60,32": {
-      "dim": false
+      "fg": "#737aa2"
     },
     "60,33": {
-      "dim": false
-    },
-    "60,34": {
-      "dim": false
-    },
-    "60,35": {
-      "dim": false
+      "fg": "#737aa2"
     },
     "60,36": {
-      "dim": false
-    },
-    "60,37": {
-      "dim": false
-    },
-    "60,38": {
-      "dim": false
-    },
-    "60,4": {
-      "dim": false
-    },
-    "60,5": {
-      "dim": false
+      "bold": true,
+      "fg": "#7aa2f7"
     },
     "60,6": {
-      "dim": false
+      "bold": true,
+      "fg": "#c0caf5"
     },
     "60,7": {
-      "dim": false
+      "fg": "#737aa2"
     },
     "60,8": {
-      "dim": false
+      "fg": "#737aa2"
     },
-    "60,9": {
-      "dim": false
+    "61,39": {
+      "bold": false,
+      "fg": "default"
     },
-    "61,12": {
-      "bold": true
+    "62,39": {
+      "bg": "default",
+      "fg": "#737aa2"
     },
-    "61,16": {
-      "bold": true
+    "64,18": {
+      "fg": "default"
     },
-    "61,21": {
-      "bold": true
+    "65,1": {
+      "fg": "default"
     },
-    "61,3": {
-      "bold": true
+    "65,13": {
+      "bold": false,
+      "fg": "default"
     },
-    "61,33": {
-      "bold": true
+    "65,5": {
+      "bold": false,
+      "fg": "default"
     },
-    "61,36": {
-      "bold": true
+    "66,1": {
+      "bg": "default"
     },
-    "65,12": {
-      "bold": false
+    "66,23": {
+      "fg": "default"
     },
-    "65,36": {
-      "bold": false
+    "66,25": {
+      "fg": "default"
     },
-    "71,33": {
-      "bold": false
+    "66,31": {
+      "fg": "default"
     },
-    "83,3": {
-      "bold": false
+    "66,33": {
+      "fg": "default"
     },
-    "84,16": {
-      "bold": false
+    "66,8": {
+      "fg": "default"
     },
-    "89,39": {
-      "dim": false
+    "67,1": {
+      "bg": "#ff9e64"
     },
-    "94,21": {
-      "bold": false
+    "68,1": {
+      "bold": true,
+      "fg": "#1a1b26"
+    },
+    "68,19": {
+      "fg": "default"
+    },
+    "68,7": {
+      "fg": "default"
+    },
+    "7,10": {
+      "bg": "default",
+      "bold": false,
+      "fg": "default"
+    },
+    "7,11": {
+      "bg": "default",
+      "bold": false,
+      "fg": "default"
+    },
+    "7,12": {
+      "bg": "default",
+      "bold": false,
+      "fg": "default"
+    },
+    "7,13": {
+      "bg": "default",
+      "bold": false,
+      "fg": "default"
+    },
+    "7,14": {
+      "bg": "default",
+      "bold": false,
+      "fg": "default"
+    },
+    "7,15": {
+      "bg": "default",
+      "bold": false,
+      "fg": "default"
+    },
+    "7,16": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,17": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,18": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,19": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,20": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,21": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,22": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,23": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,24": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,25": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,26": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,27": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,28": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,29": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,30": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,31": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,32": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,33": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,34": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,35": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,36": {
+      "bg": "default",
+      "fg": "default"
+    },
+    "7,7": {
+      "bg": "default",
+      "bold": false,
+      "fg": "default"
+    },
+    "7,8": {
+      "bg": "default",
+      "bold": false,
+      "fg": "default"
+    },
+    "7,9": {
+      "bg": "default",
+      "bold": false,
+      "fg": "default"
+    },
+    "70,39": {
+      "bg": "#24283b",
+      "fg": "default"
+    },
+    "71,20": {
+      "fg": "default"
+    },
+    "71,29": {
+      "bold": false,
+      "fg": "default"
+    },
+    "71,36": {
+      "bold": false,
+      "fg": "default"
+    },
+    "71,39": {
+      "bold": true,
+      "fg": "#7aa2f7"
+    },
+    "72,30": {
+      "fg": "default"
+    },
+    "72,39": {
+      "bold": false,
+      "fg": "default"
+    },
+    "73,39": {
+      "bg": "default",
+      "fg": "#737aa2"
+    },
+    "74,1": {
+      "bold": false,
+      "fg": "default"
+    },
+    "75,1": {
+      "bg": "default"
+    },
+    "76,1": {
+      "bg": "#24283b"
+    },
+    "77,1": {
+      "fg": "#c0caf5"
+    },
+    "8,10": {
+      "bold": true,
+      "fg": "#ff9e64"
+    },
+    "8,11": {
+      "bold": true,
+      "fg": "#e0af68"
+    },
+    "8,12": {
+      "bold": true,
+      "fg": "#f7768e"
+    },
+    "8,13": {
+      "bold": true,
+      "fg": "#f7768e"
+    },
+    "8,14": {
+      "bold": true,
+      "fg": "#f7768e"
+    },
+    "8,15": {
+      "bold": true,
+      "fg": "#f7768e"
+    },
+    "8,16": {
+      "bold": true,
+      "fg": "#ff9e64"
+    },
+    "8,17": {
+      "bold": true,
+      "fg": "#e0af68"
+    },
+    "8,18": {
+      "bold": true,
+      "fg": "#f7768e"
+    },
+    "8,19": {
+      "bold": true,
+      "fg": "#bb9af7"
+    },
+    "8,20": {
+      "bold": true,
+      "fg": "#bb9af7"
+    },
+    "8,21": {
+      "bold": true,
+      "fg": "#7dcfff"
+    },
+    "8,22": {
+      "bold": true,
+      "fg": "#e0af68"
+    },
+    "8,23": {
+      "bold": true,
+      "fg": "#bb9af7"
+    },
+    "8,24": {
+      "bold": true,
+      "fg": "#bb9af7"
+    },
+    "8,25": {
+      "bold": true,
+      "fg": "#bb9af7"
+    },
+    "8,26": {
+      "bold": true,
+      "fg": "#bb9af7"
+    },
+    "8,27": {
+      "bold": true,
+      "fg": "#bb9af7"
+    },
+    "8,28": {
+      "bold": true,
+      "fg": "#bb9af7"
+    },
+    "8,29": {
+      "bold": true,
+      "fg": "#bb9af7"
+    },
+    "8,30": {
+      "bold": true,
+      "fg": "#f7768e"
+    },
+    "8,33": {
+      "bold": true,
+      "fg": "#7dcfff"
+    },
+    "8,34": {
+      "bold": true,
+      "fg": "#7dcfff"
+    },
+    "8,36": {
+      "bold": true,
+      "fg": "#bb9af7"
+    },
+    "8,7": {
+      "bold": true,
+      "fg": "#ff9e64"
+    },
+    "8,8": {
+      "bold": true,
+      "fg": "#ff9e64"
+    },
+    "8,9": {
+      "bold": true,
+      "fg": "#ff9e64"
+    },
+    "82,6": {
+      "bold": false,
+      "fg": "default"
+    },
+    "83,17": {
+      "bold": false,
+      "fg": "default"
+    },
+    "83,39": {
+      "bg": "#24283b",
+      "fg": "default"
+    },
+    "84,39": {
+      "bold": true,
+      "fg": "#7aa2f7"
+    },
+    "85,1": {
+      "fg": "default"
+    },
+    "85,39": {
+      "bold": false,
+      "fg": "default"
+    },
+    "86,1": {
+      "bg": "default"
+    },
+    "86,39": {
+      "bg": "default",
+      "fg": "#737aa2"
+    },
+    "9,3": {
+      "bg": "#7aa2f7",
+      "fg": "default"
+    },
+    "9,39": {
+      "bg": "#24283b",
+      "fg": "default"
+    },
+    "94,22": {
+      "bold": false,
+      "fg": "default"
+    },
+    "96,39": {
+      "bg": "#24283b",
+      "fg": "default"
+    },
+    "97,39": {
+      "bold": true,
+      "fg": "#7aa2f7"
+    },
+    "98,39": {
+      "bold": false,
+      "fg": "default"
+    },
+    "99,39": {
+      "bg": "default",
+      "fg": "#737aa2"
     }
   }
 }

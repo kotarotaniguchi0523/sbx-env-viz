@@ -121,13 +121,20 @@ func (s *screen) press(keys ...string) {
 		if err := s.term.Press(k); err != nil {
 			s.t.Fatalf("press %q: %v", k, err)
 		}
-		for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
-			if s.text() != before {
-				break
-			}
-		}
-		s.idle()
+		s.settle(before)
 	}
+}
+
+// settle waits for the screen to differ from before (or a short grace
+// period for input that changes nothing), then for it to stop changing.
+func (s *screen) settle(before string) {
+	s.t.Helper()
+	for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		if s.text() != before {
+			break
+		}
+	}
+	s.idle()
 }
 
 // expect waits until text is visible.
