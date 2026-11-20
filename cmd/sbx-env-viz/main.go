@@ -17,6 +17,7 @@ import (
 
 	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/loader"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/jsonout"
+	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/model"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/text"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/tui"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
@@ -223,7 +224,7 @@ func run(args []string, e env) int {
 			homeAliases = append(homeAliases, resolved)
 		}
 	}
-	shorten := func(s string) string { return sbxenv.ShortenHome(s, home, homeAliases...) }
+	shorten := func(s string) string { return model.EscapeControl(sbxenv.ShortenHome(s, home, homeAliases...)) }
 	res, err := loader.Load(loader.Request{Paths: o.paths, EnvArgsFiles: o.envArgsFiles, KitArgsFiles: o.kitArgsFiles, WorkDir: wd, HomeDir: home})
 	if err != nil {
 		fmt.Fprintf(e.stderr, "sbx-env-viz: %s\n", shorten(err.Error()))

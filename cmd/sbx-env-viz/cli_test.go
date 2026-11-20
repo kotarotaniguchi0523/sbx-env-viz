@@ -366,3 +366,30 @@ func TestHomeIsShortenedWhenHomeIsASymlink(t *testing.T) {
 		t.Error("--json leaks the home directory through its other spelling")
 	}
 }
+
+func TestTextOutputNeutralisesTerminalControlCharacters(t *testing.T) {
+	t.Parallel()
+	// Arrange: values that would clear the screen, retitle the window,
+	// reorder text, and forge a provenance line.
+	s := newSandbox(t)
+	s.write(t, "sbxenv.yaml", minimal+"env:\n"+
+		"  EVIL: \"ok\\e[2J\\e]0;pwned\\a\"\n"+
+		"  BIDI: \"a\\u202Eb\"\n"+
+		"  MULTI: |\n    line1\n    forged  ← fake/origin.yaml:1\n")
+
+	// Act
+	r := s.run(t, "--text")
+
+	// Assert
+	if strings.ContainsAny(r.stdout, "\x1b\x07‮") {
+		t.Errorf("raw control characters reached the terminal: %q", r.stdout)
+	}
+	for _, line := range strings.Split(r.stdout, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "forged") {
+			t.Errorf("a value started its own output line: %q", line)
+		}
+	}
+	if !strings.Contains(r.stdout, `env.EVIL = ok\x1b[2J`) || !strings.Contains(r.stdout, `line1\nforged`) {
+		t.Errorf("escaped forms should stay readable:\n%s", r.stdout)
+	}
+}

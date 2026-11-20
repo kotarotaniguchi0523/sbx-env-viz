@@ -16,6 +16,7 @@ const LowCap = 15
 
 // Write renders p to w.
 func Write(w io.Writer, p *sbxenv.Plan) error {
+	p = model.ForTerminal(p)
 	b := &strings.Builder{}
 	idx := model.SourceIndex(p)
 	fmt.Fprintf(b, "sbx-env-viz — %s\n", "宣言の静的解析（稼働中 sandbox の状態ではない）")

@@ -452,3 +452,28 @@ func TestTUIRunQuitsAndReturnsTheSummaryLine(t *testing.T) {
 		t.Error("the program should have drawn to its output")
 	}
 }
+
+func TestTUIEscapesControlCharactersInValues(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	home := t.TempDir()
+	doc := "schemaVersion: \"1\"\nagent: claude\nenv:\n  EVIL: \"x\\e[31mred\\nnext\"\n"
+	p, err := sbxenv.Resolve([]sbxenv.LayerInput{{Path: filepath.Join(home, "e.yaml"), Content: []byte(doc), Kind: sbxenv.LayerEnv}}, sbxenv.ResolveOptions{HomeDir: home, Redaction: sbxenv.RedactHome})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := tui.New(p, true)
+	m.Update(tea.WindowSizeMsg{Width: 130, Height: 30})
+
+	// Act
+	press(m, "2", "/", "E", "V", "I", "L", "enter")
+	s := m.Render()
+
+	// Assert
+	if strings.Contains(s, "\x1b[31m") || strings.Contains(s, "red\nnext") {
+		t.Errorf("value control characters reached the screen:\n%q", s)
+	}
+	if !strings.Contains(s, `x\x1b[31mred\nnext`) {
+		t.Errorf("escaped value not shown:\n%s", s)
+	}
+}

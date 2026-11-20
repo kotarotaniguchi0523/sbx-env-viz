@@ -104,6 +104,7 @@ func newStyles(noColor bool) styles {
 
 // New builds a model. noColor disables all colors (NO_COLOR).
 func New(p *sbxenv.Plan, noColor bool) *Model {
+	p = model.ForTerminal(p)
 	m := &Model{plan: p, idx: model.SourceIndex(p), width: 100, height: 30, noColor: noColor, st: newStyles(noColor)}
 	m.filters = []string{""}
 	for _, s := range p.Meta.Sources {
