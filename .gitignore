@@ -1,0 +1,11 @@
+/sbx-env-viz
+/dist/
+/.cache/
+/coverage.out
+/sbom*.json
+*.local.yaml
+.DS_Store
+/uzomuzo*.json
+/trivy.json
+/vuls.json
+/govulncheck.txt

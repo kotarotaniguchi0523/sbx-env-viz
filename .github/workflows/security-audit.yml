@@ -1,0 +1,125 @@
+name: Security audit
+
+on:
+  schedule:
+    - cron: "17 21 * * 0" # weekly, Monday 06:17 JST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+  VULS_VERSION: "0.43.0"
+  # sha256 of trivy-to-vuls_${VULS_VERSION}_linux_amd64.tar.gz from vuls_${VULS_VERSION}_checksums.txt
+  TRIVY_TO_VULS_SHA256: 0b54f59ad32d1c34460e926816d0c0db5f45dad216466e2dbfc771ebbcb6c885
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
+        with:
+          version: 2026.11.8
+          install_args: go go:golang.org/x/vuln/cmd/govulncheck
+      - name: Reachable vulnerabilities
+        run: govulncheck ./...
+      - name: All vulnerabilities in required modules (report only)
+        run: govulncheck -show verbose ./... | tee govulncheck.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: govulncheck
+          path: govulncheck.txt
+          retention-days: 30
+
+  uzomuzo:
+    name: SBOM + uzomuzo lifecycle scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
+        with:
+          version: 2026.11.8
+          install_args: >-
+            go
+            go:github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod
+            go:github.com/future-architect/uzomuzo-oss/cmd/uzomuzo
+      - name: SBOM for the production build (CGO_ENABLED=0)
+        env:
+          CGO_ENABLED: "0"
+        run: cyclonedx-gomod app -json -licenses -output sbom.cdx.json -main cmd/sbx-env-viz .
+      - name: uzomuzo (fail on confirmed EOL)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          uzomuzo scan --sbom sbom.cdx.json --show-transitive --format json --fail-on eol-confirmed | tee uzomuzo.json
+      - name: uzomuzo table (report)
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: uzomuzo scan --sbom sbom.cdx.json --show-transitive --format table | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: sbom-uzomuzo
+          path: |
+            sbom.cdx.json
+            uzomuzo.json
+          retention-days: 30
+
+  vuls:
+    name: vuls (Trivy integration)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
+        with:
+          version: 2026.11.8
+          install_args: trivy
+      - name: Install trivy-to-vuls (checksum verified)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/vuls"
+          gh release download "v${VULS_VERSION}" -R future-architect/vuls \
+            -p "trivy-to-vuls_${VULS_VERSION}_linux_amd64.tar.gz" -D "$RUNNER_TEMP/vuls"
+          echo "${TRIVY_TO_VULS_SHA256}  $RUNNER_TEMP/vuls/trivy-to-vuls_${VULS_VERSION}_linux_amd64.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/vuls/trivy-to-vuls_${VULS_VERSION}_linux_amd64.tar.gz" -C "$RUNNER_TEMP/vuls" trivy-to-vuls
+          echo "$RUNNER_TEMP/vuls" >> "$GITHUB_PATH"
+      - name: Trivy library scan
+        run: trivy fs --scanners vuln --format json --quiet --skip-dirs testdata --output trivy.json .
+      - name: Convert to a vuls report and gate
+        run: |
+          trivy-to-vuls parse --stdin < trivy.json > vuls.json
+          libs=$(jq '[.libraries[]?.Libs[]?] | length' vuls.json)
+          cves=$(jq '.scannedCves | length' vuls.json)
+          {
+            echo "### vuls (trivy-to-vuls ${VULS_VERSION})"
+            echo "- scanned libraries: ${libs}"
+            echo "- CVEs: ${cves}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${libs}" -eq 0 ]; then
+            echo "::error::vuls scanned 0 libraries; the scan target is wrong, not clean"; exit 1
+          fi
+          if [ "${cves}" -gt 0 ]; then
+            jq -r '.scannedCves | to_entries[] | "\(.key)\t\(.value.libraryFixedIns // [] | map(.name + " " + (.fixedIn // "")) | join(", "))"' vuls.json
+            echo "::error::vuls reported ${cves} CVE(s)"; exit 1
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: vuls-report
+          path: |
+            trivy.json
+            vuls.json
+          retention-days: 30

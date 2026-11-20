@@ -1,0 +1,37 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+kind: mixin
+displayName: Example egress
+args:
+  apiHost:
+    default: api.example.com
+    description: API host
+capabilities:
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      install:
+        allow: [registry.npmjs.org]
+      runtime:
+        allow:
+          - ${{ kit.args.apiHost }}
+          - "*.cdn.example.com"
+        deny: [telemetry.example.com]
+  - type: com.docker.sandbox/credential@1
+    config:
+      service: example
+      phase: runtime
+      apiKey:
+        name: EXAMPLE_TOKEN
+        proxyManaged: true
+        inject:
+          - {domain: "${{ kit.args.apiHost }}", header: Authorization, format: "Bearer %s"}
+  - type: com.docker.sandbox/ssh-agent@1
+    optional: true
+    config:
+      phase: runtime
+  - type: com.docker.sandbox/git-identity@1
+  - type: io.example/telemetry@2
+    optional: true
+    config:
+      endpoint: https://collector.example.com
+      level: 3

@@ -1,0 +1,55 @@
+amends "package://github.com/jdx/hk/releases/download/v2.13.0/hk@2.13.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v2.13.0/hk@2.13.0#/Builtins.pkl"
+
+// Tools come from mise.toml (go, hk, pkl, betterleaks), so every hook runs
+// the same pinned versions as CI. Install the hooks with `hk install`.
+
+local lint = new Mapping<String, Step> {
+  // Secret scan of the changed files.
+  ["betterleaks"] = Builtins.betterleaks
+  ["gofmt"] = Builtins.go_fmt
+  ["go_vet"] = (Builtins.go_vet) {
+    depends = List("gofmt")
+  }
+}
+
+local unitTests = new Step {
+  glob = List("**/*.go", "go.mod", "go.sum", "testdata/**")
+  check = "go test -race ./..."
+  env {
+    // The race detector needs cgo.
+    ["CGO_ENABLED"] = "1"
+  }
+  exclusive = true
+}
+
+local historyScan = new Step {
+  // Scan the commits about to be pushed, not only the working tree.
+  check = "betterleaks git --redact --no-banner --log-opts=\"@{push}..HEAD\" . || betterleaks git --redact --no-banner ."
+  exclusive = true
+}
+
+hooks {
+  ["pre-commit"] {
+    fix = true
+    stash = "git"
+    steps {
+      ...lint
+      ["go_test"] = unitTests
+    }
+  }
+  ["pre-push"] {
+    steps {
+      ...lint
+      ["go_test"] = unitTests
+      ["betterleaks_history"] = historyScan
+    }
+  }
+  ["check"] {
+    steps = lint
+  }
+  ["fix"] {
+    fix = true
+    steps = lint
+  }
+}

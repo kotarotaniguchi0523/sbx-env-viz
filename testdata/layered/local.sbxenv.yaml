@@ -1,0 +1,16 @@
+env:
+  LOG_LEVEL: debug
+  RELEASE_CHANNEL: beta
+
+sandboxOptions:
+  memory: 12g
+
+ports:
+  - sandbox: 3000
+    host: 4000
+    hostIP: 0.0.0.0
+
+kits:
+  - source: ./kits/egress
+    args:
+      apiHost: api.internal.example.com

@@ -1,0 +1,58 @@
+schemaVersion: "1"
+name: web-app
+agent: claude
+
+args:
+  workspace:
+    default: ./web-app
+    description: Workspace to mount
+  channel:
+    default: stable
+    enum: [stable, beta]
+
+workspace: ${{ env.args.workspace }}
+
+kits:
+  - docker.io/sbx/playwright:1.61.1
+  - source: ./kits/egress
+    args:
+      apiHost: api.example.com
+  - ./kits/history
+
+env:
+  NODE_ENV: development
+  RELEASE_CHANNEL: ${{ env.args.channel }}
+  LITERAL_PATH: $PATH:/opt/bin
+
+sandboxOptions:
+  cpus: 4
+  memory: 8g
+  template: ghcr.io/example/common-claude:dev
+  skills: off
+
+secrets:
+  example:
+    ref: op://Private/Example/credential
+  github:
+    command: gh auth token
+
+bindings:
+  example:
+    apiKey:
+      domains:
+        - api.example.com
+
+ports:
+  - sandbox: 3000
+    host: 3000
+
+mcp:
+  servers:
+    - name: docs
+      url: https://mcp.example.com/sse
+
+lifecycle:
+  postCreate:
+    - name: Load secrets
+      command: ./hooks/load-secrets.sh
+      timeout: 5m
