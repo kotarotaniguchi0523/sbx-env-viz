@@ -24,8 +24,17 @@ local unitTests = new Step {
 }
 
 local historyScan = new Step {
-  // Scan the commits about to be pushed, not only the working tree.
-  check = "betterleaks git --redact --no-banner --log-opts=\"@{push}..HEAD\" . || betterleaks git --redact --no-banner ."
+  // Scan the commits about to be pushed. betterleaks runs git in its own
+  // copy without upstream config, so resolve the push base here; with no
+  // upstream yet, scan the whole history.
+  check = """
+    base=$(git rev-parse --verify -q '@{push}' 2>/dev/null || true)
+    if [ -n "$base" ]; then
+      betterleaks git --redact --no-banner --log-opts="$base..HEAD" .
+    else
+      betterleaks git --redact --no-banner .
+    fi
+    """
   exclusive = true
 }
 

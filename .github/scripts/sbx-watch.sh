@@ -27,7 +27,10 @@ gh api --paginate 'repos/docker/sbx-releases/releases?per_page=100' \
 eligible="$WORK/eligible.txt"
 : > "$eligible"
 while IFS=$'\t' read -r tag published; do
-  if [ "$(date -u -d "$published" +%s)" -le "$cutoff" ]; then
+  # Assigned on its own line so a date(1) failure stops the run under set -e
+  # instead of making every release look ineligible.
+  ts=$(date -u -d "$published" +%s)
+  if [ "$ts" -le "$cutoff" ]; then
     echo "$tag" >> "$eligible"
   fi
 done < "$WORK/releases.tsv"
@@ -69,7 +72,7 @@ if gh release download "$latest" -R docker/sbx-releases -p "$asset" -D "$WORK" 2
   for cmd in "env" "env create" "env plan" "env run" "env rm"; do
     f="$(echo "$cmd" | tr ' ' '-').txt"
     # shellcheck disable=SC2086
-    HOME="$WORK/home" NO_COLOR=1 timeout 30 "$bin" $cmd --help > "$WORK/new/$f" 2>&1 || true
+    env -u GH_TOKEN -u GITHUB_TOKEN HOME="$WORK/home" NO_COLOR=1 timeout 30 "$bin" $cmd --help > "$WORK/new/$f" 2>&1 || true
     if [ -f "$SNAP_DIR/$f" ]; then
       if ! diff -u --label "${TRACKED}/${f}" --label "${latest}/${f}" "$SNAP_DIR/$f" "$WORK/new/$f" > "$WORK/new/$f.diff"; then
         changed=1
@@ -110,13 +113,15 @@ docs_section="$WORK/docs.md"
 
 # --- release notes --------------------------------------------------------------
 notes_section="$WORK/notes.md"
-echo "## リリースノート（${TRACKED} より新しい安定版）" > "$notes_section"
-sort -V "$eligible" | while read -r tag; do
+echo "## リリースノート（${TRACKED} より新しい安定版、新しい順）" > "$notes_section"
+# Newest first, so truncation drops the oldest notes, never the target's.
+sort -rV "$eligible" | while read -r tag; do
   if [ "$(printf '%s\n%s\n' "$TRACKED" "$tag" | sort -V | tail -n 1)" = "$tag" ] && [ "$tag" != "$TRACKED" ]; then
     {
       echo
       echo "### ${tag}"
-      gh api "repos/docker/sbx-releases/releases/tags/${tag}" --jq '.body' | head -c 15000
+      gh api "repos/docker/sbx-releases/releases/tags/${tag}" --jq '.body' > "$WORK/body.txt"
+      head -c 15000 "$WORK/body.txt"
       echo
     } >> "$notes_section"
   fi
@@ -138,7 +143,8 @@ body="$WORK/body.md"
   echo
   cat "$help_section" "$docs_section" "$notes_section"
 } > "$body"
-head -c 60000 "$body" > "$body.trim"
+# Cut at 60000 bytes and drop a UTF-8 sequence the cut split.
+head -c 60000 "$body" | iconv -f UTF-8 -t UTF-8 -c > "$body.trim"
 
 if [ "${DRY_RUN:-0}" = "1" ]; then
   echo "---- $title"; cat "$body.trim"; exit 0

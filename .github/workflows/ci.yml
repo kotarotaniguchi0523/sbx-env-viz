@@ -34,7 +34,7 @@ jobs:
           install_args: go
       - name: gofmt
         run: |
-          unformatted="$(gofmt -l .)"
+          unformatted="$(gofmt -s -l .)"
           if [ -n "$unformatted" ]; then
             echo "::error::gofmt needed:"; echo "$unformatted"; exit 1
           fi

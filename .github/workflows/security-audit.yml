@@ -28,7 +28,9 @@ jobs:
       - name: Reachable vulnerabilities
         run: govulncheck ./...
       - name: All vulnerabilities in required modules (report only)
-        run: govulncheck -show verbose ./... | tee govulncheck.txt
+        run: |
+          set -o pipefail
+          govulncheck -show verbose ./... | tee govulncheck.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -60,7 +62,15 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
-          uzomuzo scan --sbom sbom.cdx.json --show-transitive --format json --fail-on eol-confirmed | tee uzomuzo.json
+          uzomuzo scan --sbom sbom.cdx.json --show-transitive --format json --fail-on eol-confirmed 2> uzomuzo.err | tee uzomuzo.json
+          cat uzomuzo.err >&2
+          # uzomuzo exits 0 when it cannot fetch metadata and files the
+          # package under "review"; an unevaluated dependency is not a pass.
+          review=$(jq '.summary.review' uzomuzo.json)
+          total=$(jq '.summary.total' uzomuzo.json)
+          if [ "$total" -eq 0 ] || [ "$review" -gt 0 ] || grep -q 'level=ERROR' uzomuzo.err; then
+            echo "::error::uzomuzo could not evaluate every dependency (total=$total review=$review)"; exit 1
+          fi
       - name: uzomuzo table (report)
         if: always()
         env:
