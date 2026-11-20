@@ -30,7 +30,7 @@ jobs:
           persist-credentials: false
       - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
         with:
-          version: 2026.11.8
+          version: 2026.11.10
           install_args: go
       - name: gofmt
         run: |
@@ -58,7 +58,7 @@ jobs:
           persist-credentials: false
       - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
         with:
-          version: 2026.11.8
+          version: 2026.11.10
           install_args: go
       - name: go vet (e2e module)
         working-directory: e2e/tui
@@ -87,7 +87,7 @@ jobs:
           persist-credentials: false
       - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
         with:
-          version: 2026.11.8
+          version: 2026.11.10
           install_args: go
       - name: Cross build (CGO_ENABLED=0)
         env:
@@ -112,7 +112,7 @@ jobs:
           persist-credentials: false
       - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
         with:
-          version: 2026.11.8
+          version: 2026.11.10
           install_args: go go:golang.org/x/vuln/cmd/govulncheck
       - run: govulncheck ./...
       - name: govulncheck (e2e module)
@@ -128,7 +128,7 @@ jobs:
           persist-credentials: false
       - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
         with:
-          version: 2026.11.8
+          version: 2026.11.10
           install_args: betterleaks
       - name: Scan full history
         run: betterleaks git --redact --no-banner .
