@@ -1,29 +1,30 @@
-package sbxenv
+package sbxenv_test
 
 import (
-	"errors"
 	"strings"
 	"testing"
+
+	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
 )
 
-// pseudoSecrets are planted in every place a value can enter the plan. None
-// of them may appear in strictly redacted output.
-var pseudoSecrets = []string{
-	"ghp_PSEUDOSECRET0001", // env value
-	"sk-PSEUDOSECRET0002",  // literal secret value
-	"PSEUDOSECRET0003",     // secret command
-	"PseudoVault0004",      // op:// item name
-	"PSEUDOSECRET0005",     // --env-arg value
-	"PSEUDOSECRET0006",     // args file value
-	"PSEUDOSECRET0007",     // lifecycle command
-	"PSEUDOSECRET0008",     // mcp command argument
-	"PSEUDOSECRET0009",     // mcp url query
-	"PSEUDOSECRET0010",     // kit arg value used in a hook
-	"PSEUDOSECRET0011",     // registry secret command
-	"PSEUDOSECRET0012",     // entrypoint
-	"PSEUDOSECRET0013",     // unknown capability config
-	"PSEUDOSECRET0014",     // --kit-arg value
-	"PSEUDOSECRET0015",     // arg default
+// Each pseudo secret is planted in one place a value can enter the plan.
+var pseudoSecrets = map[string]string{
+	"ghp_PSEUDOSECRET0001": "env value",
+	"sk-PSEUDOSECRET0002":  "literal secret value",
+	"PSEUDOSECRET0003":     "secret command",
+	"PseudoVault0004":      "op:// item name",
+	"PSEUDOSECRET0005":     "--env-arg value",
+	"PSEUDOSECRET0006":     "--env-args-file value",
+	"PSEUDOSECRET0007":     "lifecycle command",
+	"PSEUDOSECRET0008":     "mcp command argument",
+	"PSEUDOSECRET0009":     "mcp url query",
+	"PSEUDOSECRET0010":     "kit entry arg used in a hook",
+	"PSEUDOSECRET0011":     "registry secret command",
+	"PSEUDOSECRET0012":     "entrypoint",
+	"PSEUDOSECRET0013":     "unknown capability config",
+	"PSEUDOSECRET0014":     "--kit-arg value",
+	"PSEUDOSECRET0015":     "arg default",
+	"PSEUDOSECRET0016":     "--kit-args-file value",
 }
 
 const secretEnv = `schemaVersion: "1"
@@ -77,102 +78,161 @@ args:
     default: none
   other:
     default: none
+  third:
+    default: none
 capabilities:
   - type: com.docker.sandbox/lifecycle@1
     config:
       install:
-        - command: echo ${{ kit.args.key }} ${{ kit.args.other }}
+        - command: echo ${{ kit.args.key }} ${{ kit.args.other }} ${{ kit.args.third }}
   - type: io.example/custom@1
     optional: true
     config:
       apiKey: PSEUDOSECRET0013
 `
 
-func secretPlan(t *testing.T, mode Redaction) *Plan {
+func secretPlan(t *testing.T, mode sbxenv.Redaction) (*sbxenv.Plan, fixture) {
 	t.Helper()
-	return resolve(t, ResolveOptions{
-		Redaction:    mode,
-		Kits:         memKits{testProj + "/kits/k": secretKit},
-		EnvArgs:      []string{"flagged=PSEUDOSECRET0005"},
-		EnvArgsFiles: []ArgFile{{Path: testProj + "/s.args", Content: []byte("filed=PSEUDOSECRET0006\n")}},
-		KitArgs:      []string{"other=PSEUDOSECRET0014"},
-	}, layer(testProj+"/sbxenv.yaml", secretEnv))
+	f := newFixture(t)
+	f.write(t, "sbxenv.yaml", secretEnv)
+	f.write(t, "kits/k/k.yaml", secretKit)
+	f.write(t, "s.args", "filed=PSEUDOSECRET0006\n")
+	f.write(t, "k.args", "third=PSEUDOSECRET0016\n")
+	p := f.resolve(t, run{paths: []string{"."}, envArgsFiles: []string{"s.args"}, kitArgsFiles: []string{"k.args"},
+		opts: sbxenv.ResolveOptions{Redaction: mode, EnvArgs: []string{"flagged=PSEUDOSECRET0005"}, KitArgs: []string{"other=PSEUDOSECRET0014"}}})
+	return p, f
 }
 
-func TestStrictRedactionHidesPseudoSecrets(t *testing.T) {
-	p := secretPlan(t, RedactStrict)
-	out := mustJSON(t, p)
-	for _, s := range pseudoSecrets {
-		if strings.Contains(out, s) {
-			t.Errorf("strict plan leaks %q", s)
+func TestStrictRedactionNeverExposesPseudoSecrets(t *testing.T) {
+	t.Parallel()
+	// Arrange / Act
+	p, f := secretPlan(t, sbxenv.RedactStrict)
+	out := toJSON(t, p)
+
+	// Assert
+	for secret, where := range pseudoSecrets {
+		if strings.Contains(out, secret) {
+			t.Errorf("strict plan leaks the %s (%s)", where, secret)
 		}
 	}
-	if strings.Contains(out, testHome) {
-		t.Errorf("strict plan leaks the home directory")
+	if strings.Contains(out, f.home) {
+		t.Error("strict plan leaks the home directory")
 	}
-	// Diagnostics are part of the plan and were checked above; make sure
-	// some were produced from the planted values (enum violation, literal).
-	requireDiag(t, p, "ENV_ARG_INVALID", LevelError)
-	requireDiag(t, p, "SECRET_LITERAL", LevelWarning)
-	if v := item(t, p, "secrets.vault").Value; v != "ref: op://<personal vault>/…" {
-		t.Errorf("vault ref = %q", v)
+	// The planted values did reach the analysis: diagnostics fired on them.
+	requireDiag(t, p, "ENV_ARG_INVALID", sbxenv.LevelError)
+	requireDiag(t, p, "SECRET_LITERAL", sbxenv.LevelWarning)
+}
+
+func TestStrictRedactionKeepsWhatAReviewerNeeds(t *testing.T) {
+	t.Parallel()
+	// Arrange / Act
+	p, _ := secretPlan(t, sbxenv.RedactStrict)
+
+	// Assert
+	want := map[string]string{
+		"secrets.vault":       "ref: op://<personal vault>/…",
+		"secrets.literal":     "value: <literal value hidden>",
+		"secrets.cmd":         "command: <redacted command>",
+		"mcp.servers[remote]": "url: https://mcp.example.com/…",
+		"env.GH":              "<redacted>",
+		"workspace":           "~/proj",
 	}
-	if v := item(t, p, "mcp.servers[remote]").Value; v != "url: https://mcp.example.com/…" {
-		t.Errorf("mcp url = %q", v)
+	for id, w := range want {
+		if got := item(t, p, id).Value; got != w {
+			t.Errorf("%s = %q, want %q", id, got, w)
+		}
+	}
+	if p.Meta.Redaction != sbxenv.RedactStrict {
+		t.Errorf("meta.redaction = %q", p.Meta.Redaction)
 	}
 }
 
-func TestHomeRedactionKeepsValuesButNeverLiteralSecrets(t *testing.T) {
-	p := secretPlan(t, RedactHome)
-	out := mustJSON(t, p)
-	if strings.Contains(out, "sk-PSEUDOSECRET0002") {
-		t.Error("literal secret values must never be copied, even without --redact")
+func TestVaultKindsAreClassified(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"op://Private/x/y":    "ref: op://<personal vault>/…",
+		"op://Team Vault/x/y": "ref: op://<shared vault>/…",
+		"awssm://prod/db":     "ref: awssm://<redacted>",
+		"no-scheme-ref":       "ref: <redacted reference>",
 	}
-	if strings.Contains(out, testHome+"/") {
+	for ref, want := range cases {
+		t.Run(ref, func(t *testing.T) {
+			t.Parallel()
+			// Arrange
+			f := newFixture(t)
+			f.write(t, "sbxenv.yaml", minimal+"secrets:\n  s:\n    ref: \""+ref+"\"\n")
+
+			// Act
+			p := f.resolve(t, run{paths: []string{"."}})
+
+			// Assert
+			if got := item(t, p, "secrets.s").Value; got != want {
+				t.Errorf("value = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestHomeOnlyRedactionShowsValuesButNeverLiteralSecrets(t *testing.T) {
+	t.Parallel()
+	// Arrange / Act
+	p, f := secretPlan(t, sbxenv.RedactHome)
+	out := toJSON(t, p)
+
+	// Assert
+	if strings.Contains(out, "sk-PSEUDOSECRET0002") {
+		t.Error("literal secret values must never be copied, in any mode")
+	}
+	if strings.Contains(out, f.home+"/") {
 		t.Error("$HOME must be shortened to ~ in every mode")
 	}
-	if v := item(t, p, "env.GH").Value; v != "ghp_PSEUDOSECRET0001" {
-		t.Errorf("local TTY mode shows env values: %q", v)
-	}
-	if !strings.Contains(out, "~/proj/sbxenv.yaml") {
-		t.Error("source path should be shown as ~/proj/sbxenv.yaml")
+	if got := item(t, p, "env.GH").Value; got != "ghp_PSEUDOSECRET0001" {
+		t.Errorf("a local TTY shows env values: %q", got)
 	}
 }
 
-func TestParseErrorsDoNotQuoteContent(t *testing.T) {
-	bad := "schemaVersion: \"1\"\nenv:\n  TOKEN: \"PSEUDOSECRET0099\n  other: [\n"
-	_, err := Resolve([]LayerInput{layer(testProj+"/a.yaml", bad)}, ResolveOptions{HomeDir: testHome})
-	if err == nil {
-		t.Fatal("expected a parse error")
-	}
-	if strings.Contains(err.Error(), "PSEUDOSECRET0099") || strings.Contains(err.Error(), testHome) {
-		t.Errorf("parse error leaks content: %v", err)
-	}
-	var pe *ParseError
-	if !errors.As(err, &pe) {
-		t.Errorf("want ParseError, got %T", err)
-	}
-	bad2 := "a:\n\tb: PSEUDOSECRET0098\n"
-	if _, err := Resolve([]LayerInput{layer(testProj+"/a.yaml", bad2)}, ResolveOptions{HomeDir: testHome}); err == nil || strings.Contains(err.Error(), "PSEUDOSECRET0098") {
-		t.Errorf("tab error leaks content: %v", err)
-	}
-}
+func TestHomeShorteningRespectsPathBoundaries(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	f := newFixture(t)
+	sibling := f.home + "-other/data" // shares the prefix but is a different directory
+	f.write(t, "sbxenv.yaml", minimal+"env:\n  A: "+f.home+"/x\n  B: "+sibling+"\n  C: "+f.home+"\n")
 
-func TestRedactorPaths(t *testing.T) {
-	r := newRedactor(RedactHome, "/home/al")
-	if got := r.path("/home/al/x and /home/alice/y and /home/al"); got != "~/x and /home/alice/y and ~" {
-		t.Errorf("path = %q", got)
-	}
-	s := newRedactor(RedactStrict, "")
-	for in, want := range map[string]string{
-		"op://Private/x/y":    "op://<personal vault>/…",
-		"op://Team Vault/x/y": "op://<shared vault>/…",
-		"awssm://prod/db":     "awssm://<redacted>",
-		"no scheme":           "<redacted reference>",
-		"WEIRD SCHEME!://x":   "<redacted reference>",
-	} {
-		if got := s.secretRef(in); got != want {
-			t.Errorf("secretRef(%q) = %q, want %q", in, got, want)
+	// Act
+	p := f.resolve(t, run{paths: []string{"."}, opts: sbxenv.ResolveOptions{Redaction: sbxenv.RedactHome}})
+
+	// Assert
+	for id, want := range map[string]string{"env.A": "~/x", "env.B": sibling, "env.C": "~"} {
+		if got := item(t, p, id).Value; got != want {
+			t.Errorf("%s = %q, want %q", id, got, want)
 		}
+	}
+}
+
+func TestParseErrorsNeverQuoteContent(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"unterminated quote": "schemaVersion: \"1\"\nenv:\n  TOKEN: \"PSEUDOSECRET0099\n  other: [\n",
+		"tab indentation":    "a:\n\tb: PSEUDOSECRET0098\n",
+		"bad mapping":        "a: b: PSEUDOSECRET0097\n",
+	}
+	for name, content := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			// Arrange
+			f := newFixture(t)
+			f.write(t, "sbxenv.yaml", content)
+
+			// Act
+			_, err := f.resolveErr(t, run{paths: []string{"."}})
+
+			// Assert
+			if err == nil {
+				t.Fatal("expected a parse error")
+			}
+			if strings.Contains(err.Error(), "PSEUDOSECRET") || strings.Contains(err.Error(), f.home) {
+				t.Errorf("error leaks content or home: %v", err)
+			}
+		})
 	}
 }

@@ -1,10 +1,11 @@
-package loader
+package loader_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/loader"
 	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
 )
 
@@ -18,66 +19,164 @@ func write(t *testing.T, p, content string) {
 	}
 }
 
-func TestLoadDefaultsWithoutPaths(t *testing.T) {
+func TestWithoutPathsUserDefaultsComeFirst(t *testing.T) {
+	t.Parallel()
+	// Arrange
 	home, proj := t.TempDir(), t.TempDir()
-	write(t, filepath.Join(home, ".sbxenv.yaml"), "schemaVersion: \"1\"\n")
-	write(t, filepath.Join(proj, "sbxenv.yaml"), "agent: claude\n")
-	res, err := Load(Request{WorkDir: proj, HomeDir: home})
+	write(t, filepath.Join(home, ".sbxenv.yaml"), "a: 1\n")
+	write(t, filepath.Join(proj, "sbxenv.yaml"), "b: 2\n")
+
+	// Act
+	res, err := loader.Load(loader.Request{WorkDir: proj, HomeDir: home})
+
+	// Assert
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Layers) != 2 || res.Layers[0].Kind != sbxenv.LayerUserDefaults || res.Layers[1].Kind != sbxenv.LayerEnv {
+	if len(res.Layers) != 2 || res.Layers[0].Kind != sbxenv.LayerUserDefaults || string(res.Layers[1].Content) != "b: 2\n" {
 		t.Fatalf("layers = %+v", res.Layers)
 	}
 	if res.ProjectDir != proj {
-		t.Errorf("project dir = %q", res.ProjectDir)
+		t.Errorf("project dir = %q, want the working directory", res.ProjectDir)
 	}
 }
 
-func TestLoadPathsSkipUserDefaults(t *testing.T) {
+func TestWithoutPathsEitherFileAloneIsEnough(t *testing.T) {
+	t.Parallel()
+	cases := map[string]bool{"home only": true, "project only": false}
+	for name, inHome := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			// Arrange
+			home, proj := t.TempDir(), t.TempDir()
+			if inHome {
+				write(t, filepath.Join(home, ".sbxenv.yaml"), "a: 1\n")
+			} else {
+				write(t, filepath.Join(proj, "sbxenv.yaml"), "a: 1\n")
+			}
+
+			// Act
+			res, err := loader.Load(loader.Request{WorkDir: proj, HomeDir: home})
+
+			// Assert
+			if err != nil || len(res.Layers) != 1 {
+				t.Errorf("err %v, layers %d", err, len(res.Layers))
+			}
+		})
+	}
+}
+
+func TestExplicitPathsSkipDefaultsAndResolveDirectories(t *testing.T) {
+	t.Parallel()
+	// Arrange
 	home, proj := t.TempDir(), t.TempDir()
-	write(t, filepath.Join(home, ".sbxenv.yaml"), "schemaVersion: \"1\"\n")
-	write(t, filepath.Join(proj, "env", "sbxenv.yaml"), "agent: claude\n")
-	write(t, filepath.Join(proj, "local.yaml"), "agent: codex\n")
+	write(t, filepath.Join(home, ".sbxenv.yaml"), "a: 1\n")
+	write(t, filepath.Join(proj, "env", "sbxenv.yaml"), "b: 2\n")
+	write(t, filepath.Join(proj, "local.yaml"), "c: 3\n")
 	write(t, filepath.Join(proj, "a.args"), "x=1\n")
-	res, err := Load(Request{Paths: []string{"env", "local.yaml"}, EnvArgsFiles: []string{"a.args"}, WorkDir: proj, HomeDir: home})
+	write(t, filepath.Join(proj, "k.args"), "y=2\n")
+
+	// Act
+	res, err := loader.Load(loader.Request{Paths: []string{"env", "local.yaml"}, EnvArgsFiles: []string{"a.args"}, KitArgsFiles: []string{"k.args"}, WorkDir: proj, HomeDir: home})
+
+	// Assert
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Layers) != 2 || filepath.Base(res.Layers[0].Path) != "sbxenv.yaml" {
+	if len(res.Layers) != 2 || res.Layers[0].Path != filepath.Join(proj, "env", "sbxenv.yaml") {
 		t.Fatalf("layers = %+v", res.Layers)
 	}
 	if res.ProjectDir != filepath.Join(proj, "env") {
-		t.Errorf("first path sets the project dir: %q", res.ProjectDir)
+		t.Errorf("project dir = %q, want the first path's directory", res.ProjectDir)
 	}
-	if len(res.EnvArgsFiles) != 1 || string(res.EnvArgsFiles[0].Content) != "x=1\n" {
-		t.Errorf("args files = %+v", res.EnvArgsFiles)
-	}
-}
-
-func TestLoadErrors(t *testing.T) {
-	dir := t.TempDir()
-	if _, err := Load(Request{WorkDir: dir, HomeDir: dir}); err == nil {
-		t.Error("no file anywhere should fail")
-	}
-	if _, err := Load(Request{Paths: []string{"missing.yaml"}, WorkDir: dir}); err == nil {
-		t.Error("missing path should fail")
+	if string(res.EnvArgsFiles[0].Content) != "x=1\n" || string(res.KitArgsFiles[0].Content) != "y=2\n" {
+		t.Error("args files not read")
 	}
 }
 
-func TestFSKits(t *testing.T) {
-	dir := t.TempDir()
-	write(t, filepath.Join(dir, "a", "a.yaml"), "schemaVersion: \"3\"\n")
-	write(t, filepath.Join(dir, "b", "notes.yaml"), "x: 1\n")
-	write(t, filepath.Join(dir, "b", "kit.yaml"), "# syntax=docker/sandbox-kit:3\nschemaVersion: \"3\"\n")
-	write(t, filepath.Join(dir, "c", "spec.yaml"), "schemaVersion: \"2\"\n")
-	for name, want := range map[string]string{"a": "a.yaml", "b": "kit.yaml", "c": "spec.yaml"} {
-		in, err := FSKits{}.LoadKit(filepath.Join(dir, name))
-		if err != nil || filepath.Base(in.DescriptorPath) != want {
-			t.Errorf("%s: %v %q", name, err, in.DescriptorPath)
-		}
+func TestLoadFailures(t *testing.T) {
+	t.Parallel()
+	cases := map[string]loader.Request{
+		"nothing to load":   {},
+		"missing path":      {Paths: []string{"nope.yaml"}},
+		"directory without": {Paths: []string{"emptydir"}},
+		"missing args file": {Paths: []string{"sbxenv.yaml"}, EnvArgsFiles: []string{"nope.args"}},
 	}
-	if _, err := (FSKits{}).LoadKit(filepath.Join(dir, "none")); err == nil {
-		t.Error("missing kit dir should fail")
+	for name, req := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			// Arrange
+			dir := t.TempDir()
+			if err := os.Mkdir(filepath.Join(dir, "emptydir"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if name == "missing args file" {
+				write(t, filepath.Join(dir, "sbxenv.yaml"), "a: 1\n")
+			}
+			req.WorkDir, req.HomeDir = dir, dir
+
+			// Act
+			_, err := loader.Load(req)
+
+			// Assert
+			if err == nil {
+				t.Error("expected an error")
+			}
+		})
+	}
+}
+
+func TestKitDescriptorDiscovery(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		files map[string]string
+		want  string
+	}{
+		{"companion pair by directory name", map[string]string{"tool.yaml": "schemaVersion: \"3\"\n", "other.yaml": "x: 1\n"}, "tool.yaml"},
+		{".yml companion", map[string]string{"tool.yml": "schemaVersion: \"3\"\n"}, "tool.yml"},
+		{"any file with the syntax header", map[string]string{"notes.yaml": "x: 1\n", "kit.yaml": "# syntax=docker/sandbox-kit:3\n"}, "kit.yaml"},
+		{"legacy spec.yaml", map[string]string{"spec.yaml": "schemaVersion: \"2\"\n"}, "spec.yaml"},
+		{"nothing recognisable", map[string]string{"notes.yaml": "x: 1\n"}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			// Arrange
+			dir := filepath.Join(t.TempDir(), "tool")
+			for name, c := range tc.files {
+				write(t, filepath.Join(dir, name), c)
+			}
+
+			// Act
+			in, err := loader.FSKits{}.LoadKit(dir)
+
+			// Assert
+			if tc.want == "" {
+				if err == nil {
+					t.Errorf("expected an error, got %q", in.DescriptorPath)
+				}
+				return
+			}
+			if err != nil || filepath.Base(in.DescriptorPath) != tc.want {
+				t.Errorf("descriptor = %q, err %v; want %s", in.DescriptorPath, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestKitDirectoryMustExistAndBeADirectory(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "file"), "x")
+
+	// Act
+	_, missing := loader.FSKits{}.LoadKit(filepath.Join(dir, "none"))
+	_, notDir := loader.FSKits{}.LoadKit(filepath.Join(dir, "file"))
+
+	// Assert
+	if missing == nil || notDir == nil {
+		t.Errorf("missing = %v, notDir = %v", missing, notDir)
 	}
 }

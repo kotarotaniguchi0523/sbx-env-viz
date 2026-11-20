@@ -94,6 +94,8 @@ mise run test         # go test -race ./...
 mise run audit        # govulncheck → SBOM → uzomuzo
 ```
 
+テストは古典派のブラックボックステストです（AAA 形式、モックなし）。公開 API（`pkg/sbxenv`）とビルドした実バイナリだけを相手にします。入力は、ケースごとに作る一時ディレクトリ（HOME・プロジェクト・kit）の実ファイルです。全ケースを `t.Parallel()` で並列に動かすため、ケース間の依存があれば表に出ます。
+
 ## セキュリティ監査の方針
 
 | いつ | 何を | どこで |
