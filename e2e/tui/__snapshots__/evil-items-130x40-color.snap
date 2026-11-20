@@ -1,0 +1,352 @@
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│sbx-env-viz  1:Risk  2:Items  3:Sources   g:層別                                                                                  │
+│Host実行 0 | Host永続 0 | RWマウント 0 | 外への許可 0 | エラー 0 | 警告 0 | 未展開 2                                              │
+│宣言の静的解析（稼働中 sandbox の状態ではない） env-args: (なし)                                                                  │
+│層 L1 ~/proj/evil.yaml                                     │ schemaVersion                                                        │
+│> INFO schemaVersion = 1                                   │ 値: 1                                                                │
+│  INFO agent = claude                                      │ リスク: info                                                         │
+│  INFO env.EVIL = ok\x1b[2J\x1b]0;pwned\x07                │                                                                      │
+│  INFO env.RED = x\x1b[31mred                              │ 解説（schemaVersion）                                                │
+│  INFO env.BIDI = a\u202eb                                 │ 要は: 環境ファイルの書式バージョン。現在サポートされる値は文字列 "1" │
+│  INFO env.MULTI = line1\nforged  ← fake/origin.yaml:1\n   │ だけです。                                                           │
+│                                                           │ 注意: kit 記述子の schemaVersion（"3"）とは無関係です。数値の 1      │
+│                                                           │ ではなく引用符付きの "1" で書きます。                                │
+│                                                           │ 上書き規則: 置換（後勝ち） —                                         │
+│                                                           │ 後から渡したファイル（右側の引数）の値が前の値を丸ごと置き換えます。~│
+│                                                           │ /.sbxenv.yaml                                                        │
+│                                                           │ はプロジェクト側ファイルより前に読まれるので、ユーザー既定値はプロジ │
+│                                                           │ ェクトの値に負けます。                                               │
+│                                                           │ 参照: https://docs.docker.com/ai/sandboxes/configuration/environment-│
+│                                                           │ files/#top-level-fields                                              │
+│                                                           │                                                                      │
+│                                                           │ 上書き履歴                                                           │
+│                                                           │   set     1  @ ~/proj/evil.yaml:1                                    │
+│                                                           │                                                                      │
+│                                                           │ 出典                                                                 │
+│                                                           │   ~/proj/evil.yaml:1                                                 │
+│                                                           │                                                                      │
+│                                                           │                                                                      │
+│                                                           │                                                                      │
+│                                                           │                                                                      │
+│                                                           │                                                                      │
+│                                                           │                                                                      │
+│                                                           │                                                                      │
+│                                                           │                                                                      │
+│                                                           │                                                                      │
+│                                                           │                                                                      │
+│                                                           │                                                                      │
+│                                                           │                                                                      │
+│                                                           │                                                                      │
+│                                                           │                                                                      │
+│q:終了 ?:ヘルプ 1-3/[]:ビュー j/k:移動 Enter:詳細 h/l:ペイン g:グループ f:絞り込み /:検索                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+{
+  "colors": {
+    "0,0": {
+      "bold": true
+    },
+    "0,2": {
+      "dim": true
+    },
+    "0,3": {
+      "bold": true
+    },
+    "0,39": {
+      "dim": true
+    },
+    "0,4": {
+      "inverse": true
+    },
+    "11,0": {
+      "bold": false
+    },
+    "2,5": {
+      "fg": "#8a8a8a"
+    },
+    "2,6": {
+      "fg": "#8a8a8a"
+    },
+    "2,7": {
+      "fg": "#8a8a8a"
+    },
+    "2,8": {
+      "fg": "#8a8a8a"
+    },
+    "2,9": {
+      "fg": "#8a8a8a"
+    },
+    "20,0": {
+      "inverse": true
+    },
+    "22,3": {
+      "bold": false
+    },
+    "29,0": {
+      "inverse": false
+    },
+    "48,2": {
+      "dim": false
+    },
+    "58,4": {
+      "inverse": false
+    },
+    "59,10": {
+      "dim": true
+    },
+    "59,11": {
+      "dim": true
+    },
+    "59,12": {
+      "dim": true
+    },
+    "59,13": {
+      "dim": true
+    },
+    "59,14": {
+      "dim": true
+    },
+    "59,15": {
+      "dim": true
+    },
+    "59,16": {
+      "dim": true
+    },
+    "59,17": {
+      "dim": true
+    },
+    "59,18": {
+      "dim": true
+    },
+    "59,19": {
+      "dim": true
+    },
+    "59,20": {
+      "dim": true
+    },
+    "59,21": {
+      "dim": true
+    },
+    "59,22": {
+      "dim": true
+    },
+    "59,23": {
+      "dim": true
+    },
+    "59,24": {
+      "dim": true
+    },
+    "59,25": {
+      "dim": true
+    },
+    "59,26": {
+      "dim": true
+    },
+    "59,27": {
+      "dim": true
+    },
+    "59,28": {
+      "dim": true
+    },
+    "59,29": {
+      "dim": true
+    },
+    "59,3": {
+      "dim": true
+    },
+    "59,30": {
+      "dim": true
+    },
+    "59,31": {
+      "dim": true
+    },
+    "59,32": {
+      "dim": true
+    },
+    "59,33": {
+      "dim": true
+    },
+    "59,34": {
+      "dim": true
+    },
+    "59,35": {
+      "dim": true
+    },
+    "59,36": {
+      "dim": true
+    },
+    "59,37": {
+      "dim": true
+    },
+    "59,38": {
+      "dim": true
+    },
+    "59,4": {
+      "dim": true
+    },
+    "59,5": {
+      "dim": true
+    },
+    "59,6": {
+      "dim": true
+    },
+    "59,7": {
+      "dim": true
+    },
+    "59,8": {
+      "dim": true
+    },
+    "59,9": {
+      "dim": true
+    },
+    "6,5": {
+      "fg": "default"
+    },
+    "6,6": {
+      "fg": "default"
+    },
+    "6,7": {
+      "fg": "default"
+    },
+    "6,8": {
+      "fg": "default"
+    },
+    "6,9": {
+      "fg": "default"
+    },
+    "60,10": {
+      "dim": false
+    },
+    "60,11": {
+      "dim": false
+    },
+    "60,12": {
+      "dim": false
+    },
+    "60,13": {
+      "dim": false
+    },
+    "60,14": {
+      "dim": false
+    },
+    "60,15": {
+      "dim": false
+    },
+    "60,16": {
+      "dim": false
+    },
+    "60,17": {
+      "dim": false
+    },
+    "60,18": {
+      "dim": false
+    },
+    "60,19": {
+      "dim": false
+    },
+    "60,20": {
+      "dim": false
+    },
+    "60,21": {
+      "dim": false
+    },
+    "60,22": {
+      "dim": false
+    },
+    "60,23": {
+      "dim": false
+    },
+    "60,24": {
+      "dim": false
+    },
+    "60,25": {
+      "dim": false
+    },
+    "60,26": {
+      "dim": false
+    },
+    "60,27": {
+      "dim": false
+    },
+    "60,28": {
+      "dim": false
+    },
+    "60,29": {
+      "dim": false
+    },
+    "60,3": {
+      "dim": false
+    },
+    "60,30": {
+      "dim": false
+    },
+    "60,31": {
+      "dim": false
+    },
+    "60,32": {
+      "dim": false
+    },
+    "60,33": {
+      "dim": false
+    },
+    "60,34": {
+      "dim": false
+    },
+    "60,35": {
+      "dim": false
+    },
+    "60,36": {
+      "dim": false
+    },
+    "60,37": {
+      "dim": false
+    },
+    "60,38": {
+      "dim": false
+    },
+    "60,4": {
+      "dim": false
+    },
+    "60,5": {
+      "dim": false
+    },
+    "60,6": {
+      "dim": false
+    },
+    "60,7": {
+      "dim": false
+    },
+    "60,8": {
+      "dim": false
+    },
+    "60,9": {
+      "dim": false
+    },
+    "61,20": {
+      "bold": true
+    },
+    "61,23": {
+      "bold": true
+    },
+    "61,3": {
+      "bold": true
+    },
+    "61,7": {
+      "bold": true
+    },
+    "65,23": {
+      "bold": false
+    },
+    "71,20": {
+      "bold": false
+    },
+    "74,3": {
+      "bold": false
+    },
+    "82,7": {
+      "bold": false
+    },
+    "89,39": {
+      "dim": false
+    }
+  }
+}

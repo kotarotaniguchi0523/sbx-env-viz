@@ -101,6 +101,13 @@ mise run test         # go test -race ./...
 mise run audit        # govulncheck → SBOM → uzomuzo
 ```
 
+TUI は `e2e/tui` で、ビルドした実バイナリを実 PTY 上で操作して検証します（[Microsoft tui-test](https://github.com/microsoft/tui-test) の Go バインディング。独立した Go モジュールで `go.mod` / `go.sum` に固定）。80 桁と 130 桁の描画スナップショット（`e2e/tui/__snapshots__/`）、`1`/`2`/`3`・`g`・`f`・`/`・`?`・`q` の操作、日本語の文字幅、`NO_COLOR`、制御文字のエスケープを確かめます。
+
+```sh
+mise run e2e                                   # 実 PTY テスト
+UPDATE_SNAPSHOTS=1 mise run e2e                # 画面を意図して変えたときにスナップショットを更新
+```
+
 テストは古典派のブラックボックステストです（AAA 形式、モックなし）。公開 API（`pkg/sbxenv`）とビルドした実バイナリだけを相手にします。入力は、ケースごとに作る一時ディレクトリ（HOME・プロジェクト・kit）の実ファイルです。全ケースを `t.Parallel()` で並列に動かすため、ケース間の依存があれば表に出ます。
 
 ## セキュリティ監査の方針

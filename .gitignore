@@ -10,3 +10,4 @@
 /vuls.json
 /govulncheck.txt
 /.audit/
+/e2e/tui/.bin/

@@ -26,7 +26,9 @@ jobs:
           version: 2026.11.8
           install_args: go go:golang.org/x/vuln/cmd/govulncheck
       - name: Reachable vulnerabilities
-        run: govulncheck ./...
+        run: |
+          govulncheck ./...
+          (cd e2e/tui && govulncheck ./...)
       - name: All vulnerabilities in required modules (report only)
         run: |
           set -o pipefail
@@ -91,6 +93,18 @@ jobs:
           if [ "$total" -eq 0 ] || [ "$review" -gt 0 ] || grep -q 'level=ERROR' uzomuzo.err; then
             echo "::error::uzomuzo could not evaluate every dependency (total=$total review=$review)"; exit 1
           fi
+      - name: uzomuzo on the e2e test module (tui-test, purego)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          uzomuzo scan --file e2e/tui/go.mod --show-transitive --format json --fail-on eol-confirmed 2> uzomuzo-e2e.err | tee uzomuzo-e2e.json
+          cat uzomuzo-e2e.err >&2
+          review=$(jq '.summary.review' uzomuzo-e2e.json)
+          total=$(jq '.summary.total' uzomuzo-e2e.json)
+          if [ "$total" -eq 0 ] || [ "$review" -gt 0 ] || grep -q 'level=ERROR' uzomuzo-e2e.err; then
+            echo "::error::uzomuzo could not evaluate every e2e dependency (total=$total review=$review)"; exit 1
+          fi
       - name: uzomuzo table (report)
         if: always()
         env:
@@ -103,6 +117,7 @@ jobs:
           path: |
             sbom.cdx.json
             uzomuzo.json
+            uzomuzo-e2e.json
           retention-days: 30
 
   vuls:

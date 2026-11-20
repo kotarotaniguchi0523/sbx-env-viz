@@ -26,6 +26,11 @@ run = "go test -race ./..."
 description = "Static build for the current platform"
 run = "CGO_ENABLED=0 go build -trimpath -o dist/sbx-env-viz ./cmd/sbx-env-viz"
 
+[tasks.e2e]
+description = "Drive the built binary in a real PTY (Microsoft tui-test); UPDATE_SNAPSHOTS=1 rewrites baselines"
+dir = "e2e/tui"
+run = "go test -count=1 ./..."
+
 [tasks.lint]
 description = "gofmt check and go vet"
 run = ['test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)', "go vet ./..."]
