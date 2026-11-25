@@ -28,6 +28,16 @@ mise use -g packslip:github.com/kotarotaniguchi0523/sbxray
 
 mise の [`packslip:` backend](https://mise.jdx.dev/dev-tools/backends/packslip.html) は、Release に添付した `packslip.sigstore.json` を検証してからアーカイブを展開します。このファイルは各アーカイブのダイジェスト（内容のハッシュ）の一覧で、このリポジトリの `release.yml` が Sigstore の keyless 署名（鍵を保管しない署名）で署名しています。署名・透明性ログ・ダイジェスト・サイズのどれかが合わなければ、インストールは止まります。`cosign` などのツールを別に入れる必要はありません。
 
+信頼する署名者を最初から固定したいときは、次のフィンガープリントを使います。v0.1.0 と v0.2.0 を `packslip pin` で検証して得た値で、リポジトリの名前を変えたあとも同じです。
+
+```text
+ps1_q5dhguvg3md2hsfxcizfdued7a
+```
+
+```sh
+packslip install github.com/kotarotaniguchi0523/sbxray --pin ps1_q5dhguvg3md2hsfxcizfdued7a
+```
+
 mise に `minimum_release_age` を設定している場合、新しい版は公開からその期間が過ぎるまで入りません。
 
 ### Nix で入れる
