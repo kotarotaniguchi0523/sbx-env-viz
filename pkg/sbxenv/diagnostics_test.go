@@ -1,6 +1,7 @@
 package sbxenv_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -527,6 +528,8 @@ func TestParseFailures(t *testing.T) {
 		})
 	}
 }
+
+func asParseError(err error, target **sbxenv.ParseError) bool { return errors.As(err, target) }
 
 func TestDuplicateKeysReportBothPositions(t *testing.T) {
 	t.Parallel()

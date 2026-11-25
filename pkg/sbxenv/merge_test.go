@@ -1,6 +1,8 @@
 package sbxenv_test
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -57,6 +59,10 @@ lifecycle:
     - command: echo two
 `
 
+// layered resolves baseEnv under localEnv, the two-layer plan the merge
+// tests below are written against.
+//
+//declscope:shared // docs_test.go and explain_test.go check the docs and explanations of this same plan
 func layered(t *testing.T) *sbxenv.Plan {
 	t.Helper()
 	f := newFixture(t)
@@ -262,6 +268,14 @@ func TestExplicitPathSkipsUserDefaults(t *testing.T) {
 	// Assert
 	if hasItem(p, "env.FROM_HOME") {
 		t.Error("an explicit path must skip ~/.sbxenv.yaml")
+	}
+}
+
+// writeHome creates a file directly in the fixture's home directory.
+func writeHome(t *testing.T, f fixture, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(f.home, name), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 

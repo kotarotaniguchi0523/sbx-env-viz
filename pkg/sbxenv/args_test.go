@@ -1,6 +1,8 @@
 package sbxenv_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
@@ -84,6 +86,19 @@ func TestExpressionsExpandOnlyTheDocumentedForms(t *testing.T) {
 		}
 	}
 	noDiag(t, p, "UNRESOLVED_EXPR")
+}
+
+// writeFile creates dir/name and returns its path.
+func writeFile(t *testing.T, dir, name, content string) string {
+	t.Helper()
+	p := filepath.Join(dir, filepath.FromSlash(name))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
 }
 
 func TestUnresolvableExpressionsAreErrors(t *testing.T) {
