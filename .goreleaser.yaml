@@ -14,7 +14,8 @@ builds:
     binary: sbx-env-viz
     env:
       - CGO_ENABLED=0
-    goos: [linux, darwin, windows]
+    # macOS and Windows only. Linux users build from source (go install).
+    goos: [darwin, windows]
     goarch: [amd64, arm64]
     flags:
       - -trimpath
@@ -24,10 +25,9 @@ builds:
 
 archives:
   - id: default
+    # tar.gz on Windows too: Windows 10 and later ship tar.exe, and mise
+    # and packslip open tar.gz on every platform.
     formats: [tar.gz]
-    format_overrides:
-      - goos: windows
-        formats: [zip]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - LICENSE
@@ -79,6 +79,10 @@ release:
   footer: |
     ### 検証方法
     ```sh
-    sha256sum -c {{ .ProjectName }}_{{ .Version }}_checksums.txt --ignore-missing
-    gh attestation verify {{ .ProjectName }}_{{ .Version }}_linux_amd64.tar.gz -R kotarotaniguchi0523/sbx-env-viz
+    shasum -a 256 -c {{ .ProjectName }}_{{ .Version }}_checksums.txt --ignore-missing
+    gh attestation verify {{ .ProjectName }}_{{ .Version }}_darwin_arm64.tar.gz -R kotarotaniguchi0523/sbx-env-viz
+    ```
+    mise で入れる場合は、署名付きの `packslip.sigstore.json` で検証されます:
+    ```sh
+    mise use -g packslip:github.com/kotarotaniguchi0523/sbx-env-viz
     ```

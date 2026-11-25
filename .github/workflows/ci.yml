@@ -106,7 +106,8 @@ jobs:
 
   release-snapshot:
     name: GoReleaser check + snapshot
-    runs-on: ubuntu-latest
+    # Releases ship macOS and Windows only, so run an archived binary here.
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -121,7 +122,11 @@ jobs:
         run: goreleaser release --snapshot --clean
       - name: The archived binary reports the snapshot version
         run: |
-          tar -xzf dist/*_linux_amd64.tar.gz -C "$RUNNER_TEMP" sbx-env-viz
+          ls dist/*.tar.gz
+          if ls dist/*linux* dist/*.zip 2>/dev/null; then
+            echo "::error::releases ship macOS and Windows tar.gz only"; exit 1
+          fi
+          tar -xzf dist/*_darwin_arm64.tar.gz -C "$RUNNER_TEMP" sbx-env-viz
           "$RUNNER_TEMP/sbx-env-viz" --version | grep -q SNAPSHOT
 
   govulncheck:
