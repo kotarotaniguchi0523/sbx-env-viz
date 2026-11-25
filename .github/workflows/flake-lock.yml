@@ -1,0 +1,50 @@
+# Weekly flake.lock update: each input moves to its newest commit that is at least 2 days old
+# (tools/ci/flake-lock-update.sh). ci.yml is dispatched on the PR branch and builds there
+# (pushes made with GITHUB_TOKEN do not trigger workflows by themselves). Same as mac-host-setup.
+name: flake-lock
+
+on:
+  schedule:
+    - cron: "0 21 * * 0" # Mon 06:00 JST
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: flake-lock
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  update:
+    name: update flake.lock
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the update branch
+      pull-requests: write # open / update the PR
+      actions: write # dispatch ci.yml on the PR branch
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BRANCH: flake-lock/update
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true # needed to push the update branch
+      - uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
+      - name: update flake.lock (inputs >= 2 days old)
+        id: lock
+        run: tools/ci/flake-lock-update.sh
+      - name: push, open / update the PR, start ci
+        if: steps.lock.outputs.changed == 'true'
+        run: |
+          tools/ci/push-and-dispatch.sh "$BRANCH" "chore(deps): update flake.lock (inputs >= 2 days old)" flake.lock
+          if [[ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]]; then
+            gh pr create --head "$BRANCH" --base main --title "chore(deps): update flake.lock" \
+              --body "Inputs moved to their newest commits that are at least 2 days old (tools/ci/flake-lock-update.sh). ci.yml builds on this branch."
+          fi
+          # Merge once the required checks pass, like Renovate's minor / patch updates.
+          gh pr merge "$BRANCH" --squash --auto

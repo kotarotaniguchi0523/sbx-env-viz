@@ -91,6 +91,14 @@ sbx-env-viz/
 2. **OSS `future-architect/vuls`（Trivy 連携）**: ライブラリ CVE 検査（検査対象件数 > 0 を確認）
 3. **`future-architect/uzomuzo-oss`**: `cyclonedx-gomod app` で本番ビルド条件の SBOM を生成し、`uzomuzo scan --sbom ... --show-transitive --format json --fail-on eol-confirmed` でメンテ停滞・EOL・ゾンビ依存を検査
 
+4. **betterleaks**: commit・push（hk）と CI（全履歴・作業ツリー）で秘密情報を検査。mise で入る単体バイナリだけを使い、Action は使わない
+5. **jactionlint + sisakulint**: workflow の正しさとセキュリティ（キャッシュ汚染、過剰な権限、テンプレート注入、SHA 未固定、偽のコミット参照など）を CI と hk で検査。jactionlint は shellcheck で `run:` も検査する。jactionlint は sisakulint がまだ持たないルールを補う
+
+### 配布と署名
+- **GoReleaser**: macOS・Windows（amd64 / arm64）の `tar.gz`、checksums、CycloneDX SBOM、ソースアーカイブ。Linux はソース（`go install` / Nix）から
+- **packslip**: 書き込み権限のないジョブが各アーカイブに build provenance を付け、ダイジェスト一覧に keyless 署名した `packslip.sigstore.json` を作る。mise の `packslip:` backend がこれを検証してから展開する。署名者はタグ上の `release.yml` に固定される
+- **Nix**: `flake.nix`（入力は nixpkgs だけ）がソースからビルドする。完全性は署名ではなく `flake.lock`（rev + narHash）と `vendorHash` のハッシュで担保する
+
 ### `sbx` 更新の自動検知 → エージェント実装パイプライン
 - **GitHub Actions（日次 cron）**:
   1. `docker/sbx-releases` の新安定版（公開 2 日以上経過）を監視

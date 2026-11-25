@@ -1,15 +1,99 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    ":semanticCommits",
+    ":enableVulnerabilityAlertsWithLabel(security)"
   ],
-  "nix": {
-    "enabled": true
+  "ignorePaths": [
+    "**/node_modules/**"
+  ],
+  "timezone": "Asia/Tokyo",
+  "schedule": [
+    "before 6am every weekday"
+  ],
+  "minimumReleaseAge": "2 days",
+  "labels": [
+    "dependencies"
+  ],
+  "rangeStrategy": "pin",
+  "pinDigests": true,
+  "separateMajorMinor": false,
+  "separateMinorPatch": false,
+  "separateMultipleMajor": false,
+  "rebaseWhen": "auto",
+  "prConcurrentLimit": 3,
+  "prHourlyLimit": 0,
+  "branchConcurrentLimit": 0,
+  "packageRules": [
+    {
+      "description": "グループ1: mise のツール一式を 1 PR にまとめる",
+      "matchManagers": [
+        "mise"
+      ],
+      "groupName": "mise tools",
+      "groupSlug": "mise-tools"
+    },
+    {
+      "description": "グループ2: GitHub Actions 一式を 1 PR にまとめる（コミット SHA 固定）",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "GitHub Actions",
+      "groupSlug": "github-actions"
+    },
+    {
+      "description": "Go モジュール（go.mod / e2e/tui/go.mod）を 1 PR にまとめる",
+      "matchManagers": [
+        "gomod"
+      ],
+      "groupName": "Go modules",
+      "groupSlug": "go-modules"
+    },
+    {
+      "description": "flake.lock は Renovate ではなく専用 workflow（flake-lock.yml。2日以上前の commit にだけ更新）で更新する",
+      "matchManagers": [
+        "nix"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "mise.lock は mise-relock ワークフローが再生成する。Mend hosted の Renovate は mise lock を実行できない（unsafe execution）ため、artifact 更新は試行しない",
+      "matchManagers": [
+        "mise"
+      ],
+      "skipArtifactsUpdate": true,
+      "lockFileMaintenance": {
+        "enabled": false
+      }
+    },
+    {
+      "description": "minor / patch は必須チェックが通れば自動マージ。major と pin / digest は手動",
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "automerge": true,
+      "platformAutomerge": true
+    }
+  ],
+  "mise": {
+    "updatePinnedDependencies": true
   },
-  "lockFileMaintenance": {
+  "vulnerabilityAlerts": {
     "enabled": true,
+    "description": "脆弱性アラート由来の更新は、スケジュール・リリース経過日数・Dashboard 承認を迂回して即座に PR を作り、必須チェックが通れば自動マージする",
     "schedule": [
-      "before 9am on monday"
-    ]
-  }
+      "at any time"
+    ],
+    "minimumReleaseAge": null,
+    "groupName": null,
+    "automerge": true,
+    "platformAutomerge": true
+  },
+  "osvVulnerabilityAlerts": true,
+  "automergeStrategy": "squash",
+  "postUpdateOptions": [
+    "gomodTidy"
+  ]
 }

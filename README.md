@@ -16,7 +16,19 @@ Docker Sandboxes（`sbx`）の環境ファイル `sbxenv*.yaml` と、ローカ�
 mise use -g packslip:github.com/kotarotaniguchi0523/sbx-env-viz
 ```
 
-mise の [`packslip:` backend](https://mise.jdx.dev/dev-tools/backends/packslip.html) は、Release に添付された `packslip.sigstore.json` を検証してから展開します。これは、各アーカイブのダイジェストを並べた一覧に、このリポジトリの `release.yml` が鍵を持たずに（Sigstore の keyless 署名で）署名したものです。署名・透明性ログ・ダイジェスト・サイズのどれかが合わなければインストールは止まります。外部の `cosign` などは要りません。
+mise の [`packslip:` backend](https://mise.jdx.dev/dev-tools/backends/packslip.html) は、Release に添付された `packslip.sigstore.json` を検証してから展開します。これは各アーカイブのダイジェストを並べた一覧で、このリポジトリの `release.yml` が鍵を持たずに（Sigstore の keyless 署名で）署名しています。署名・透明性ログ・ダイジェスト・サイズのどれかが合わなければインストールは止まります。外部の `cosign` などは要りません。
+
+最初に信頼する署名者を固定したい場合は、次のフィンガープリントを使います（v0.1.0 を検証して得たもの）。
+
+```text
+ps1_q5dhguvg3md2hsfxcizfdued7a
+```
+
+```sh
+packslip install github.com/kotarotaniguchi0523/sbx-env-viz --pin ps1_q5dhguvg3md2hsfxcizfdued7a
+```
+
+mise に `minimum_release_age` を設定している場合、公開からその期間が過ぎるまで新しい版は入りません。
 
 ### Nix
 
@@ -151,38 +163,47 @@ doc, _ := sbxenv.LookupDoc("sandboxOptions.memory") // 日本語の解説と上�
 
 ## 開発
 
-ツールのバージョンは [`mise.toml`](mise.toml) と `mise.lock` で固定しています（Go、hk、pkl、betterleaks、govulncheck、cyclonedx-gomod、uzomuzo、trivy）。
+ツールはすべて [`mise.toml`](mise.toml) で完全一致の版に固定し、`mise.lock` にプラットフォームごとのハッシュと署名者を記録しています（Go、hk、pkl、betterleaks、govulncheck、cyclonedx-gomod、uzomuzo、trivy、goreleaser、jactionlint、shellcheck、sisakulint）。Homebrew は使いません。
 
 ```sh
-mise install          # 固定版を入れる
-hk install            # pre-commit / pre-push フック（betterleaks・gofmt・go vet・go test -race）
+mise install          # mise.lock どおりの版を入れる（locked = true）
+hk install            # pre-commit / pre-push フック
 mise run test         # go test -race ./...
-mise run audit        # govulncheck → SBOM → uzomuzo
+mise run e2e          # 実 PTY での TUI テスト（UPDATE_SNAPSHOTS=1 でスナップショット更新）
+mise run lint         # gofmt と go vet
 mise run lint:actions # GitHub Actions を jactionlint（shellcheck つき）と sisakulint で検査
-betterleaks git --redact --no-banner .   # 全履歴の秘密情報スキャン（mise で入る単体バイナリ）
+mise run audit        # govulncheck → SBOM → uzomuzo
+mise run snapshot     # 公開せずにリリース用アーカイブを作る（GoReleaser）
+betterleaks git --redact --no-banner .   # 全履歴の秘密情報スキャン
+nix flake check       # Nix でのビルドと --version の確認
 ```
 
 TUI は `e2e/tui` で、ビルドした実バイナリを実 PTY 上で操作して検証します（[Microsoft tui-test](https://github.com/microsoft/tui-test) の Go バインディング。独立した Go モジュールで `go.mod` / `go.sum` に固定）。80 桁と 130 桁の描画スナップショット（`e2e/tui/__snapshots__/`）、`1`/`2`/`3`・`g`・`f`・`/`・`?`・`q` の操作、日本語の文字幅、`NO_COLOR`、制御文字のエスケープを確かめます。
 
-```sh
-mise run e2e                                   # 実 PTY テスト
-UPDATE_SNAPSHOTS=1 mise run e2e                # 画面を意図して変えたときにスナップショットを更新
-```
-
 テストは古典派のブラックボックステストです（AAA 形式、モックなし）。公開 API（`pkg/sbxenv`）とビルドした実バイナリだけを相手にします。入力は、ケースごとに作る一時ディレクトリ（HOME・プロジェクト・kit）の実ファイルです。全ケースを `t.Parallel()` で並列に動かすため、ケース間の依存があれば表に出ます。
 
-## セキュリティ監査の方針
+エージェント（Claude Code など）向けの作業ルールは [`AGENTS.md`](AGENTS.md) にあります。
+
+## 自動チェックと監査
 
 | いつ | 何を | どこで |
 |---|---|---|
-| commit / push | betterleaks（差分・履歴）、gofmt、go vet、go test -race | `hk.pkl` |
-| PR・main への push | テスト、macOS/Linux/Windows のクロスビルド、`govulncheck ./...`、betterleaks（全履歴） | [`ci.yml`](.github/workflows/ci.yml) |
-| 毎週 | `cyclonedx-gomod app` で本番ビルド条件の SBOM を作り、`uzomuzo scan --show-transitive --fail-on eol-confirmed` でメンテ停止・EOL を検査。Trivy の結果を `trivy-to-vuls` で vuls レポートに変換し、検査対象のライブラリ数が 0 でないこと、CVE が 0 件であることを確認。`govulncheck` | [`security-audit.yml`](.github/workflows/security-audit.yml) |
-| PR・main への push | `nix flake check`（macOS・Linux でパッケージをビルドし、`--version` を確認）、jactionlint（shellcheck つき）と sisakulint による workflow の検査 | [`ci.yml`](.github/workflows/ci.yml)、[`flake.nix`](flake.nix) |
-| タグ `v*` の push | テスト後に GoReleaser で macOS・Windows 向けの 4 種類の `tar.gz`、checksums、SBOM（CycloneDX）、ソースアーカイブを作って Release を公開する。続く書き込み権限のないジョブで `jdx/packslip` が各アーカイブの build provenance を付け、アーカイブ一覧に keyless 署名した `packslip.sigstore.json` を作り、別ジョブがそれを Release に添付する。PR と main では同じ設定を `--snapshot` で毎回試す | [`release.yml`](.github/workflows/release.yml)、[`.goreleaser.yaml`](.goreleaser.yaml) |
-| 毎日 | `docker/sbx-releases` に公開から 2 日以上経った新しい安定版が出たら、`sbx env` 系の `--help` 差分、公式 docs の変更、リリースノートをまとめた Issue（ラベル `sbx-update`）を作成 | [`sbx-watch.yml`](.github/workflows/sbx-watch.yml) |
+| commit / push | betterleaks（差分・push する履歴）、gofmt、go vet、go test -race、workflow を変えたときは jactionlint と sisakulint | [`hk.pkl`](hk.pkl) |
+| PR・main への push | macOS・Linux でのテストと実 PTY の TUI テスト、6 プラットフォームのクロスビルド、`nix flake check`（macOS・Linux）と `vendorHash` の確認、`mise.lock` の整合、jactionlint・sisakulint（`--online`）、GoReleaser の `--snapshot`、`govulncheck`、betterleaks（全履歴） | [`ci.yml`](.github/workflows/ci.yml) |
+| タグ `v*` の push | テスト後に GoReleaser で macOS・Windows 向けの 4 種類の `tar.gz`、checksums、SBOM（CycloneDX）、ソースアーカイブを作って Release を公開する。続く書き込み権限のないジョブで `jdx/packslip` が各アーカイブの build provenance を付け、アーカイブ一覧に keyless 署名した `packslip.sigstore.json` を作り、別ジョブがそれを Release に添付する | [`release.yml`](.github/workflows/release.yml)、[`.goreleaser.yaml`](.goreleaser.yaml) |
+| 毎週 | 本番ビルド条件の SBOM を `uzomuzo` でメンテ停止・EOL 検査、Trivy の結果を vuls レポートに変換して CVE 0 件を確認、`govulncheck`、秘匿のファジング（5 分） | [`security-audit.yml`](.github/workflows/security-audit.yml) |
+| 毎週 | `flake.lock` を、公開から 2 日以上経った nixpkgs のコミットへ更新する PR を作る | [`flake-lock.yml`](.github/workflows/flake-lock.yml) |
+| 毎日 | `docker/sbx-releases` に公開から 2 日以上経った新しい安定版が出たら、`sbx env` 系の `--help` 差分、公式 docs の変更、リリースノートをまとめた Issue（ラベル `sbx-update`）を作る | [`sbx-watch.yml`](.github/workflows/sbx-watch.yml) |
 
-Actions はコミット SHA で固定しています。
+## リポジトリの運用ルール
+
+[mac-host-setup](https://github.com/kotarotaniguchi0523/mac-host-setup) と同じルールです。
+
+- **版の固定と 2 日ルール**: ツール・Actions・Go モジュール・nixpkgs はすべて完全一致で固定し（Actions はコミット SHA）、新しい版は公開から 2 日以上経ってから採用します（mise の `minimum_release_age`、Renovate の `minimumReleaseAge`、`flake-lock.yml`）。
+- **更新は PR だけ**: Renovate が mise のツール・Actions・Go モジュールをまとめて PR にし、minor / patch は必須チェックが通れば自動でマージします。脆弱性アラート由来の更新は待たずに PR を作ります。Renovate が再生成できない `mise.lock` と Nix の `vendorHash` は、[`mise-relock.yml`](.github/workflows/mise-relock.yml) と [`go-relock.yml`](.github/workflows/go-relock.yml) が PR ブランチで作り直します。
+- **main の保護**: 必須チェックが通るまでマージできず、履歴は直線（merge commit なし。squash か rebase）、force push と削除は禁止です。マージ後のブランチは自動で削除します。
+- **Actions の許可**: GitHub 製のほかは、`jdx/mise-action`・`jdx/packslip`・`cachix/install-nix-action` だけを許可し、すべてコミット SHA での指定を必須にしています。`GITHUB_TOKEN` の既定の権限は読み取りのみです。
+- **公開リポジトリ**: 個人名や `/Users/<user>` のような実パス、秘密情報はコミットしません。betterleaks が commit・push・CI のたびに検査します。
 
 ## ライセンス
 

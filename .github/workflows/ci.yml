@@ -154,7 +154,24 @@ jobs:
       - name: nix run prints the version
         run: nix run . -- --version
       - name: vendorHash matches go.mod/go.sum
-        run: nix build .#sbx-env-viz.goModules --no-link
+        run: tools/ci/vendor-hash.sh --check
+
+  mise-lock:
+    name: mise-lock
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
+        with:
+          version: 2026.11.8
+          install: false
+      - name: mise.lock matches mise.toml
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: tools/ci/mise-lock.sh --check
 
   actions-lint:
     name: Lint workflows (jactionlint + sisakulint)
