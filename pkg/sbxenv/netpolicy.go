@@ -2,6 +2,7 @@ package sbxenv
 
 import (
 	"strings"
+	"unicode"
 
 	"github.com/kotarotaniguchi0523/sbxray/internal/parser"
 )
@@ -17,6 +18,7 @@ type netEntry struct {
 	// methods and paths bound an @2 entry; both empty means unbounded.
 	methods []string
 	paths   []string
+	order   int
 	itemID  string
 }
 
@@ -45,51 +47,128 @@ func parseNetPolicy(c *capState) []*netEntry {
 
 // stripPort drops a :port suffix; ports are ignored for allow-list membership.
 func stripPort(h string) string {
-	if i := strings.LastIndex(h, ":"); i > 0 && !strings.Contains(h[i:], "]") {
-		return h[:i]
-	}
+	h, _ = splitPort(h)
 	return h
 }
 
-// hostMatches reports whether pattern covers host: exact match, "*" or
-// "**" for everything, "*.x" for exactly one more label, "**.x" for any
-// depth. The precise matcher is runtime-owned; this is the portable core.
-func hostMatches(pattern, host string) bool {
-	p, h := strings.ToLower(stripPort(pattern)), strings.ToLower(stripPort(host))
-	switch {
-	case p == "*" || p == "**":
-		return true
-	case strings.HasPrefix(p, "**."):
-		return strings.HasSuffix(h, p[2:])
-	case strings.HasPrefix(p, "*."):
-		rest, ok := strings.CutSuffix(h, p[1:])
-		return ok && rest != "" && !strings.Contains(rest, ".")
+// splitPort splits "host:port" into host and port; port is "" when none is
+// stated, which in a network-policy pattern means any port.
+func splitPort(h string) (host, port string) {
+	if i := strings.LastIndex(h, ":"); i > 0 && !strings.Contains(h[i:], "]") {
+		return h[:i], h[i+1:]
 	}
-	return p == h
+	return h, ""
 }
 
-// deniedBy returns the unbounded deny entry, from any kit, that refuses
-// host in phase. Deny wins and one kit's allow cannot defeat another's deny.
-func (rs *resolver) deniedBy(phase, host string) *netEntry {
-	for _, d := range rs.net {
-		if d.list == "deny" && d.phase == phase && !d.bounded() && !d.cap.skipped && hostMatches(d.host.val, host) {
-			return d
+// foldHost maps h to a key that is equal for two hosts exactly when
+// strings.EqualFold reports them equal: each rune becomes the smallest rune
+// of its simple case-folding orbit. Unlike strings.ToLower, this keeps "ς"
+// and "σ" the same, as EqualFold does.
+func foldHost(h string) string {
+	return strings.Map(func(r rune) rune {
+		m := r
+		for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+			m = min(m, f)
+		}
+		return m
+	}, h)
+}
+
+// networkPolicy is compiled after all kits have selected their active groups.
+// entries and byCapability keep every entry for display; the allow and deny
+// indexes hold only entries of capabilities the host selects.
+type networkPolicy struct {
+	entries      []*netEntry
+	byCapability map[*capState][]*netEntry
+	denies       map[denyKey]*netEntry // first unbounded deny per folded pattern and port
+	allows       map[kitPhaseHost]bool // folded pattern without its port
+}
+
+type phaseHost struct{ phase, host string }
+
+type denyKey struct {
+	phaseHost
+	port string // "" covers every port
+}
+
+type kitPhaseHost struct {
+	kit *kitState
+	phaseHost
+}
+
+func compileNetworkPolicy(kits []*kitState) networkPolicy {
+	p := networkPolicy{
+		byCapability: map[*capState][]*netEntry{},
+		denies:       map[denyKey]*netEntry{},
+		allows:       map[kitPhaseHost]bool{},
+	}
+	for _, k := range kits {
+		for _, c := range k.caps {
+			if c.short != "network-policy@1" && c.short != "network-policy@2" {
+				continue
+			}
+			entries := parseNetPolicy(c)
+			p.byCapability[c] = entries
+			for _, e := range entries {
+				e.order = len(p.entries)
+				p.entries = append(p.entries, e)
+				if c.skipped {
+					continue
+				}
+				host, port := splitPort(foldHost(e.host.val))
+				switch {
+				case e.list == "allow":
+					p.allows[kitPhaseHost{k, phaseHost{e.phase, host}}] = true
+				case !e.bounded():
+					key := denyKey{phaseHost{e.phase, host}, port}
+					if p.denies[key] == nil {
+						p.denies[key] = e
+					}
+				}
+			}
 		}
 	}
-	return nil
+	return p
+}
+
+// deniedBy returns the earliest-declared unbounded deny, from any kit, whose
+// pattern covers all of host in phase. Deny wins over every kit's allow.
+// Patterns: "*" or "**" cover everything, "*.x" exactly one more label,
+// "**.x" any depth; host may itself be such a pattern. A deny without a port
+// covers every port; one with a port covers only a host stating that port, so
+// a host without a port (any port) is covered only by a portless deny.
+func (p *networkPolicy) deniedBy(phase, host string) *netEntry {
+	h, port := splitPort(foldHost(host))
+	var first *netEntry
+	consider := func(pattern string) {
+		for _, pt := range []string{"", port} {
+			if e := p.denies[denyKey{phaseHost{phase, pattern}, pt}]; e != nil && (first == nil || e.order < first.order) {
+				first = e
+			}
+			if port == "" {
+				break
+			}
+		}
+	}
+	consider("*")
+	consider("**")
+	consider(h)
+	if label, rest, ok := strings.Cut(h, "."); ok && label != "" && label != "**" {
+		consider("*." + rest)
+	}
+	for s := h; ; {
+		_, rest, ok := strings.Cut(s, ".")
+		if !ok {
+			return first
+		}
+		consider("**." + rest)
+		s = rest
+	}
 }
 
 // kitAllows reports whether the kit's own policy lists domain for phase,
 // exactly (a wildcard does not cover a specific subdomain) or via * / **.
-func (rs *resolver) kitAllows(k *kitState, phase, domain string) bool {
-	for _, a := range rs.net {
-		if a.cap.kit != k || a.list != "allow" || a.phase != phase {
-			continue
-		}
-		p := stripPort(a.host.val)
-		if p == "*" || p == "**" || strings.EqualFold(p, stripPort(domain)) {
-			return true
-		}
-	}
-	return false
+func (p *networkPolicy) kitAllows(k *kitState, phase, domain string) bool {
+	allowed := func(h string) bool { return p.allows[kitPhaseHost{k, phaseHost{phase, h}}] }
+	return allowed("*") || allowed("**") || allowed(foldHost(stripPort(domain)))
 }

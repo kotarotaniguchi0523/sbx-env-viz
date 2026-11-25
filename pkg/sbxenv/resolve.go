@@ -45,12 +45,12 @@ type resolver struct {
 
 	kits    []*kitState
 	kitArgs []ArgValue
-	// net holds every network-policy entry of every expanded kit.
-	net []*netEntry
+	// net is the compiled network policy of every expanded kit.
+	net networkPolicy
 	// skippedItems are items of capabilities the host would not select;
 	// they get no boundaries.
 	skippedItems map[string]bool
-	lost         []lostRef
+	lostByArg    map[string][]lostRef
 
 	itemIndex map[string]int
 }
@@ -97,6 +97,7 @@ func Resolve(layers []LayerInput, opts ResolveOptions) (*Plan, error) {
 	rs.resolveEnvArgs()
 	rs.mergeLayers()
 	rs.expandKits()
+	rs.net = compileNetworkPolicy(rs.kits)
 	rs.buildItems()
 	rs.analyze()
 	return rs.finish(), nil
@@ -482,7 +483,13 @@ func indexOf(ls []*layerState, x *layerState) int {
 }
 
 func (rs *resolver) mergeLayers() {
-	m := &merger{}
+	// Only CLI-supplied args can be reported as ineffective, so only they are tracked.
+	m := &merger{lostByArg: map[string][]lostRef{}}
+	for _, a := range rs.envArgs {
+		if a.fromCLI() {
+			m.lostByArg[a.Name] = nil
+		}
+	}
 	var root *vnode
 	for _, ls := range rs.layers {
 		if ls.tree.Kind != parser.Map {
@@ -495,5 +502,8 @@ func (rs *resolver) mergeLayers() {
 		root = &vnode{kind: parser.Map, kv: map[string]*vnode{}}
 	}
 	rs.root = root
-	rs.lost = m.lost
+	rs.lostByArg = m.lostByArg
 }
+
+// fromCLI reports whether the argument came from --env-arg or --env-args-file.
+func (a ArgValue) fromCLI() bool { return a.From == "flag" || a.From == "env-args-file" }

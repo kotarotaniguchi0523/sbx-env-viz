@@ -321,3 +321,75 @@ func TestMissingBindingIsAWarningBecauseGlobalBindingsAreInvisible(t *testing.T)
 		t.Errorf("message should say a global binding may already exist: %s", d.Message)
 	}
 }
+
+func TestNetworkDenyCoversEntireAllowPattern(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		allow, deny string
+		blocked     bool
+	}{
+		{"*", "any.host.invalid", false},
+		{"**.example.com", "*.example.com", false},
+		{"*.sub.example.com", "**.example.com", true},
+		{"**", "*", true},
+		// A deny with a port covers only that port; one without covers all.
+		{"api.example.com:8443", "api.example.com:443", false},
+		{"api.example.com:443", "api.example.com:443", true},
+		{"api.example.com:443", "api.example.com", true},
+		{"api.example.com", "api.example.com:443", false},
+	} {
+		t.Run(tc.allow+"/"+tc.deny, func(t *testing.T) {
+			body := "  - type: com.docker.sandbox/network-policy@1\n    config:\n      runtime:\n        allow: ['" + tc.allow + "']\n        deny: ['" + tc.deny + "']\n"
+			p := kitEnv(t, map[string]string{"a": body}, "")
+			if allowed := boundaryFor(p, "kit:a/network-policy@1/runtime.allow/"+tc.allow, sbxenv.BoundaryNetwork); allowed == tc.blocked {
+				t.Errorf("network boundary present = %v, want %v", allowed, !tc.blocked)
+			}
+			if tc.allow == "*" || tc.allow == "**" {
+				if tc.blocked {
+					noDiag(t, p, "EGRESS_UNRESTRICTED")
+				} else {
+					requireDiag(t, p, "EGRESS_UNRESTRICTED", sbxenv.LevelWarning)
+				}
+			}
+		})
+	}
+}
+
+func TestSkippedAllowDoesNotSatisfyAnActiveCredential(t *testing.T) {
+	t.Parallel()
+	// Arrange / Act: the only allow sits in an optional group that an unbound
+	// credential skips, so the bound credential outside it has no allow.
+	p := kitEnv(t, map[string]string{"a": `  - group:
+      optional: true
+      capabilities:
+        - type: com.docker.sandbox/credential@1
+          config: {service: other, phase: runtime, apiKey: {name: TOKEN}}
+        - type: com.docker.sandbox/network-policy@1
+          config: {runtime: {allow: [api.example.com]}}
+  - type: com.docker.sandbox/credential@1
+    config: {service: gh, phase: runtime, apiKey: {inject: [{domain: api.example.com, header: Authorization}]}}
+`}, "bindings:\n  gh: {apiKey: {domains: [api.example.com]}}\n")
+
+	// Assert
+	requireDiag(t, p, "CREDENTIAL_INJECT_NOT_ALLOWED", sbxenv.LevelError)
+}
+
+func TestCredentialDomainMatchesAllowCaseInsensitively(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ allow, inject string }{
+		{"API.Example.com:443", "api.example.COM"},
+		// strings.EqualFold treats final sigma and sigma as the same letter.
+		{"οσ.example.com", "ος.example.com"},
+	} {
+		t.Run(tc.inject, func(t *testing.T) {
+			t.Parallel()
+			// Arrange / Act
+			p := kitEnv(t, map[string]string{"a": "  - type: com.docker.sandbox/network-policy@1\n    config: {runtime: {allow: ['" + tc.allow + "']}}\n" +
+				"  - type: com.docker.sandbox/credential@1\n    config: {service: gh, phase: runtime, apiKey: {inject: [{domain: '" + tc.inject + "', header: Authorization}]}}\n"},
+				"bindings:\n  gh: {apiKey: {domains: ['"+tc.inject+"']}}\n")
+
+			// Assert
+			noDiag(t, p, "CREDENTIAL_INJECT_NOT_ALLOWED")
+		})
+	}
+}

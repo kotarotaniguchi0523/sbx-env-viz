@@ -34,18 +34,10 @@ func (rs *resolver) checkEnvArgUse() {
 	final := map[string]bool{}
 	rs.root.collectArgRefs(final)
 	for _, a := range rs.envArgs {
-		if a.From != "flag" && a.From != "env-args-file" {
+		if !a.fromCLI() || final[a.Name] {
 			continue
 		}
-		if final[a.Name] {
-			continue
-		}
-		var lost []lostRef
-		for _, l := range rs.lost {
-			if l.arg == a.Name {
-				lost = append(lost, l)
-			}
-		}
+		lost := rs.lostByArg[a.Name]
 		flag := "--env-arg"
 		if a.From == "env-args-file" {
 			flag = "--env-args-file"
@@ -213,10 +205,10 @@ func (rs *resolver) checkCredentialTriad() {
 					owner[key] = c
 				}
 				for _, d := range u.domains {
-					if !rs.kitAllows(k, ph, d) {
+					if !rs.net.kitAllows(k, ph, d) {
 						rs.diag("CREDENTIAL_INJECT_NOT_ALLOWED", LevelError, "credentials",
 							fmt.Sprintf("kit %s credential %s injects into %s, but the kit's network policy %s allow list does not list it exactly (wildcards do not count)", k.handleShown, u.shown, rs.r.text(shownDomain[d]), ph), c.itemID, c.origin)
-					} else if deny := rs.deniedBy(ph, d); deny != nil {
+					} else if deny := rs.net.deniedBy(ph, d); deny != nil {
 						rs.diag("CREDENTIAL_INJECT_DENIED", LevelWarning, "credentials",
 							fmt.Sprintf("kit %s credential %s injects into %s, which kit %s denies in the %s phase; deny wins, so the credential is never sent", k.handleShown, u.shown, rs.r.text(shownDomain[d]), deny.cap.kit.handleShown, ph), c.itemID, c.origin, deny.cap.origin)
 					}
@@ -526,11 +518,11 @@ func (rs *resolver) checkSSHAndOthers() {
 			}
 		}
 	}
-	for _, e := range rs.net {
+	for _, e := range rs.net.entries {
 		if e.cap.skipped || e.list != "allow" || e.phase != "runtime" || e.bounded() || (e.host.val != "*" && e.host.val != "**") {
 			continue
 		}
-		if rs.deniedBy(e.phase, "any.host.invalid") != nil {
+		if rs.net.deniedBy(e.phase, e.host.val) != nil {
 			continue
 		}
 		rs.diag("EGRESS_UNRESTRICTED", LevelWarning, "boundary", fmt.Sprintf("kit %s allows all runtime egress (%s)", e.cap.kit.handleShown, rs.r.text(e.host.disp)), e.itemID, e.cap.origin)

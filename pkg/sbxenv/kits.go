@@ -523,11 +523,6 @@ func (rs *resolver) expandKitDescriptor(k *kitState) {
 		add(entry, idx, nil, 0)
 	}
 	rs.markSkippedGroups(k)
-	for _, c := range k.caps {
-		if c.short == "network-policy@1" || c.short == "network-policy@2" {
-			rs.net = append(rs.net, parseNetPolicy(c)...)
-		}
-	}
 }
 
 var builtinAgents = map[string]bool{
