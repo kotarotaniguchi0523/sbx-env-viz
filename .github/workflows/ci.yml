@@ -135,6 +135,27 @@ jobs:
           tar -xzf dist/*_darwin_arm64.tar.gz -C "$RUNNER_TEMP" sbx-env-viz
           "$RUNNER_TEMP/sbx-env-viz" --version | grep -q SNAPSHOT
 
+  nix:
+    name: Nix flake (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    # Go 1.27.4 builds from source until nixpkgs ships it (nix/package.nix).
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
+      - name: nix flake check (builds the package, runs its --version check)
+        run: nix flake check -L
+      - name: nix run prints the version
+        run: nix run . -- --version
+      - name: vendorHash matches go.mod/go.sum
+        run: nix build .#sbx-env-viz.goModules --no-link
+
   actions-lint:
     name: Lint workflows (jactionlint + sisakulint)
     runs-on: ubuntu-latest

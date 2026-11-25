@@ -11,3 +11,5 @@
 /govulncheck.txt
 /.audit/
 /e2e/tui/.bin/
+/result
+/result-*

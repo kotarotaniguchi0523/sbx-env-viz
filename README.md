@@ -18,6 +18,17 @@ mise use -g packslip:github.com/kotarotaniguchi0523/sbx-env-viz
 
 mise の [`packslip:` backend](https://mise.jdx.dev/dev-tools/backends/packslip.html) は、Release に添付された `packslip.sigstore.json` を検証してから展開します。これは、各アーカイブのダイジェストを並べた一覧に、このリポジトリの `release.yml` が鍵を持たずに（Sigstore の keyless 署名で）署名したものです。署名・透明性ログ・ダイジェスト・サイズのどれかが合わなければインストールは止まります。外部の `cosign` などは要りません。
 
+### Nix
+
+flake からソースをビルドします（macOS・Linux）。
+
+```sh
+nix run github:kotarotaniguchi0523/sbx-env-viz -- --version
+nix profile install github:kotarotaniguchi0523/sbx-env-viz/v0.1.0   # タグを指定して固定
+```
+
+Nix は署名ではなく内容のハッシュで固定します。`flake.lock` が nixpkgs のコミットと内容ハッシュを、`nix/package.nix` の `vendorHash` が Go の依存一式を固定し、どれか1バイトでも違えばビルドは止まります。依存は nixpkgs だけです。go.mod の Go 1.27.4 が nixpkgs にまだ無い間は、Google の配布物（ハッシュ固定）からビルドするので初回は時間がかかります。nixpkgs が追いつけば自動的にそちらを使います。
+
 ### 手動
 
 [Releases](https://github.com/kotarotaniguchi0523/sbx-env-viz/releases) からアーカイブを取得し、checksums と build provenance（GitHub Actions がこのリポジトリからビルドした証明）を確かめます。Windows 10 以降は標準の `tar -xf` で展開できます。
@@ -147,6 +158,8 @@ mise install          # 固定版を入れる
 hk install            # pre-commit / pre-push フック（betterleaks・gofmt・go vet・go test -race）
 mise run test         # go test -race ./...
 mise run audit        # govulncheck → SBOM → uzomuzo
+mise run lint:actions # GitHub Actions を jactionlint（shellcheck つき）と sisakulint で検査
+betterleaks git --redact --no-banner .   # 全履歴の秘密情報スキャン（mise で入る単体バイナリ）
 ```
 
 TUI は `e2e/tui` で、ビルドした実バイナリを実 PTY 上で操作して検証します（[Microsoft tui-test](https://github.com/microsoft/tui-test) の Go バインディング。独立した Go モジュールで `go.mod` / `go.sum` に固定）。80 桁と 130 桁の描画スナップショット（`e2e/tui/__snapshots__/`）、`1`/`2`/`3`・`g`・`f`・`/`・`?`・`q` の操作、日本語の文字幅、`NO_COLOR`、制御文字のエスケープを確かめます。
@@ -165,6 +178,7 @@ UPDATE_SNAPSHOTS=1 mise run e2e                # 画面を意図して変えた�
 | commit / push | betterleaks（差分・履歴）、gofmt、go vet、go test -race | `hk.pkl` |
 | PR・main への push | テスト、macOS/Linux/Windows のクロスビルド、`govulncheck ./...`、betterleaks（全履歴） | [`ci.yml`](.github/workflows/ci.yml) |
 | 毎週 | `cyclonedx-gomod app` で本番ビルド条件の SBOM を作り、`uzomuzo scan --show-transitive --fail-on eol-confirmed` でメンテ停止・EOL を検査。Trivy の結果を `trivy-to-vuls` で vuls レポートに変換し、検査対象のライブラリ数が 0 でないこと、CVE が 0 件であることを確認。`govulncheck` | [`security-audit.yml`](.github/workflows/security-audit.yml) |
+| PR・main への push | `nix flake check`（macOS・Linux でパッケージをビルドし、`--version` を確認）、jactionlint（shellcheck つき）と sisakulint による workflow の検査 | [`ci.yml`](.github/workflows/ci.yml)、[`flake.nix`](flake.nix) |
 | タグ `v*` の push | テスト後に GoReleaser で macOS・Windows 向けの 4 種類の `tar.gz`、checksums、SBOM（CycloneDX）、ソースアーカイブを作って Release を公開する。続く書き込み権限のないジョブで `jdx/packslip` が各アーカイブの build provenance を付け、アーカイブ一覧に keyless 署名した `packslip.sigstore.json` を作り、別ジョブがそれを Release に添付する。PR と main では同じ設定を `--snapshot` で毎回試す | [`release.yml`](.github/workflows/release.yml)、[`.goreleaser.yaml`](.goreleaser.yaml) |
 | 毎日 | `docker/sbx-releases` に公開から 2 日以上経った新しい安定版が出たら、`sbx env` 系の `--help` 差分、公式 docs の変更、リリースノートをまとめた Issue（ラベル `sbx-update`）を作成 | [`sbx-watch.yml`](.github/workflows/sbx-watch.yml) |
 
