@@ -199,13 +199,15 @@ mise install          # mise.lock のとおりの版を入れる（locked = true
 hk install            # pre-commit / pre-push のフックを入れる
 mise run test         # go test -race ./...
 mise run e2e          # 実際の端末（PTY）での TUI テスト（UPDATE_SNAPSHOTS=1 でスナップショットを更新）
-mise run lint         # gofmt と go vet
+mise run lint         # gofmt、go vet、declscope shrink、declscope（本体と e2e）
 mise run lint:actions # GitHub Actions の workflow を jactionlint（shellcheck つき）と sisakulint で検査する
 mise run audit        # govulncheck → SBOM → uzomuzo
 mise run snapshot     # 公開せずにリリース用のアーカイブを作る（GoReleaser）
 betterleaks git --redact --no-banner .   # 全履歴から秘密情報を探す
 nix flake check       # Nix でビルドし、--version が動くかを確かめる
 ```
+
+declscope は、ファイルの中だけで使うはずの宣言が別のファイルから使われていないかを検査します。複数のファイルで共有する宣言には `//declscope:shared // <使う側と理由>` を付けます。`declscope shrink` は、`internal/` の公開名のうちパッケージの外から使われていないものを見つけます。どちらも指摘が 1 件でもあれば lint が失敗します（ベースラインは置いていません）。
 
 TUI のテスト（`e2e/tui`）はビルドしたバイナリを実際の端末（PTY）の上で操作して確かめます。[Microsoft tui-test](https://github.com/microsoft/tui-test) の Go バインディングを使い、独立した Go モジュールとして `go.mod` / `go.sum` で版を固定しています。80 桁と 130 桁の画面のスナップショット（`e2e/tui/__snapshots__/`）、`1`/`2`/`3`・`g`・`f`・`/`・`?`・`q` の操作、日本語の文字幅、`NO_COLOR`、制御文字のエスケープを確かめます。
 
@@ -218,7 +220,7 @@ TUI のテスト（`e2e/tui`）はビルドしたバイナリを実際の端末�
 | いつ | 何をするか | どこで |
 |---|---|---|
 | commit / push | betterleaks（差分と push する履歴）、gofmt、go vet、go test -race、workflow を変えたときは jactionlint と sisakulint | [`hk.pkl`](hk.pkl) |
-| PR と main への push | macOS・Linux でのテストと実際の端末での TUI テスト、6 プラットフォームへのクロスビルド、`nix flake check`（macOS・Linux）と `vendorHash` の確認、`mise.lock` の整合、jactionlint と sisakulint（`--online`）、GoReleaser の `--snapshot`、`govulncheck`、betterleaks（全履歴） | [`ci.yml`](.github/workflows/ci.yml) |
+| PR と main への push | gofmt・go vet・declscope（`mise run lint`）、macOS・Linux でのテストと実際の端末での TUI テスト、6 プラットフォームへのクロスビルド、`nix flake check`（macOS・Linux）と `vendorHash` の確認、`mise.lock` の整合、jactionlint と sisakulint（`--online`）、GoReleaser の `--snapshot`、`govulncheck`、betterleaks（全履歴） | [`ci.yml`](.github/workflows/ci.yml) |
 | タグ `v*` の push | テストのあと、GoReleaser で macOS・Windows 向けの 4 種類の `tar.gz`、チェックサム、SBOM（CycloneDX）、ソースのアーカイブを作って Release を公開する。続いて書き込み権限のないジョブで `jdx/packslip` が各アーカイブに build provenance を付け、アーカイブの一覧に keyless 署名した `packslip.sigstore.json` を作る。最後に別のジョブがそれを Release に添付する | [`release.yml`](.github/workflows/release.yml)、[`.goreleaser.yaml`](.goreleaser.yaml) |
 | 毎週 | 本番と同じ条件で作った SBOM を `uzomuzo` で調べ、メンテナンスが止まった依存やサポートの切れた依存を探す。Trivy の結果を vuls のレポートに変えて CVE が 0 件かを確かめる。`govulncheck` と、値の伏せ方のファジング（5 分） | [`security-audit.yml`](.github/workflows/security-audit.yml) |
 | 毎週 | `flake.lock` を、公開から 2 日以上たった nixpkgs のコミットに上げる PR を作る | [`flake-lock.yml`](.github/workflows/flake-lock.yml) |

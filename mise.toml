@@ -2,6 +2,7 @@
 # through jdx/mise-action, and mise.lock records their checksums.
 [tools]
 go = "1.27.4"
+"go:github.com/mpyw/declscope/cmd/declscope" = "0.25.0"
 hk = "2.13.0"
 pkl = "0.33.1"
 betterleaks = "1.10.1"
@@ -45,8 +46,14 @@ dir = "e2e/tui"
 run = "go test -count=1 ./..."
 
 [tasks.lint]
-description = "gofmt check and go vet"
-run = ['test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)', "go vet ./..."]
+description = "Check gofmt, go vet, declscope shrink and declscope in both Go modules"
+run = [
+  'files="$(gofmt -s -l .)" && { test -z "$files" || { echo "$files"; exit 1; }; }',
+  "go vet ./...",
+  "declscope shrink ./...",
+  "declscope ./...",
+  "cd e2e/tui && go vet ./... && declscope ./...",
+]
 
 [tasks."lint:actions"]
 description = "Lint GitHub Actions workflows with jactionlint (with shellcheck) and sisakulint"
