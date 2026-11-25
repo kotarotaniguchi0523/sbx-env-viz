@@ -204,7 +204,7 @@ TUI は `e2e/tui` で、ビルドした実バイナリを実 PTY 上で操作し
 - **main の保護**: 必須チェックが通るまでマージできず、履歴は直線（merge commit なし。squash か rebase）、force push と削除は禁止です。マージ後のブランチは自動で削除します。
 - **自動 PR の前提**: `flake-lock.yml` が PR を作って自動マージを予約するため、Settings → Actions の「Allow GitHub Actions to create and approve pull requests」と、Settings → General の「Allow auto-merge」を有効にしています。
 - **Actions の許可**: GitHub 製のほかは、`jdx/mise-action`・`jdx/packslip`・`cachix/install-nix-action` だけを許可し、すべてコミット SHA での指定を必須にしています。`GITHUB_TOKEN` の既定の権限は読み取りのみです。
-- **キャッシュ**: Go のモジュールとビルド結果は [`go-cache`](.github/actions/go-cache/action.yml)（`actions/cache`）で全ジョブが復元し、保存は main への push のときだけです。PR は main のキャッシュを読めますが、main やリリースが後で読むキャッシュを書けません（キャッシュ汚染の防止）。リリース用アーカイブを作るジョブ（`release.yml`、GoReleaser の snapshot）はキャッシュを使いません。
+- **キャッシュ**: Go のモジュールとビルド結果は [`go-cache`](.github/actions/go-cache/action.yml)（`actions/cache`）で全ジョブが復元し、保存は main への push のときだけです（PR が保存したキャッシュはもともとその PR の中でしか使われないので、容量を使わないよう保存しません）。リリース用アーカイブを作るジョブ（`release.yml` 全体、GoReleaser の snapshot）と、キャッシュを使わない workflow・ジョブは [`cache-mode: none`](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#controlling-cache-access-with-cache-mode) を宣言し、キャッシュの読み書きを GitHub のキャッシュサービス側で禁止しています。
 - **公開リポジトリ**: 個人名や `/Users/<user>` のような実パス、秘密情報はコミットしません。betterleaks が commit・push・CI のたびに検査します。
 
 ## ライセンス

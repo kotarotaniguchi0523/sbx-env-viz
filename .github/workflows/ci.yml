@@ -123,6 +123,7 @@ jobs:
     # Releases ship macOS and Windows only, so run an archived binary here.
     runs-on: macos-latest
     timeout-minutes: 20
+    cache-mode: none # builds release archives: never restore a cache into them
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -157,6 +158,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     # Go 1.27.4 builds from source until nixpkgs ships it (nix/package.nix).
     timeout-minutes: 45
+    cache-mode: none # uses no cache
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

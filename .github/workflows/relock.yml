@@ -12,6 +12,7 @@ on:
       - go.sum
 
 permissions: {}
+cache-mode: none # uses no cache
 
 concurrency:
   group: relock-${{ github.head_ref }}

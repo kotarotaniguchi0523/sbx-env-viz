@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+# Enforced by the cache service, not just by cache: false below: no job here can restore a
+# cache into a release archive, or save one.
+cache-mode: none
+
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false

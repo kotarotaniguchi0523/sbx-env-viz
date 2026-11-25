@@ -9,6 +9,7 @@ on:
   workflow_dispatch:
 
 permissions: {}
+cache-mode: none # uses no cache
 
 concurrency:
   group: flake-lock
