@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/loader"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
+	"github.com/kotarotaniguchi0523/sbxray/internal/loader"
+	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
 func write(t *testing.T, p, content string) {

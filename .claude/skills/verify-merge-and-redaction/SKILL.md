@@ -1,6 +1,6 @@
 ---
 name: verify-merge-and-redaction
-description: Check a change to sbx-env-viz's layer merging or strict redaction against the bounded exhaustive merge check and the redaction fuzzer. Use when editing pkg/sbxenv/merge.go, expand.go, redact.go, resolve.go (expansion), build.go or analyze.go (anything that formats values), or the redaction promise in README.md.
+description: Check a change to sbxray's layer merging or strict redaction against the bounded exhaustive merge check and the redaction fuzzer. Use when editing pkg/sbxenv/merge.go, expand.go, redact.go, resolve.go (expansion), build.go or analyze.go (anything that formats values), or the redaction promise in README.md.
 ---
 
 # Verify merge rules and strict redaction

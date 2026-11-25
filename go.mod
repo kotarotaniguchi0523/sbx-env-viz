@@ -1,4 +1,4 @@
-module github.com/kotarotaniguchi0523/sbx-env-viz
+module github.com/kotarotaniguchi0523/sbxray
 
 go 1.27.4
 

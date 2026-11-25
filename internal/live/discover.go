@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
+	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
 // Target is one sandbox to show: a declaration, a running sandbox, or both.

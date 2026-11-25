@@ -1,4 +1,4 @@
-# sbx-env-viz built from this checkout. flake.nix calls it; it can also be
+# sbxray built from this checkout. flake.nix calls it; it can also be
 # used on its own with pkgs.callPackage ./nix/package.nix { version = ...; }.
 {
   lib,
@@ -26,7 +26,7 @@ let
       };
 in
 (buildGoModule.override { inherit go; }) {
-  pname = "sbx-env-viz";
+  pname = "sbxray";
   inherit version;
 
   # Only what the build reads: no e2e module, docs, or release config.
@@ -45,7 +45,7 @@ in
   vendorHash = "sha256-jVWC/OYPOtuP/StnxcAXwJlCKdZ6hYAarrDmaEEWJpk=";
 
   # The same build as .goreleaser.yaml (buildGoModule already passes -trimpath).
-  subPackages = [ "cmd/sbx-env-viz" ];
+  subPackages = [ "cmd/sbxray" ];
   env.CGO_ENABLED = "0";
   ldflags = [
     "-s"
@@ -59,15 +59,15 @@ in
   doInstallCheck = true;
   installCheckPhase = ''
     runHook preInstallCheck
-    "$out/bin/sbx-env-viz" --version | grep -F "sbx-env-viz ${version} "
+    "$out/bin/sbxray" --version | grep -F "sbxray ${version} "
     runHook postInstallCheck
   '';
 
   meta = {
     description = "Statically visualize Docker Sandboxes sbxenv.yaml files (TUI, text, JSON)";
-    homepage = "https://github.com/kotarotaniguchi0523/sbx-env-viz";
+    homepage = "https://github.com/kotarotaniguchi0523/sbxray";
     license = lib.licenses.mit;
-    mainProgram = "sbx-env-viz";
+    mainProgram = "sbxray";
     platforms = lib.platforms.darwin ++ lib.platforms.linux;
   };
 }

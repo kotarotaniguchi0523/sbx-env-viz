@@ -2,16 +2,16 @@
 # Release by pushing a tag: git tag v0.1.0 && git push origin v0.1.0
 version: 2
 
-project_name: sbx-env-viz
+project_name: sbxray
 
 before:
   hooks:
     - go mod verify
 
 builds:
-  - id: sbx-env-viz
-    main: ./cmd/sbx-env-viz
-    binary: sbx-env-viz
+  - id: sbxray
+    main: ./cmd/sbxray
+    binary: sbxray
     env:
       - CGO_ENABLED=0
     # macOS and Windows only. Linux users build from source (go install).
@@ -41,7 +41,7 @@ sboms:
   - id: source
     artifacts: source
     cmd: cyclonedx-gomod
-    args: ["app", "-json", "-licenses", "-output", "$document", "-main", "cmd/sbx-env-viz", ".."]
+    args: ["app", "-json", "-licenses", "-output", "$document", "-main", "cmd/sbxray", ".."]
     documents:
       - "{{ .ProjectName }}_{{ .Version }}_sbom.cdx.json"
     env:
@@ -74,15 +74,15 @@ changelog:
 release:
   github:
     owner: kotarotaniguchi0523
-    name: sbx-env-viz
+    name: sbxray
   prerelease: auto
   footer: |
     ### 検証方法
     ```sh
     shasum -a 256 -c {{ .ProjectName }}_{{ .Version }}_checksums.txt --ignore-missing
-    gh attestation verify {{ .ProjectName }}_{{ .Version }}_darwin_arm64.tar.gz -R kotarotaniguchi0523/sbx-env-viz
+    gh attestation verify {{ .ProjectName }}_{{ .Version }}_darwin_arm64.tar.gz -R kotarotaniguchi0523/sbxray
     ```
-    mise で入れる場合は、署名付きの `packslip.sigstore.json` で検証されます:
+    mise で入れると、署名付きの `packslip.sigstore.json` で検証してから展開します。
     ```sh
-    mise use -g packslip:github.com/kotarotaniguchi0523/sbx-env-viz
+    mise use -g packslip:github.com/kotarotaniguchi0523/sbxray
     ```

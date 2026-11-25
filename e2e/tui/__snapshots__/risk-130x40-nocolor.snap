@@ -1,5 +1,5 @@
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ sbx-env-viz   1:Overview   2:Risk   3:Items   4:Sources                                                                          │
+│ sbxray   1:Overview   2:Risk   3:Items   4:Sources                                                                               │
 │ [Host実行 2]   [Host永続 4]   [RWマウント 2]   [外への許可 3]   [エラー 0]   [警告 5]                                            │
 │宣言の静的解析（稼働中 sandbox の状態ではない） env-args: workspace=./web-app (default), channel=stable (default)                 │
 │絞り込み  全て   L1   L2   K1   K2                                                                                                │
@@ -102,9 +102,6 @@
     "110,27": {
       "bold": false
     },
-    "12,0": {
-      "bold": false
-    },
     "12,16": {
       "bold": false
     },
@@ -167,11 +164,17 @@
       "dim": false,
       "inverse": true
     },
+    "22,0": {
+      "inverse": true
+    },
     "22,13": {
       "bold": false
     },
     "22,14": {
       "bold": false
+    },
+    "23,0": {
+      "bold": true
     },
     "23,5": {
       "bold": false
@@ -186,20 +189,20 @@
     "26,18": {
       "bold": false
     },
-    "27,0": {
-      "inverse": true
-    },
-    "28,0": {
-      "bold": true
-    },
     "28,1": {
       "bold": false
     },
     "28,11": {
       "bold": false
     },
+    "29,0": {
+      "bold": false
+    },
     "3,39": {
       "dim": true,
+      "inverse": false
+    },
+    "30,0": {
       "inverse": false
     },
     "31,1": {
@@ -208,12 +211,6 @@
     "31,39": {
       "dim": false,
       "inverse": true
-    },
-    "34,0": {
-      "bold": false
-    },
-    "35,0": {
-      "inverse": false
     },
     "36,39": {
       "dim": true,
@@ -301,6 +298,9 @@
     },
     "68,7": {
       "dim": false
+    },
+    "7,0": {
+      "bold": false
     },
     "7,10": {
       "bold": false

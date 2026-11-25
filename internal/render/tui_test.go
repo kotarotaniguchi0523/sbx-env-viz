@@ -13,9 +13,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/live"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/tui"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
+	"github.com/kotarotaniguchi0523/sbxray/internal/live"
+	"github.com/kotarotaniguchi0523/sbxray/internal/render/tui"
+	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
 // ui drives a TUI model the way Bubble Tea does: messages in, frames out.
@@ -154,7 +154,7 @@ func TestTUIHeaderShowsTabsSummaryChipsAndStatusBar(t *testing.T) {
 
 	// Assert
 	lines := u.lines()
-	for _, want := range []string{"sbx-env-viz", "1:Overview", "2:Risk", "3:Items", "4:Sources"} {
+	for _, want := range []string{"sbxray", "1:Overview", "2:Risk", "3:Items", "4:Sources"} {
 		if !strings.Contains(lines[0], want) {
 			t.Errorf("title bar missing %q: %q", want, lines[0])
 		}
@@ -468,7 +468,7 @@ func TestTUIRunQuitsAndReturnsTheSummaryLine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(line, "sbx-env-viz: Host実行") {
+	if !strings.HasPrefix(line, "sbxray: Host実行") {
 		t.Errorf("summary line = %q", line)
 	}
 	if !strings.Contains(out.String(), "\x1b[?1002h") {

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
+	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
 func kitEnv(t *testing.T, kits map[string]string, env string) *sbxenv.Plan {

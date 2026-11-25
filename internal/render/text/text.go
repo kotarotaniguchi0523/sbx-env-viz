@@ -7,9 +7,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/live"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/model"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
+	"github.com/kotarotaniguchi0523/sbxray/internal/live"
+	"github.com/kotarotaniguchi0523/sbxray/internal/render/model"
+	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
 // LowCap is how many entries below high severity are listed in the Risk section.
@@ -20,7 +20,7 @@ func Write(w io.Writer, p *sbxenv.Plan) error {
 	p = model.ForTerminal(p)
 	b := &strings.Builder{}
 	idx := model.SourceIndex(p)
-	fmt.Fprintf(b, "sbx-env-viz — %s\n", "宣言の静的解析（稼働中 sandbox の状態ではない）")
+	fmt.Fprintf(b, "sbxray — %s\n", "宣言の静的解析（稼働中 sandbox の状態ではない）")
 	fmt.Fprintf(b, "対象 sbx: %s | 秘匿: %s | schemaVersion: %s\n", p.Meta.TargetSbxVersion, p.Meta.Redaction, p.Meta.SchemaVersion)
 	fmt.Fprintln(b, sbxenv.SummaryLine(p.Summary))
 	fmt.Fprintln(b, model.ArgsLine(p))

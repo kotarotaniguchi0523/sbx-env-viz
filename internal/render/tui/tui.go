@@ -15,9 +15,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/live"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/model"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
+	"github.com/kotarotaniguchi0523/sbxray/internal/live"
+	"github.com/kotarotaniguchi0523/sbxray/internal/render/model"
+	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
 // TwoPaneMinWidth is the narrowest width that shows list and detail together.
@@ -600,7 +600,7 @@ func (m *Model) View() tea.View {
 	v := tea.NewView(m.Render())
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
-	v.WindowTitle = "sbx-env-viz"
+	v.WindowTitle = "sbxray"
 	return v
 }
 
@@ -621,7 +621,7 @@ func run(m *Model, in io.Reader, out io.Writer) (string, error) {
 	}
 	line := ExitSummary(m.plan)
 	if t := m.target(); t != nil {
-		line = "sbx-env-viz: " + model.EscapeControl(t.Name) + ": " + sbxenv.SummaryLine(m.plan.Summary)
+		line = "sbxray: " + model.EscapeControl(t.Name) + ": " + sbxenv.SummaryLine(m.plan.Summary)
 		if t.Comparison != nil {
 			line += fmt.Sprintf(" | ズレ %d", len(t.Comparison.Drifts))
 		}
@@ -631,5 +631,5 @@ func run(m *Model, in io.Reader, out io.Writer) (string, error) {
 
 // ExitSummary is printed to stdout after the TUI closes.
 func ExitSummary(p *sbxenv.Plan) string {
-	return "sbx-env-viz: " + sbxenv.SummaryLine(p.Summary)
+	return "sbxray: " + sbxenv.SummaryLine(p.Summary)
 }

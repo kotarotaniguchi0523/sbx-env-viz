@@ -15,7 +15,7 @@ pkg=nix/package.nix
 log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
 
-if nix build .#sbx-env-viz.goModules --no-link -L >"$log" 2>&1; then
+if nix build .#sbxray.goModules --no-link -L >"$log" 2>&1; then
   echo "[ok] vendorHash matches go.mod / go.sum"
   exit 0
 fi

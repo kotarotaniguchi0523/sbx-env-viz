@@ -3,7 +3,7 @@ package sbxenv
 import (
 	"strings"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/parser"
+	"github.com/kotarotaniguchi0523/sbxray/internal/parser"
 )
 
 // netEntry is one allow or deny entry of network-policy@1 or @2, with @1's

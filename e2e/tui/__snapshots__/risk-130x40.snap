@@ -1,5 +1,5 @@
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ sbx-env-viz   1:Overview   2:Risk   3:Items   4:Sources                                                                          │
+│ sbxray   1:Overview   2:Risk   3:Items   4:Sources                                                                               │
 │ [Host実行 2]   [Host永続 4]   [RWマウント 2]   [外への許可 3]   [エラー 0]   [警告 5]                                            │
 │宣言の静的解析（稼働中 sandbox の状態ではない） env-args: workspace=./web-app (default), channel=stable (default)                 │
 │絞り込み  全て   L1   L2   K1   K2                                                                                                │

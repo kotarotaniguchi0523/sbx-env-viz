@@ -12,8 +12,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/parser"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
+	"github.com/kotarotaniguchi0523/sbxray/internal/parser"
+	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
 // DefaultFileName is the file sbx looks for in a directory.

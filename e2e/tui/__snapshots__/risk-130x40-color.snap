@@ -1,5 +1,5 @@
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ sbx-env-viz   1:Overview   2:Risk   3:Items   4:Sources                                                                          │
+│ sbxray   1:Overview   2:Risk   3:Items   4:Sources                                                                               │
 │ Host実行 2   Host永続 4   RWマウント 2   外への許可 3   エラー 0   警告 5                                                        │
 │宣言の静的解析（稼働中 sandbox の状態ではない） env-args: workspace=./web-app (default), channel=stable (default)                 │
 │絞り込み  全て   L1   L2   K1   K2                                                                                                │
@@ -308,6 +308,9 @@
       "bold": true,
       "fg": "#1a1b26"
     },
+    "10,0": {
+      "fg": "#c0caf5"
+    },
     "10,3": {
       "bold": true,
       "fg": "#1a1b26"
@@ -339,10 +342,6 @@
       "fg": "default"
     },
     "110,27": {
-      "bold": false,
-      "fg": "default"
-    },
-    "12,0": {
       "bold": false,
       "fg": "default"
     },
@@ -459,9 +458,6 @@
     "129,9": {
       "fg": "#3b4261"
     },
-    "13,0": {
-      "bg": "default"
-    },
     "13,1": {
       "bg": "#ff9e64"
     },
@@ -476,9 +472,6 @@
     "13,27": {
       "bold": false,
       "fg": "default"
-    },
-    "14,0": {
-      "bg": "#24283b"
     },
     "14,1": {
       "bold": true,
@@ -501,9 +494,6 @@
     "14,3": {
       "bold": false,
       "fg": "default"
-    },
-    "15,0": {
-      "fg": "#c0caf5"
     },
     "15,15": {
       "fg": "#bb9af7"
@@ -555,6 +545,9 @@
       "bold": false,
       "fg": "default"
     },
+    "20,0": {
+      "fg": "default"
+    },
     "20,11": {
       "fg": "#bb9af7"
     },
@@ -565,12 +558,18 @@
       "bg": "#24283b",
       "fg": "default"
     },
+    "21,0": {
+      "bg": "default"
+    },
     "21,3": {
       "bg": "#24283b"
     },
     "21,39": {
       "bold": true,
       "fg": "#7aa2f7"
+    },
+    "22,0": {
+      "bg": "#bb9af7"
     },
     "22,13": {
       "bold": false,
@@ -582,6 +581,10 @@
     },
     "22,3": {
       "fg": "#c0caf5"
+    },
+    "23,0": {
+      "bold": true,
+      "fg": "#1a1b26"
     },
     "23,5": {
       "bold": false,
@@ -602,9 +605,6 @@
       "bold": false,
       "fg": "default"
     },
-    "25,0": {
-      "fg": "default"
-    },
     "25,1": {
       "bg": "default"
     },
@@ -614,9 +614,6 @@
     "25,39": {
       "bg": "default",
       "fg": "#737aa2"
-    },
-    "26,0": {
-      "bg": "default"
     },
     "26,1": {
       "bg": "#ff9e64"
@@ -628,9 +625,6 @@
     "26,3": {
       "bg": "#24283b"
     },
-    "27,0": {
-      "bg": "#bb9af7"
-    },
     "27,1": {
       "bold": true,
       "fg": "#1a1b26"
@@ -638,11 +632,11 @@
     "27,3": {
       "fg": "#c0caf5"
     },
-    "28,0": {
-      "bold": true,
-      "fg": "#1a1b26"
-    },
     "28,11": {
+      "bold": false,
+      "fg": "default"
+    },
+    "29,0": {
       "bold": false,
       "fg": "default"
     },
@@ -653,8 +647,14 @@
       "bg": "default",
       "fg": "#737aa2"
     },
+    "30,0": {
+      "bg": "default"
+    },
     "30,3": {
       "bg": "default"
+    },
+    "31,0": {
+      "bg": "#24283b"
     },
     "31,3": {
       "bg": "#24283b"
@@ -663,6 +663,9 @@
       "bg": "#24283b",
       "fg": "default"
     },
+    "32,0": {
+      "fg": "#c0caf5"
+    },
     "32,3": {
       "fg": "#c0caf5"
     },
@@ -670,15 +673,8 @@
       "bold": true,
       "fg": "#7aa2f7"
     },
-    "34,0": {
-      "bold": false,
-      "fg": "default"
-    },
     "34,3": {
       "fg": "default"
-    },
-    "35,0": {
-      "bg": "default"
     },
     "35,3": {
       "bg": "default"
@@ -687,25 +683,31 @@
       "bold": false,
       "fg": "default"
     },
-    "36,0": {
-      "bg": "#24283b"
-    },
     "36,39": {
       "bg": "default",
       "fg": "#737aa2"
     },
-    "37,0": {
-      "fg": "#c0caf5"
+    "39,0": {
+      "fg": "default"
     },
     "39,1": {
       "bold": false,
       "fg": "default"
     },
+    "40,0": {
+      "bg": "default"
+    },
     "40,1": {
       "bg": "default"
     },
+    "41,0": {
+      "bg": "#24283b"
+    },
     "41,1": {
       "bg": "#24283b"
+    },
+    "42,0": {
+      "fg": "#c0caf5"
     },
     "42,1": {
       "fg": "#c0caf5"
@@ -718,18 +720,6 @@
       "bold": true,
       "fg": "#7aa2f7"
     },
-    "44,0": {
-      "fg": "default"
-    },
-    "45,0": {
-      "bg": "default"
-    },
-    "46,0": {
-      "bg": "#24283b"
-    },
-    "47,0": {
-      "fg": "#c0caf5"
-    },
     "48,2": {
       "fg": "default"
     },
@@ -741,6 +731,12 @@
       "bg": "default",
       "fg": "#737aa2"
     },
+    "51,0": {
+      "fg": "default"
+    },
+    "52,0": {
+      "bg": "default"
+    },
     "54,1": {
       "fg": "default"
     },
@@ -751,18 +747,12 @@
       "bg": "#24283b",
       "fg": "default"
     },
-    "56,0": {
-      "fg": "default"
-    },
     "56,1": {
       "bg": "#24283b"
     },
     "56,39": {
       "bold": true,
       "fg": "#7aa2f7"
-    },
-    "57,0": {
-      "bg": "default"
     },
     "57,1": {
       "fg": "#c0caf5"
@@ -1162,6 +1152,10 @@
       "bold": true,
       "fg": "#7aa2f7"
     },
+    "7,0": {
+      "bold": false,
+      "fg": "default"
+    },
     "7,10": {
       "bg": "default",
       "bold": false,
@@ -1293,6 +1287,9 @@
     "78,25": {
       "fg": "default"
     },
+    "8,0": {
+      "bg": "default"
+    },
     "8,10": {
       "bold": true,
       "fg": "#ff9e64"
@@ -1396,6 +1393,9 @@
     "88,6": {
       "bold": false,
       "fg": "default"
+    },
+    "9,0": {
+      "bg": "#24283b"
     },
     "9,3": {
       "bg": "#7aa2f7",

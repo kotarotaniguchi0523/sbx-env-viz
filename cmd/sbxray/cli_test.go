@@ -20,12 +20,12 @@ import (
 var binary string
 
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "sbx-env-viz-bin-")
+	dir, err := os.MkdirTemp("", "sbxray-bin-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	binary = filepath.Join(dir, "sbx-env-viz")
+	binary = filepath.Join(dir, "sbxray")
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
@@ -334,7 +334,7 @@ func TestShippedExampleResolvesEndToEnd(t *testing.T) {
 
 func TestHelpAndVersion(t *testing.T) {
 	t.Parallel()
-	cases := map[string]string{"--help": "Usage: sbx-env-viz", "-h": "Usage: sbx-env-viz", "--version": "targets sbx v"}
+	cases := map[string]string{"--help": "Usage: sbxray", "-h": "Usage: sbxray", "--version": "targets sbx v"}
 	for flag, want := range cases {
 		t.Run(flag, func(t *testing.T) {
 			t.Parallel()

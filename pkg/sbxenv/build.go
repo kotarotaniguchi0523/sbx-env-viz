@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/parser"
+	"github.com/kotarotaniguchi0523/sbxray/internal/parser"
 )
 
 // Badges shown in renderers. They are ASCII so they survive NO_COLOR and

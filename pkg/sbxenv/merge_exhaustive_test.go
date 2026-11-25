@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
+	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
 // portVariant is one possible ports entry. host is unique per entry so the

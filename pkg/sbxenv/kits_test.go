@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
+	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
 const netKit = `# syntax=docker/sandbox-kit:3

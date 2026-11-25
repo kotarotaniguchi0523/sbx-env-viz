@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/live"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/loader"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
+	"github.com/kotarotaniguchi0523/sbxray/internal/live"
+	"github.com/kotarotaniguchi0523/sbxray/internal/loader"
+	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
 // fakeSbx answers sbx commands from fixture JSON, keyed by the joined

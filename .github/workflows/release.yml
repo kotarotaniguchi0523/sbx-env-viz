@@ -64,8 +64,8 @@ jobs:
         id: packslip
         with:
           # Not the source archive: it has no executable to record.
-          download: sbx-env-viz_*_darwin_*.tar.gz sbx-env-viz_*_windows_*.tar.gz
-          bin: sbx-env-viz
+          download: sbxray_*_darwin_*.tar.gz sbxray_*_windows_*.tar.gz
+          bin: sbxray
           upload: false
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

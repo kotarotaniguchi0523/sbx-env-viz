@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/model"
+	"github.com/kotarotaniguchi0523/sbxray/internal/render/model"
 )
 
 // Snapshot is what sbx reported about existing sandboxes.

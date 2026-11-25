@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/parser"
+	"github.com/kotarotaniguchi0523/sbxray/internal/parser"
 )
 
 // ErrNoLayers is returned when Resolve receives no environment files.

@@ -13,10 +13,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/loader"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/jsonout"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/text"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
+	"github.com/kotarotaniguchi0523/sbxray/internal/loader"
+	"github.com/kotarotaniguchi0523/sbxray/internal/render/jsonout"
+	"github.com/kotarotaniguchi0523/sbxray/internal/render/text"
+	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
 const baseEnv = `schemaVersion: "1"

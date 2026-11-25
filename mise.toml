@@ -37,7 +37,7 @@ run = "go test -race ./..."
 
 [tasks.build]
 description = "Static build for the current platform"
-run = "CGO_ENABLED=0 go build -trimpath -o dist/sbx-env-viz ./cmd/sbx-env-viz"
+run = "CGO_ENABLED=0 go build -trimpath -o dist/sbxray ./cmd/sbxray"
 
 [tasks.e2e]
 description = "Drive the built binary in a real PTY (Microsoft tui-test); UPDATE_SNAPSHOTS=1 rewrites baselines"
@@ -56,7 +56,7 @@ run = ["jactionlint", "sisakulint"]
 description = "Supply-chain audit: govulncheck, SBOM, uzomuzo"
 run = [
   "govulncheck ./...",
-  "cyclonedx-gomod app -json -licenses -output sbom.cdx.json -main cmd/sbx-env-viz .",
+  "cyclonedx-gomod app -json -licenses -output sbom.cdx.json -main cmd/sbxray .",
   "uzomuzo scan --sbom sbom.cdx.json --show-transitive --fail-on eol-confirmed",
 ]
 

@@ -107,7 +107,7 @@ func TestQuitPrintsOneSummaryLine(t *testing.T) {
 	}
 	var summaries []string
 	for _, l := range strings.Split(full, "\n") {
-		if strings.HasPrefix(l, "sbx-env-viz: Host実行") {
+		if strings.HasPrefix(l, "sbxray: Host実行") {
 			summaries = append(summaries, strings.TrimSpace(l))
 		}
 	}

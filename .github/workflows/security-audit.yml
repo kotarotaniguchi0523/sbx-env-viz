@@ -81,7 +81,7 @@ jobs:
       - name: SBOM for the production build (CGO_ENABLED=0)
         env:
           CGO_ENABLED: "0"
-        run: cyclonedx-gomod app -json -licenses -output sbom.cdx.json -main cmd/sbx-env-viz .
+        run: cyclonedx-gomod app -json -licenses -output sbom.cdx.json -main cmd/sbxray .
       - name: uzomuzo (fail on confirmed EOL)
         env:
           GITHUB_TOKEN: ${{ github.token }}

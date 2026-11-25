@@ -130,7 +130,7 @@ done
 body="$WORK/body.md"
 {
   echo "docker/sbx-releases の新しい安定版 **${latest}**（公開から ${MIN_AGE_DAYS} 日以上経過）を検知しました。"
-  echo "sbx-env-viz は現在 \`${TRACKED}\` の挙動を前提にしています（\`.github/sbx-version\` / \`pkg/sbxenv.TargetSbxVersion\`）。"
+  echo "sbxray は現在 \`${TRACKED}\` の挙動を前提にしています（\`.github/sbx-version\` / \`pkg/sbxenv.TargetSbxVersion\`）。"
   echo
   echo "## 対応チェックリスト"
   echo "- [ ] 下の差分から、環境ファイル・kit 仕様・CLI フラグの変更点を洗い出す"

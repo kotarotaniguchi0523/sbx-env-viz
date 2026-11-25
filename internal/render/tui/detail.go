@@ -8,9 +8,9 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/live"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/model"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
+	"github.com/kotarotaniguchi0523/sbxray/internal/live"
+	"github.com/kotarotaniguchi0523/sbxray/internal/render/model"
+	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
 // docKind is the role of one line in the detail pane.

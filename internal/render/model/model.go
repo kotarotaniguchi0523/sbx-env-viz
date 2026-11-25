@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
+	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
 // EntryKind tells what a RiskEntry points at.

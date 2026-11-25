@@ -11,7 +11,7 @@ import (
 	"io"
 	"sort"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
+	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
 // Write encodes p as indented JSON followed by a newline.

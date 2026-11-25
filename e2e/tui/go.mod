@@ -1,4 +1,4 @@
-module github.com/kotarotaniguchi0523/sbx-env-viz/e2e/tui
+module github.com/kotarotaniguchi0523/sbxray/e2e/tui
 
 go 1.27.4
 

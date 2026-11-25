@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/parser"
+	"github.com/kotarotaniguchi0523/sbxray/internal/parser"
 )
 
 // vnode is a merged value with provenance. It never leaves this package.

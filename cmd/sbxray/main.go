@@ -1,4 +1,4 @@
-// Command sbx-env-viz visualizes layered Docker Sandboxes environment files.
+// Command sbxray visualizes layered Docker Sandboxes environment files.
 //
 // It accepts the same paths and flags as `sbx env create`, resolves them
 // offline, and shows the result as a TUI (TTY), text (--text, or non-TTY), or
@@ -18,13 +18,13 @@ import (
 
 	"github.com/charmbracelet/x/term"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/live"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/loader"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/jsonout"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/model"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/text"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/tui"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
+	"github.com/kotarotaniguchi0523/sbxray/internal/live"
+	"github.com/kotarotaniguchi0523/sbxray/internal/loader"
+	"github.com/kotarotaniguchi0523/sbxray/internal/render/jsonout"
+	"github.com/kotarotaniguchi0523/sbxray/internal/render/model"
+	"github.com/kotarotaniguchi0523/sbxray/internal/render/text"
+	"github.com/kotarotaniguchi0523/sbxray/internal/render/tui"
+	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
 // version is set with -ldflags "-X main.version=..." at release time.
@@ -79,7 +79,7 @@ type options struct {
 	version      bool
 }
 
-const usage = `Usage: sbx-env-viz [PATH...] [flags]
+const usage = `Usage: sbxray [PATH...] [flags]
 
 Statically resolves sbx environment files (sbxenv.yaml) and local kits and
 shows the effective configuration, provenance, boundaries, and diagnostics.
@@ -231,7 +231,7 @@ func parseArgs(args []string) (*options, error) {
 func run(args []string, e env) int {
 	o, err := parseArgs(args)
 	if err != nil {
-		fmt.Fprintf(e.stderr, "sbx-env-viz: %v\n\n%s", err, usage)
+		fmt.Fprintf(e.stderr, "sbxray: %v\n\n%s", err, usage)
 		return exitUsage
 	}
 	if o.help {
@@ -239,12 +239,12 @@ func run(args []string, e env) int {
 		return exitOK
 	}
 	if o.version {
-		fmt.Fprintf(e.stdout, "sbx-env-viz %s (IR schema %s, targets sbx %s)\n", version, sbxenv.SchemaVersion, sbxenv.TargetSbxVersion)
+		fmt.Fprintf(e.stdout, "sbxray %s (IR schema %s, targets sbx %s)\n", version, sbxenv.SchemaVersion, sbxenv.TargetSbxVersion)
 		return exitOK
 	}
 	wd, err := e.getwd()
 	if err != nil {
-		fmt.Fprintf(e.stderr, "sbx-env-viz: cannot determine the working directory\n")
+		fmt.Fprintf(e.stderr, "sbxray: cannot determine the working directory\n")
 		return exitUsage
 	}
 	home, _ := e.home()
@@ -296,7 +296,7 @@ func run(args []string, e env) int {
 		if len(targets) > 0 {
 			line, err := tui.RunTargets(targets, snap.Problem, e.stdin, e.stdout)
 			if err != nil {
-				fmt.Fprintf(e.stderr, "sbx-env-viz: %s\n", shorten(err.Error()))
+				fmt.Fprintf(e.stderr, "sbxray: %s\n", shorten(err.Error()))
 				return exitUsage
 			}
 			fmt.Fprintln(e.stdout, line)
@@ -313,7 +313,7 @@ func run(args []string, e env) int {
 
 	plan, err := resolve(loader.Request{Paths: o.paths, EnvArgsFiles: o.envArgsFiles, KitArgsFiles: o.kitArgsFiles, WorkDir: wd, HomeDir: home})
 	if err != nil {
-		fmt.Fprintf(e.stderr, "sbx-env-viz: %s\n", shorten(err.Error()))
+		fmt.Fprintf(e.stderr, "sbxray: %s\n", shorten(err.Error()))
 		return exitUsage
 	}
 	var target *live.Target
@@ -344,7 +344,7 @@ func run(args []string, e env) int {
 		}
 	}
 	if err != nil {
-		fmt.Fprintf(e.stderr, "sbx-env-viz: %s\n", shorten(err.Error()))
+		fmt.Fprintf(e.stderr, "sbxray: %s\n", shorten(err.Error()))
 		return exitUsage
 	}
 	var cmp *live.Comparison

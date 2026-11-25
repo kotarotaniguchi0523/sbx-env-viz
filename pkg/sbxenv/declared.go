@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/parser"
+	"github.com/kotarotaniguchi0523/sbxray/internal/parser"
 )
 
 // Declared is the subset of the merged declaration that a running sandbox

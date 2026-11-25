@@ -1,4 +1,4 @@
-// Package tui runs the real sbx-env-viz binary in a real pseudo terminal
+// Package tui runs the real sbxray binary in a real pseudo terminal
 // (Microsoft tui-test) and checks what a user sees: layout, keys, wide
 // characters, colours, and escaping. Every test owns its HOME, its copy of
 // the example project, and its terminal session, so tests run in parallel.
@@ -22,20 +22,20 @@ import (
 var binary string
 
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "sbx-env-viz-e2e-")
+	dir, err := os.MkdirTemp("", "sbxray-e2e-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	binary = filepath.Join(dir, "sbx-env-viz")
+	binary = filepath.Join(dir, "sbxray")
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
-	build := exec.Command("go", "build", "-o", binary, "./cmd/sbx-env-viz")
+	build := exec.Command("go", "build", "-o", binary, "./cmd/sbxray")
 	build.Dir = repoRoot()
 	build.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, "build sbx-env-viz: %v\n%s", err, out)
+		fmt.Fprintf(os.Stderr, "build sbxray: %v\n%s", err, out)
 		os.Exit(1)
 	}
 	code := m.Run()
@@ -61,7 +61,7 @@ type launch struct {
 	sbx map[string]string
 }
 
-// screen is a running sbx-env-viz in its own terminal.
+// screen is a running sbxray in its own terminal.
 type screen struct {
 	t    *testing.T
 	term *tuitest.Client
@@ -112,13 +112,13 @@ func start(t *testing.T, l launch) *screen {
 		},
 	})
 	s := &screen{t: t, term: term}
-	s.expect("sbx-env-viz")
+	s.expect("sbxray")
 	s.idle()
 	return s
 }
 
 // fakeSbx writes an executable "sbx" that prints fixture JSON for the
-// read-only commands sbx-env-viz runs, and fails on anything else.
+// read-only commands sbxray runs, and fails on anything else.
 func fakeSbx(t *testing.T, proj string, outputs map[string]string) string {
 	t.Helper()
 	dir := t.TempDir()

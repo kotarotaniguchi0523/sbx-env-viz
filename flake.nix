@@ -21,13 +21,13 @@
     in
     {
       packages = forAllSystems (pkgs: rec {
-        sbx-env-viz = pkgs.callPackage ./nix/package.nix { inherit version; };
-        default = sbx-env-viz;
+        sbxray = pkgs.callPackage ./nix/package.nix { inherit version; };
+        default = sbxray;
       });
 
       checks = forAllSystems (pkgs: {
         # Builds the package and runs its install check (--version).
-        package = self.packages.${pkgs.stdenv.hostPlatform.system}.sbx-env-viz;
+        package = self.packages.${pkgs.stdenv.hostPlatform.system}.sbxray;
       });
 
       formatter = forAllSystems (pkgs: pkgs.nixfmt);

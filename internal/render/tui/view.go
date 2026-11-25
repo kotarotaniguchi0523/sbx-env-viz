@@ -7,8 +7,8 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/internal/render/model"
-	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
+	"github.com/kotarotaniguchi0523/sbxray/internal/render/model"
+	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
 // zoneKind says what a click or wheel event on a zone means.
@@ -108,7 +108,7 @@ func (m *Model) Render() string {
 
 func (m *Model) titleBar(w int) string {
 	s := &strip{m: m, y: 0}
-	s.text("sbx-env-viz", m.pal.brand)
+	s.text("sbxray", m.pal.brand)
 	s.text(" ", lipgloss.NewStyle())
 	for i, n := range viewNames {
 		st := m.pal.tab

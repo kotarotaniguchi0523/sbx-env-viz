@@ -3,7 +3,7 @@ package sbxenv_test
 import (
 	"testing"
 
-	"github.com/kotarotaniguchi0523/sbx-env-viz/pkg/sbxenv"
+	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
 const argsEnv = `schemaVersion: "1"
