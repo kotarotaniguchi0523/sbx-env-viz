@@ -276,6 +276,8 @@ func FieldValue(v string) string {
 }
 
 // phaseJA names a network-policy phase.
+//
+//declscope:shared // build.go words a deny rule's phase in a network item
 func phaseJA(phase string) string {
 	switch phase {
 	case "install":

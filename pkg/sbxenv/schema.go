@@ -2,7 +2,6 @@ package sbxenv
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/kotarotaniguchi0523/sbxray/internal/parser"
@@ -33,6 +32,8 @@ func sSecretSource() map[string]*shape {
 }
 
 // envFileSchema follows the Docker Docs "Sandbox environment files" reference.
+//
+//declscope:shared // resolve.go checks each environment file against it
 var envFileSchema = sMap(map[string]*shape{
 	"schemaVersion": sScalar(),
 	"name":          sScalar(),
@@ -100,6 +101,8 @@ var kitCapEntry = sMap(map[string]*shape{
 })
 
 // kitSchema follows SPEC-v3 §4 (docker/sandbox-kit-spec).
+//
+//declscope:shared // kits.go checks each kit descriptor against it
 var kitSchema = sMap(map[string]*shape{
 	"schemaVersion": sScalar(), "kind": sScalar(), "displayName": sScalar(), "author": sScalar(),
 	"description": sScalar(), "sourceUrl": sScalar(), "iconUrl": sScalar(), "version": sScalar(),
@@ -123,6 +126,7 @@ func netPolicyV2() *shape {
 	return sMap(map[string]*shape{"install": phase, "runtime": phase})
 }
 
+//declscope:shared // kits.go checks each capability config against it
 var capConfigSchemas = map[string]*shape{
 	"network-policy@2": netPolicyV2(),
 	"network-policy@1": sMap(map[string]*shape{
@@ -171,14 +175,18 @@ var capConfigSchemas = map[string]*shape{
 }
 
 // schemaIssue is an unknown field or a shape mismatch.
+//
+//declscope:shared // resolve.go and kits.go turn these into diagnostics
 type schemaIssue struct {
-	path    string
 	pos     parser.Pos
 	unknown bool
-	want    string
-	got     string
+	// path, want, and got are what message reports.
+	//
+	//declscope:private // other files read the text through message
+	path, want, got string
 }
 
+//declscope:shared // resolve.go and kits.go turn issues into diagnostics
 func (i schemaIssue) message() string {
 	if i.unknown {
 		return fmt.Sprintf("unknown field %q (sbx decodes environment files and kit descriptors strictly, so this is rejected)", i.path)
@@ -186,6 +194,7 @@ func (i schemaIssue) message() string {
 	return fmt.Sprintf("field %q should be a %s, found a %s", i.path, i.want, i.got)
 }
 
+//declscope:shared // resolve.go and kits.go check files against the schemas
 func checkShape(n *parser.Node, s *shape, path string, out *[]schemaIssue) {
 	if n == nil || s == nil || s.kind == "any" || n.Kind == parser.Null {
 		return
@@ -239,20 +248,4 @@ func shapeMatches(n *parser.Node, s *shape) bool {
 func describeKind(k string) string {
 	r := strings.NewReplacer("free", "map", "scalar", "scalar value", "seq", "list")
 	return r.Replace(k)
-}
-
-func joinKey(parent, key string) string {
-	if parent == "" {
-		return key
-	}
-	return parent + "." + key
-}
-
-func sortedKeys[M ~map[string]V, V any](m M) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }

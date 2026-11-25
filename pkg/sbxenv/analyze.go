@@ -3,6 +3,7 @@ package sbxenv
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ var builtinServices = map[string]bool{
 	"mistral": true, "groq": true, "xai": true, "openrouter": true, "aws": true,
 }
 
+//declscope:shared // Resolve runs the analysis phase after the items are built
 func (rs *resolver) analyze() {
 	rs.checkEnvArgUse()
 	rs.checkValues()
@@ -62,7 +64,7 @@ func (rs *resolver) checkValues() {
 	so := rs.root.get("sandboxOptions")
 	enum := func(key string, allowed ...string) {
 		v := so.get(key)
-		if v != nil && v.kind == parser.Scalar && !contains(allowed, v.val) {
+		if v != nil && v.kind == parser.Scalar && !slices.Contains(allowed, v.val) {
 			rs.diag("INVALID_VALUE", LevelError, "schema", fmt.Sprintf("sandboxOptions.%s must be one of %s", key, strings.Join(allowed, ", ")), "sandboxOptions."+key, v.origin())
 		}
 	}
@@ -76,7 +78,7 @@ func (rs *resolver) checkValues() {
 	}
 	for _, e := range rs.root.get("ports").list() {
 		key := "ports[" + listKey("ports", e) + "]"
-		if p := strings.ToLower(e.str("protocol")); p != "" && !contains([]string{"tcp", "tcp4", "tcp6", "udp", "udp4", "udp6"}, p) {
+		if p := strings.ToLower(e.str("protocol")); p != "" && !slices.Contains([]string{"tcp", "tcp4", "tcp6", "udp", "udp4", "udp6"}, p) {
 			rs.diag("INVALID_VALUE", LevelError, "schema", "ports[].protocol must be tcp, tcp4, tcp6, udp, udp4, or udp6", key, e.origin())
 		}
 		if !e.has("sandbox") {
@@ -249,7 +251,7 @@ func (rs *resolver) checkCredentialTriad() {
 			have := bm.get("domains").scalars()
 			var missing []string
 			for _, d := range doms {
-				if !contains(have, d) {
+				if !slices.Contains(have, d) {
 					missing = append(missing, rs.r.text(u.domainsShown[d]))
 				}
 			}
@@ -340,7 +342,7 @@ func (rs *resolver) checkTemplate() {
 		return
 	}
 	ref := t.val
-	shownRef := rs.kitRef(t.disp)
+	shownRef := rs.r.kitRef(t.disp)
 	tag := ""
 	if !strings.Contains(ref, "@sha256:") {
 		last := ref[strings.LastIndex(ref, "/")+1:]
@@ -398,7 +400,7 @@ func (rs *resolver) checkCloud() {
 		}
 		return
 	}
-	if o.OnTimeout != "" && !contains([]string{"stop", "restart", "delete"}, o.OnTimeout) {
+	if o.OnTimeout != "" && !slices.Contains([]string{"stop", "restart", "delete"}, o.OnTimeout) {
 		rs.diag("INVALID_VALUE", LevelError, "cloud", "--on-timeout must be stop, restart, or delete", "", Origin{SourceID: "cli", Via: []string{"--on-timeout"}})
 	}
 	if o.OnTimeout == "restart" && o.TTL != "" {
@@ -531,6 +533,8 @@ func (rs *resolver) checkSSHAndOthers() {
 }
 
 // finish sorts everything, computes the summary, and attaches docs.
+//
+//declscope:shared // Resolve returns the Plan assembled here
 func (rs *resolver) finish() *Plan {
 	flagged := map[string]bool{}
 	for _, d := range rs.diags {
@@ -540,7 +544,7 @@ func (rs *resolver) finish() *Plan {
 	}
 	for i := range rs.items {
 		it := &rs.items[i]
-		if flagged[it.ID] && !contains(it.Badges, BadgeWarn) {
+		if flagged[it.ID] && !slices.Contains(it.Badges, BadgeWarn) {
 			it.Badges = append([]string{BadgeWarn}, it.Badges...)
 		}
 		if doc, ok := LookupDoc(it.Path); ok {
@@ -590,6 +594,21 @@ func (rs *resolver) finish() *Plan {
 	p.Summary = Summarize(p)
 	p.Declared = rs.declared()
 	return p
+}
+
+// sortItems orders items by section, then ID.
+func sortItems(items []Item) {
+	order := map[Section]int{}
+	for i, s := range []Section{SectionTop, SectionArgs, SectionWorkspace, SectionMounts, SectionEnv, SectionSandbox,
+		SectionSecrets, SectionBindings, SectionRegistries, SectionMCP, SectionPorts, SectionLifecycle, SectionKits, SectionCapabilities} {
+		order[s] = i
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if order[items[i].Section] != order[items[j].Section] {
+			return order[items[i].Section] < order[items[j].Section]
+		}
+		return false
+	})
 }
 
 func nonNil[T any](s []T) []T {

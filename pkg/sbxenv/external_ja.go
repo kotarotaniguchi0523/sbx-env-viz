@@ -62,6 +62,8 @@ var (
 
 // externalNotes maps a doc key to the standards that frame its risk. A
 // field is left out when no checked statement fits it (ports[], for one).
+//
+//declscope:shared // docs_ja.go attaches these to the field docs
 var externalNotes = map[string][]ExternalNote{
 	"secrets.*":                       {mcp01, cheatData},
 	"env.*":                           {mcp01},

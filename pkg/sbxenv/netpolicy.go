@@ -9,6 +9,8 @@ import (
 
 // netEntry is one allow or deny entry of network-policy@1 or @2, with @1's
 // plain host strings read as unbounded entries.
+//
+//declscope:shared // build.go and analyze.go read the compiled entries
 type netEntry struct {
 	cap   *capState
 	phase string
@@ -18,10 +20,14 @@ type netEntry struct {
 	// methods and paths bound an @2 entry; both empty means unbounded.
 	methods []string
 	paths   []string
-	order   int
 	itemID  string
+	// order is the entry's position in the policy; the first deny wins.
+	//
+	//declscope:private // only deniedBy compares positions
+	order int
 }
 
+//declscope:shared // build.go and analyze.go tell bounded entries apart
 func (e *netEntry) bounded() bool { return len(e.methods) > 0 || len(e.paths) > 0 }
 
 // parseNetPolicy flattens a network-policy capability into entries.
@@ -77,11 +83,17 @@ func foldHost(h string) string {
 // networkPolicy is compiled after all kits have selected their active groups.
 // entries and byCapability keep every entry for display; the allow and deny
 // indexes hold only entries of capabilities the host selects.
+//
+//declscope:shared // the resolver holds the compiled policy; build.go, analyze.go and declared.go read it
 type networkPolicy struct {
 	entries      []*netEntry
 	byCapability map[*capState][]*netEntry
-	denies       map[denyKey]*netEntry // first unbounded deny per folded pattern and port
-	allows       map[kitPhaseHost]bool // folded pattern without its port
+	// denies and allows are the lookup tables behind deniedBy and kitAllows.
+	//
+	//declscope:private // other files ask through deniedBy and kitAllows
+	denies map[denyKey]*netEntry // first unbounded deny per folded pattern and port
+	//declscope:private // other files ask through deniedBy and kitAllows
+	allows map[kitPhaseHost]bool // folded pattern without its port
 }
 
 type phaseHost struct{ phase, host string }
@@ -96,6 +108,7 @@ type kitPhaseHost struct {
 	phaseHost
 }
 
+//declscope:shared // Resolve compiles the policy once kits are expanded
 func compileNetworkPolicy(kits []*kitState) networkPolicy {
 	p := networkPolicy{
 		byCapability: map[*capState][]*netEntry{},
@@ -137,6 +150,8 @@ func compileNetworkPolicy(kits []*kitState) networkPolicy {
 // "**.x" any depth; host may itself be such a pattern. A deny without a port
 // covers every port; one with a port covers only a host stating that port, so
 // a host without a port (any port) is covered only by a portless deny.
+//
+//declscope:shared // build.go and analyze.go look up deny rules
 func (p *networkPolicy) deniedBy(phase, host string) *netEntry {
 	h, port := splitPort(foldHost(host))
 	var first *netEntry
@@ -168,6 +183,8 @@ func (p *networkPolicy) deniedBy(phase, host string) *netEntry {
 
 // kitAllows reports whether the kit's own policy lists domain for phase,
 // exactly (a wildcard does not cover a specific subdomain) or via * / **.
+//
+//declscope:shared // analyze.go checks credential domains against it
 func (p *networkPolicy) kitAllows(k *kitState, phase, domain string) bool {
 	allowed := func(h string) bool { return p.allows[kitPhaseHost{k, phaseHost{phase, h}}] }
 	return allowed("*") || allowed("**") || allowed(foldHost(stripPort(domain)))

@@ -1,3 +1,4 @@
+//declscope:shared // redact.go is the redaction layer: every builder formats display strings through it
 package sbxenv
 
 import (
@@ -12,6 +13,8 @@ import (
 type redactor struct {
 	mode Redaction
 	// homes holds every spelling of $HOME, longest first.
+	//
+	//declscope:private // only the redactor's own methods match homes
 	homes []string
 }
 
@@ -50,6 +53,8 @@ func (r *redactor) path(s string) string {
 // replaceHome replaces home only where it is a whole leading path: at the
 // start of s or after a separator such as space, '=', or ':', and followed
 // by the end, '/', or '\'. "/private/home/al/x" and "/home/alice" stay.
+//
+//declscope:private // the matching rule behind path
 func replaceHome(s, home string) string {
 	var b strings.Builder
 	for {
@@ -120,6 +125,7 @@ func (r *redactor) secretRef(ref string) string {
 	}
 }
 
+//declscope:private // part of secretRef
 func vaultKind(name string) string {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "private", "personal", "employee", "my vault":
@@ -130,6 +136,7 @@ func vaultKind(name string) string {
 	return "shared"
 }
 
+//declscope:private // part of secretRef
 func isSimpleToken(s string) bool {
 	if s == "" || len(s) > 32 {
 		return false
@@ -144,6 +151,8 @@ func isSimpleToken(s string) bool {
 
 // exprRefRe matches expression bodies that are reference names, such as
 // env.args.NAME or kit.env.HOME. Names are structure, not values.
+//
+//declscope:private // part of expr
 var exprRefRe = regexp.MustCompile(`^(env|kit)(\.[A-Za-z_][A-Za-z0-9_-]*)+$`)
 
 // expr formats the body of a ${{ ... }} expression for a message. Strict
@@ -156,6 +165,8 @@ func (r *redactor) expr(body string) string {
 }
 
 // userinfoRe matches "user:secret@" right after an optional scheme.
+//
+//declscope:private // part of stripUserinfo
 var userinfoRe = regexp.MustCompile(`^((?:[A-Za-z][A-Za-z0-9+.-]*://)?)[^/@\s]*:[^/@\s]*@`)
 
 // stripUserinfo removes credentials from a URL-like reference. A bare user
@@ -163,6 +174,10 @@ var userinfoRe = regexp.MustCompile(`^((?:[A-Za-z][A-Za-z0-9+.-]*://)?)[^/@\s]*:
 func stripUserinfo(s string) string {
 	return userinfoRe.ReplaceAllString(s, "${1}<credentials>@")
 }
+
+// kitRef formats a kit or image reference: $HOME shortened and any
+// credentials in a URL authority removed, in every mode.
+func (r *redactor) kitRef(s string) string { return r.path(stripUserinfo(s)) }
 
 // literalSecret never returns the value.
 func (r *redactor) literalSecret() string { return "<literal value hidden>" }

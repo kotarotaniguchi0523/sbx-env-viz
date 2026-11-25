@@ -41,6 +41,9 @@ sbxray/
 │       ├── types.go       # Plan（IR）、Effective、Boundaries、Coverage、Diagnostics、出所
 │       ├── resolve.go     # Resolve(layers []LayerInput, opts ResolveOptions) (*Plan, error)
 │       ├── merge.go       # レイヤーの結合と上書きの履歴
+│       ├── vnode.go       # 結合した値の木（ほぼすべてのファイルが読む共有のモデル）と表示用の値
+│       ├── args.go        # env-arg・kit-arg の宣言と --*-args-file の読み込み
+│       ├── keys.go        # キーのパスの組み立てと並べ替え
 │       ├── expand.go      # ${{ … }} の展開
 │       ├── kits.go        # ローカルの kit の展開
 │       ├── netpolicy.go   # network-policy の allow / deny

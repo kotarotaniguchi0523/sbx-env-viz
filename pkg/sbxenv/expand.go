@@ -1,3 +1,4 @@
+//declscope:shared // expand.go is the ${{ }} expression utility resolve.go, kits.go, merge.go and caprules.go use
 package sbxenv
 
 import (
@@ -6,6 +7,8 @@ import (
 )
 
 // exprRe matches ${{ ... }} with an optional extra leading $ (the escape).
+//
+//declscope:private // the expression grammar stays inside expand.go
 var exprRe = regexp.MustCompile(`\$?\$\{\{\s*([^{}]*?)\s*\}\}`)
 
 var envArgNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
@@ -27,8 +30,6 @@ type expansion struct {
 	unresolved []string
 	// kept lists expression bodies left in place on purpose.
 	kept []string
-	// whole reports whether the input was exactly one expression.
-	whole bool
 }
 
 func hasExpr(s string) bool { return strings.Contains(s, "${{") }
@@ -40,10 +41,6 @@ func expandString(s string, resolve func(expr string) exprResult) expansion {
 		return expansion{out: s}
 	}
 	var e expansion
-	trimmed := strings.TrimSpace(s)
-	if m := exprRe.FindStringIndex(trimmed); m != nil && m[0] == 0 && m[1] == len(trimmed) && !strings.HasPrefix(trimmed, "$$") {
-		e.whole = true
-	}
 	e.out = exprRe.ReplaceAllStringFunc(s, func(m string) string {
 		if strings.HasPrefix(m, "$$") {
 			return m[1:]

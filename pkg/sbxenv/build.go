@@ -3,7 +3,6 @@ package sbxenv
 import (
 	"fmt"
 	"net/url"
-	"sort"
 	"strings"
 
 	"github.com/kotarotaniguchi0523/sbxray/internal/parser"
@@ -28,6 +27,7 @@ const (
 
 type fmtFn func(*vnode) string
 
+//declscope:shared // analyze.go adds the items its checks report on
 func (rs *resolver) addItem(it Item, v *vnode, f fmtFn) *Item {
 	base := it.ID
 	for n := 2; ; n++ {
@@ -124,6 +124,7 @@ func (rs *resolver) fmtValue(v *vnode) string {
 	return "null"
 }
 
+//declscope:shared // declared.go shows mount targets the way their items do
 func (rs *resolver) fmtPath(v *vnode) string {
 	if v.kind != parser.Scalar {
 		return rs.fmtPlain(v)
@@ -133,7 +134,7 @@ func (rs *resolver) fmtPath(v *vnode) string {
 
 func (rs *resolver) url(s string) string {
 	if !rs.r.strict() {
-		return rs.kitRef(s)
+		return rs.r.kitRef(s)
 	}
 	u, err := url.Parse(s)
 	if err != nil || u.Host == "" {
@@ -230,7 +231,7 @@ func (rs *resolver) fmtWorkspaceEntry(v *vnode) string {
 }
 
 func (rs *resolver) fmtKitEntry(v *vnode) string {
-	out := rs.kitRef(kitSourceDisplay(v))
+	out := rs.r.kitRef(kitSourceDisplay(v))
 	if args := v.get("args"); args != nil && len(args.keys) > 0 {
 		var parts []string
 		for _, k := range args.keys {
@@ -241,6 +242,7 @@ func (rs *resolver) fmtKitEntry(v *vnode) string {
 	return out
 }
 
+//declscope:shared // Resolve runs the build phase
 func (rs *resolver) buildItems() {
 	root := rs.root
 	top := func(key string, sec Section, f fmtFn) *Item {
@@ -421,7 +423,7 @@ func (rs *resolver) buildSandboxOptions() {
 		v := so.kv[k]
 		f := rs.fmtPlain
 		if k == "template" {
-			f = func(n *vnode) string { return rs.kitRef(n.disp) }
+			f = func(n *vnode) string { return rs.r.kitRef(n.disp) }
 		}
 		it := rs.addItem(Item{ID: "sandboxOptions." + k, Path: "sandboxOptions." + k, Section: SectionSandbox}, v, f)
 		val := v.val
@@ -669,16 +671,6 @@ func (rs *resolver) buildKitEntries() {
 			}
 		}
 	}
-}
-
-func phases(v *vnode) []string {
-	if v == nil {
-		return nil
-	}
-	if v.kind == parser.Scalar {
-		return []string{v.val}
-	}
-	return v.scalars()
 }
 
 func (rs *resolver) capItem(c *capState, suffix string, v *vnode, value string, risk Severity, reason string, badges ...string) *Item {
@@ -982,37 +974,12 @@ func phaseReason(ph string) string {
 
 // portKey is the display form of a port's identity: sandbox port and
 // effective protocol.
+//
+//declscope:shared // declared.go names a port by the same key as its item
 func (rs *resolver) portKey(v *vnode) string {
 	proto := strings.ToLower(v.dstr("protocol"))
 	if proto == "" {
 		proto = effectiveProtocol(v)
 	}
 	return rs.r.text(v.dstr("sandbox")) + "/" + rs.r.text(proto)
-}
-
-// kitSourceDisplay returns a kit entry's source as it may be shown.
-func kitSourceDisplay(e *vnode) string {
-	if e.kind == parser.Scalar {
-		return e.disp
-	}
-	return e.dstr("source")
-}
-
-// kitRef formats a kit or image reference: $HOME shortened and any
-// credentials in a URL authority removed, in every mode.
-func (rs *resolver) kitRef(s string) string { return rs.r.path(stripUserinfo(s)) }
-
-// sortItems orders items by section, then ID.
-func sortItems(items []Item) {
-	order := map[Section]int{}
-	for i, s := range []Section{SectionTop, SectionArgs, SectionWorkspace, SectionMounts, SectionEnv, SectionSandbox,
-		SectionSecrets, SectionBindings, SectionRegistries, SectionMCP, SectionPorts, SectionLifecycle, SectionKits, SectionCapabilities} {
-		order[s] = i
-	}
-	sort.SliceStable(items, func(i, j int) bool {
-		if order[items[i].Section] != order[items[j].Section] {
-			return order[items[i].Section] < order[items[j].Section]
-		}
-		return false
-	})
 }

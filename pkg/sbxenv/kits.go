@@ -5,6 +5,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/kotarotaniguchi0523/sbxray/internal/parser"
@@ -12,20 +13,20 @@ import (
 
 // Kit source kinds.
 const (
-	kitLocal = "local"
+	kitLocal = "local" //declscope:shared // analyze.go and build.go treat local kits apart
 	kitZip   = "zip"
 	kitGit   = "git"
 	kitOCI   = "oci"
 )
 
+//declscope:shared // build.go and caprules.go recognise sbx's own capability types by it
 const capNamespace = "com.docker.sandbox/"
 
+//declscope:shared // the expanded kit that build, analysis, the capability rules and the network policy read
 type kitState struct {
 	entry    *vnode
-	source   string
 	kind     string
 	dir      string
-	handle   string
 	srcID    string
 	expanded bool
 	descKind string
@@ -33,14 +34,21 @@ type kitState struct {
 	argDecls map[string]*argDecl
 	args     map[string]*ArgValue
 	origin   Origin
-	// raw is the parsed descriptor between loading and expansion.
-	raw *parser.Node
 	// shown and handleShown are source and handle as they may be displayed:
 	// redacted, home-shortened, and without URL credentials.
 	shown       string
 	handleShown string
+	// source and handle are as written, before redaction.
+	//
+	//declscope:private // other files show a kit only through shown and handleShown
+	source, handle string
+	// raw is the parsed descriptor between loading and expansion.
+	//
+	//declscope:private // it lives only while kits.go expands the kit
+	raw *parser.Node
 }
 
+//declscope:shared // a kit's capability request that build, analysis, the capability rules and the network policy read
 type capState struct {
 	kit         *kitState
 	typ         string
@@ -50,7 +58,6 @@ type capState struct {
 	description string
 	config      *vnode
 	origin      Origin
-	index       string
 	// block is 0 for top-level entries and the 1-based group number for
 	// group members; singleton and duplicate rules apply per block.
 	block int
@@ -63,6 +70,8 @@ type capState struct {
 }
 
 // via returns the provenance chain for a kit-derived origin.
+//
+//declscope:shared // build.go stamps kit provenance on capability items
 func (k *kitState) via() []string {
 	return []string{fmt.Sprintf("%s:%d kits[%s]", k.origin.SourceID, k.origin.Line, k.shown)}
 }
@@ -112,6 +121,28 @@ func kitHandle(kind, src, dir string) string {
 	return last
 }
 
+// kitSource returns a kits entry's source, written as a scalar or as
+// source: in a mapping.
+//
+//declscope:shared // merge.go keys kits entries by their source
+func kitSource(e *vnode) string {
+	if e.kind == parser.Scalar {
+		return e.val
+	}
+	return e.str("source")
+}
+
+// kitSourceDisplay returns a kit entry's source as it may be shown.
+//
+//declscope:shared // build.go shows the kits entry with it
+func kitSourceDisplay(e *vnode) string {
+	if e.kind == parser.Scalar {
+		return e.disp
+	}
+	return e.dstr("source")
+}
+
+//declscope:shared // Resolve runs the kit phase
 func (rs *resolver) expandKits() {
 	kits := rs.root.get("kits")
 	for _, e := range kits.list() {
@@ -130,7 +161,7 @@ func (rs *resolver) expandKits() {
 		}
 		k.handle = kitHandle(k.kind, src, k.dir)
 		shown := kitSourceDisplay(e)
-		k.shown = rs.kitRef(shown)
+		k.shown = rs.r.kitRef(shown)
 		k.handleShown = kitHandle(k.kind, stripUserinfo(shown), resolveHostPath(srcNode.fileDir, shown))
 		rs.kits = append(rs.kits, k)
 		switch k.kind {
@@ -376,7 +407,7 @@ func (rs *resolver) applyKitArgs() {
 				}
 				continue
 			}
-			if len(d.enum) > 0 && !contains(d.enum, v.Value) {
+			if len(d.enum) > 0 && !slices.Contains(d.enum, v.Value) {
 				rs.diag("KIT_ARG_INVALID", LevelError, "args", fmt.Sprintf("kit %s argument %q is not one of its enum values", k.handleShown, name), "", v.Origin, d.origin)
 			}
 			if d.pattern != "" {
@@ -456,7 +487,7 @@ func (rs *resolver) expandKitDescriptor(k *kitState) {
 		if entry.Kind != parser.Map {
 			return
 		}
-		c := &capState{kit: k, index: idx, block: block, origin: Origin{SourceID: k.srcID, Line: entry.Pos.Line, Col: entry.Pos.Col, Via: k.via()}}
+		c := &capState{kit: k, block: block, origin: Origin{SourceID: k.srcID, Line: entry.Pos.Line, Col: entry.Pos.Col, Via: k.via()}}
 		if entry.Get("group") != nil {
 			rs.diag("KIT_CAP_GRAMMAR", LevelError, "kits", fmt.Sprintf("kit %s: %s mixes a group with an ordinary request or nests groups; the grammar rejects both", k.handleShown, idx), "", c.origin)
 			if entry.Get("type") == nil {

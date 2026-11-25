@@ -63,6 +63,7 @@ type DeclaredRule struct {
 	Host     string
 }
 
+//declscope:shared // finish in analyze.go attaches it to the Plan
 func (rs *resolver) declared() *Declared {
 	d := &Declared{Name: rs.root.str("name"), Agent: rs.root.str("agent")}
 	if rs.opts.Name != "" {
