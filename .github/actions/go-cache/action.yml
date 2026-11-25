@@ -1,0 +1,41 @@
+name: go-cache
+description: >-
+  Restore (mode: restore) or save (mode: save) Go's module and build caches with actions/cache.
+  Every job restores; only pushes to main save, so a pull request can read main's cache but can
+  never write one that main or a release would later read (cache poisoning). Jobs that build
+  release archives do not use it at all. Needs Go on PATH (jdx/mise-action first).
+inputs:
+  mode:
+    description: restore or save
+    required: true
+  key:
+    description: what distinguishes this job's build cache (a -race build differs from a plain one)
+    required: true
+runs:
+  using: composite
+  steps:
+    - id: paths
+      shell: bash
+      run: |
+        {
+          echo "gocache=$(go env GOCACHE)"
+          echo "gomodcache=$(go env GOMODCACHE)"
+          echo "key=go-${RUNNER_OS}-${RUNNER_ARCH}-${KEY}-$(go env GOVERSION)"
+        } >> "$GITHUB_OUTPUT"
+      env:
+        KEY: ${{ inputs.key }}
+    - if: inputs.mode == 'restore'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ${{ steps.paths.outputs.gocache }}
+          ${{ steps.paths.outputs.gomodcache }}
+        key: ${{ steps.paths.outputs.key }}-${{ hashFiles('**/go.sum') }}
+        restore-keys: ${{ steps.paths.outputs.key }}-
+    - if: inputs.mode == 'save' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ${{ steps.paths.outputs.gocache }}
+          ${{ steps.paths.outputs.gomodcache }}
+        key: ${{ steps.paths.outputs.key }}-${{ hashFiles('**/go.sum') }}
