@@ -9,7 +9,7 @@ betterleaks = "1.10.1"
 "go:github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod" = "1.12.0"
 "go:github.com/future-architect/uzomuzo-oss/cmd/uzomuzo" = "0.12.1"
 trivy = "0.76.2"
-goreleaser = "2.20.2"
+goreleaser = "2.20.3"
 # GitHub Actions linters. jactionlint installs through its signed packslip
 # (mise verifies it); sisakulint builds from the Go module proxy, checked
 # against the Go checksum database. shellcheck lets jactionlint check run:.
