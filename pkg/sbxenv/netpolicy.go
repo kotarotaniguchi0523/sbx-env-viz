@@ -17,6 +17,7 @@ type netEntry struct {
 	// methods and paths bound an @2 entry; both empty means unbounded.
 	methods []string
 	paths   []string
+	order   int
 	itemID  string
 }
 
@@ -51,45 +52,95 @@ func stripPort(h string) string {
 	return h
 }
 
-// hostMatches reports whether pattern covers host: exact match, "*" or
-// "**" for everything, "*.x" for exactly one more label, "**.x" for any
-// depth. The precise matcher is runtime-owned; this is the portable core.
-func hostMatches(pattern, host string) bool {
-	p, h := strings.ToLower(stripPort(pattern)), strings.ToLower(stripPort(host))
-	switch {
-	case p == "*" || p == "**":
-		return true
-	case strings.HasPrefix(p, "**."):
-		return strings.HasSuffix(h, p[2:])
-	case strings.HasPrefix(p, "*."):
-		rest, ok := strings.CutSuffix(h, p[1:])
-		return ok && rest != "" && !strings.Contains(rest, ".")
-	}
-	return p == h
+// networkPolicy is compiled after all kits have selected their active groups.
+type networkPolicy struct {
+	entries      []*netEntry
+	byCapability map[*capState][]*netEntry
+	denies       map[string]map[string]*netEntry // phase, normalized pattern -> first declaration
+	allows       map[kitPhase]map[string]bool
 }
 
-// deniedBy returns the unbounded deny entry, from any kit, that refuses
-// host in phase. Deny wins and one kit's allow cannot defeat another's deny.
-func (rs *resolver) deniedBy(phase, host string) *netEntry {
-	for _, d := range rs.net {
-		if d.list == "deny" && d.phase == phase && !d.bounded() && !d.cap.skipped && hostMatches(d.host.val, host) {
-			return d
-		}
-	}
-	return nil
+type kitPhase struct {
+	kit   *kitState
+	phase string
 }
 
-// kitAllows reports whether the kit's own policy lists domain for phase,
-// exactly (a wildcard does not cover a specific subdomain) or via * / **.
-func (rs *resolver) kitAllows(k *kitState, phase, domain string) bool {
-	for _, a := range rs.net {
-		if a.cap.kit != k || a.list != "allow" || a.phase != phase {
-			continue
-		}
-		p := stripPort(a.host.val)
-		if p == "*" || p == "**" || strings.EqualFold(p, stripPort(domain)) {
-			return true
+func compileNetworkPolicy(kits []*kitState) networkPolicy {
+	p := networkPolicy{
+		byCapability: make(map[*capState][]*netEntry),
+		denies:       make(map[string]map[string]*netEntry),
+		allows:       make(map[kitPhase]map[string]bool),
+	}
+	for _, k := range kits {
+		for _, c := range k.caps {
+			if c.short != "network-policy@1" && c.short != "network-policy@2" {
+				continue
+			}
+			entries := parseNetPolicy(c)
+			p.byCapability[c] = entries
+			for _, e := range entries {
+				e.order = len(p.entries)
+				p.entries = append(p.entries, e)
+				host := strings.ToLower(stripPort(e.host.val))
+				if e.list == "deny" {
+					if c.skipped || e.bounded() {
+						continue
+					}
+					if p.denies[e.phase] == nil {
+						p.denies[e.phase] = make(map[string]*netEntry)
+					}
+					if p.denies[e.phase][host] == nil {
+						p.denies[e.phase][host] = e
+					}
+				} else {
+					key := kitPhase{k, e.phase}
+					if p.allows[key] == nil {
+						p.allows[key] = make(map[string]bool)
+					}
+					p.allows[key][host] = true
+				}
+			}
 		}
 	}
-	return false
+	return p
+}
+
+// deniedBy returns the first unbounded deny covering the entire requested
+// pattern. Enumerate DNS suffixes, preserving declaration order across matches.
+func (p *networkPolicy) deniedBy(phase, host string) *netEntry {
+	index := p.denies[phase]
+	if len(index) == 0 {
+		return nil
+	}
+	h := strings.ToLower(stripPort(host))
+	var first *netEntry
+	consider := func(pattern string) {
+		if e := index[pattern]; e != nil && (first == nil || e.order < first.order) {
+			first = e
+		}
+	}
+	consider("*")
+	consider("**")
+	consider(h)
+	if h == "*" || h == "**" {
+		return first
+	}
+	suffix := h
+	for {
+		_, rest, ok := strings.Cut(suffix, ".")
+		if !ok {
+			break
+		}
+		if suffix == h && !strings.HasPrefix(h, "**.") && !strings.HasPrefix(h, ".") {
+			consider("*." + rest)
+		}
+		consider("**." + rest)
+		suffix = rest
+	}
+	return first
+}
+
+func (p *networkPolicy) kitAllows(k *kitState, phase, domain string) bool {
+	hosts := p.allows[kitPhase{k, phase}]
+	return hosts["*"] || hosts["**"] || hosts[strings.ToLower(stripPort(domain))]
 }

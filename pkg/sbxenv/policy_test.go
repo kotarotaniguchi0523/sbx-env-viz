@@ -321,3 +321,31 @@ func TestMissingBindingIsAWarningBecauseGlobalBindingsAreInvisible(t *testing.T)
 		t.Errorf("message should say a global binding may already exist: %s", d.Message)
 	}
 }
+
+func TestNetworkDenyCoversEntireAllowPattern(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		allow, deny string
+		blocked     bool
+	}{
+		{"*", "any.host.invalid", false},
+		{"**.example.com", "*.example.com", false},
+		{"*.sub.example.com", "**.example.com", true},
+		{"**", "*", true},
+	} {
+		t.Run(tc.allow+"/"+tc.deny, func(t *testing.T) {
+			body := "  - type: com.docker.sandbox/network-policy@1\n    config:\n      runtime:\n        allow: ['" + tc.allow + "']\n        deny: ['" + tc.deny + "']\n"
+			p := kitEnv(t, map[string]string{"a": body}, "")
+			if allowed := boundaryFor(p, "kit:a/network-policy@1/runtime.allow/"+tc.allow, sbxenv.BoundaryNetwork); allowed == tc.blocked {
+				t.Errorf("network boundary present = %v, want %v", allowed, !tc.blocked)
+			}
+			if tc.allow == "*" || tc.allow == "**" {
+				if tc.blocked {
+					noDiag(t, p, "EGRESS_UNRESTRICTED")
+				} else {
+					requireDiag(t, p, "EGRESS_UNRESTRICTED", sbxenv.LevelWarning)
+				}
+			}
+		})
+	}
+}

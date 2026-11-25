@@ -111,7 +111,7 @@ func (rs *resolver) declared() *Declared {
 		}
 		d.MCP = append(d.MCP, DeclaredMCP{ItemID: "mcp.servers[" + rs.r.text(e.dstr("name")) + "]", Name: name, Remote: e.has("url")})
 	}
-	for _, e := range rs.net {
+	for _, e := range rs.net.entries {
 		if e.cap.skipped || e.host == nil || e.itemID == "" {
 			continue
 		}

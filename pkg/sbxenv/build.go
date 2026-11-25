@@ -726,10 +726,7 @@ func (rs *resolver) buildCapability(c *capState) {
 	}
 	switch c.short {
 	case "network-policy@1", "network-policy@2":
-		for _, e := range rs.net {
-			if e.cap != c {
-				continue
-			}
+		for _, e := range rs.net.byCapability[c] {
 			rs.buildNetEntry(c, e)
 		}
 	case "credential@1":
@@ -886,7 +883,7 @@ func (rs *resolver) buildNetEntry(c *capState, e *netEntry) {
 	}
 	var deny *netEntry
 	if e.list == "allow" {
-		deny = rs.deniedBy(e.phase, pat)
+		deny = rs.net.deniedBy(e.phase, pat)
 		if deny != nil {
 			risk, badges = SeverityInfo, nil
 			why = "許可されていますが、別の禁止設定が優先されるため、実際には接続できません。"

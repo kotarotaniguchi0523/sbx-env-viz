@@ -137,14 +137,13 @@ func (v *vnode) collectArgRefs(out map[string]bool) {
 
 // lostRef records that a layer overrode a value that referenced an argument.
 type lostRef struct {
-	arg        string
 	path       string
 	shadowed   Origin
 	overridden Origin
 }
 
 type merger struct {
-	lost []lostRef
+	lostByArg map[string][]lostRef
 }
 
 // listStrategy names how a list at path merges.
@@ -339,6 +338,9 @@ func (m *merger) stampSet(v *vnode) {
 }
 
 func (m *merger) recordLost(old, repl *vnode, path string) {
+	if m.lostByArg == nil {
+		return
+	}
 	before := map[string]bool{}
 	old.collectArgRefs(before)
 	if len(before) == 0 {
@@ -346,9 +348,9 @@ func (m *merger) recordLost(old, repl *vnode, path string) {
 	}
 	after := map[string]bool{}
 	repl.collectArgRefs(after)
-	for _, a := range sortedKeys(before) {
-		if !after[a] {
-			m.lost = append(m.lost, lostRef{arg: a, path: path, shadowed: old.origin(), overridden: repl.origin()})
+	for a := range before {
+		if history, tracked := m.lostByArg[a]; tracked && !after[a] {
+			m.lostByArg[a] = append(history, lostRef{path: path, shadowed: old.origin(), overridden: repl.origin()})
 		}
 	}
 }
