@@ -2,6 +2,7 @@ package sbxenv
 
 import (
 	"strings"
+	"unicode"
 
 	"github.com/kotarotaniguchi0523/sbxray/internal/parser"
 )
@@ -46,30 +47,60 @@ func parseNetPolicy(c *capState) []*netEntry {
 
 // stripPort drops a :port suffix; ports are ignored for allow-list membership.
 func stripPort(h string) string {
-	if i := strings.LastIndex(h, ":"); i > 0 && !strings.Contains(h[i:], "]") {
-		return h[:i]
-	}
+	h, _ = splitPort(h)
 	return h
 }
 
+// splitPort splits "host:port" into host and port; port is "" when none is
+// stated, which in a network-policy pattern means any port.
+func splitPort(h string) (host, port string) {
+	if i := strings.LastIndex(h, ":"); i > 0 && !strings.Contains(h[i:], "]") {
+		return h[:i], h[i+1:]
+	}
+	return h, ""
+}
+
+// foldHost maps h to a key that is equal for two hosts exactly when
+// strings.EqualFold reports them equal: each rune becomes the smallest rune
+// of its simple case-folding orbit. Unlike strings.ToLower, this keeps "ς"
+// and "σ" the same, as EqualFold does.
+func foldHost(h string) string {
+	return strings.Map(func(r rune) rune {
+		m := r
+		for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+			m = min(m, f)
+		}
+		return m
+	}, h)
+}
+
 // networkPolicy is compiled after all kits have selected their active groups.
+// entries and byCapability keep every entry for display; the allow and deny
+// indexes hold only entries of capabilities the host selects.
 type networkPolicy struct {
 	entries      []*netEntry
 	byCapability map[*capState][]*netEntry
-	denies       map[string]map[string]*netEntry // phase, normalized pattern -> first declaration
-	allows       map[kitPhase]map[string]bool
+	denies       map[denyKey]*netEntry // first unbounded deny per folded pattern and port
+	allows       map[kitPhaseHost]bool // folded pattern without its port
 }
 
-type kitPhase struct {
-	kit   *kitState
-	phase string
+type phaseHost struct{ phase, host string }
+
+type denyKey struct {
+	phaseHost
+	port string // "" covers every port
+}
+
+type kitPhaseHost struct {
+	kit *kitState
+	phaseHost
 }
 
 func compileNetworkPolicy(kits []*kitState) networkPolicy {
 	p := networkPolicy{
-		byCapability: make(map[*capState][]*netEntry),
-		denies:       make(map[string]map[string]*netEntry),
-		allows:       make(map[kitPhase]map[string]bool),
+		byCapability: map[*capState][]*netEntry{},
+		denies:       map[denyKey]*netEntry{},
+		allows:       map[kitPhaseHost]bool{},
 	}
 	for _, k := range kits {
 		for _, c := range k.caps {
@@ -81,23 +112,18 @@ func compileNetworkPolicy(kits []*kitState) networkPolicy {
 			for _, e := range entries {
 				e.order = len(p.entries)
 				p.entries = append(p.entries, e)
-				host := strings.ToLower(stripPort(e.host.val))
-				if e.list == "deny" {
-					if c.skipped || e.bounded() {
-						continue
+				if c.skipped {
+					continue
+				}
+				host, port := splitPort(foldHost(e.host.val))
+				switch {
+				case e.list == "allow":
+					p.allows[kitPhaseHost{k, phaseHost{e.phase, host}}] = true
+				case !e.bounded():
+					key := denyKey{phaseHost{e.phase, host}, port}
+					if p.denies[key] == nil {
+						p.denies[key] = e
 					}
-					if p.denies[e.phase] == nil {
-						p.denies[e.phase] = make(map[string]*netEntry)
-					}
-					if p.denies[e.phase][host] == nil {
-						p.denies[e.phase][host] = e
-					}
-				} else {
-					key := kitPhase{k, e.phase}
-					if p.allows[key] == nil {
-						p.allows[key] = make(map[string]bool)
-					}
-					p.allows[key][host] = true
 				}
 			}
 		}
@@ -105,42 +131,44 @@ func compileNetworkPolicy(kits []*kitState) networkPolicy {
 	return p
 }
 
-// deniedBy returns the first unbounded deny covering the entire requested
-// pattern. Enumerate DNS suffixes, preserving declaration order across matches.
+// deniedBy returns the earliest-declared unbounded deny, from any kit, whose
+// pattern covers all of host in phase. Deny wins over every kit's allow.
+// Patterns: "*" or "**" cover everything, "*.x" exactly one more label,
+// "**.x" any depth; host may itself be such a pattern. A deny without a port
+// covers every port; one with a port covers only a host stating that port, so
+// a host without a port (any port) is covered only by a portless deny.
 func (p *networkPolicy) deniedBy(phase, host string) *netEntry {
-	index := p.denies[phase]
-	if len(index) == 0 {
-		return nil
-	}
-	h := strings.ToLower(stripPort(host))
+	h, port := splitPort(foldHost(host))
 	var first *netEntry
 	consider := func(pattern string) {
-		if e := index[pattern]; e != nil && (first == nil || e.order < first.order) {
-			first = e
+		for _, pt := range []string{"", port} {
+			if e := p.denies[denyKey{phaseHost{phase, pattern}, pt}]; e != nil && (first == nil || e.order < first.order) {
+				first = e
+			}
+			if port == "" {
+				break
+			}
 		}
 	}
 	consider("*")
 	consider("**")
 	consider(h)
-	if h == "*" || h == "**" {
-		return first
+	if label, rest, ok := strings.Cut(h, "."); ok && label != "" && label != "**" {
+		consider("*." + rest)
 	}
-	suffix := h
-	for {
-		_, rest, ok := strings.Cut(suffix, ".")
+	for s := h; ; {
+		_, rest, ok := strings.Cut(s, ".")
 		if !ok {
-			break
-		}
-		if suffix == h && !strings.HasPrefix(h, "**.") && !strings.HasPrefix(h, ".") {
-			consider("*." + rest)
+			return first
 		}
 		consider("**." + rest)
-		suffix = rest
+		s = rest
 	}
-	return first
 }
 
+// kitAllows reports whether the kit's own policy lists domain for phase,
+// exactly (a wildcard does not cover a specific subdomain) or via * / **.
 func (p *networkPolicy) kitAllows(k *kitState, phase, domain string) bool {
-	hosts := p.allows[kitPhase{k, phase}]
-	return hosts["*"] || hosts["**"] || hosts[strings.ToLower(stripPort(domain))]
+	allowed := func(h string) bool { return p.allows[kitPhaseHost{k, phaseHost{phase, h}}] }
+	return allowed("*") || allowed("**") || allowed(foldHost(stripPort(domain)))
 }

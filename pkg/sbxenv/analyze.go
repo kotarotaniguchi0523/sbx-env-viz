@@ -31,16 +31,10 @@ func (rs *resolver) analyze() {
 }
 
 func (rs *resolver) checkEnvArgUse() {
-	if rs.lostByArg == nil {
-		return
-	}
 	final := map[string]bool{}
 	rs.root.collectArgRefs(final)
 	for _, a := range rs.envArgs {
-		if a.From != "flag" && a.From != "env-args-file" {
-			continue
-		}
-		if final[a.Name] {
+		if !a.fromCLI() || final[a.Name] {
 			continue
 		}
 		lost := rs.lostByArg[a.Name]

@@ -338,7 +338,7 @@ func (m *merger) stampSet(v *vnode) {
 }
 
 func (m *merger) recordLost(old, repl *vnode, path string) {
-	if m.lostByArg == nil {
+	if len(m.lostByArg) == 0 {
 		return
 	}
 	before := map[string]bool{}

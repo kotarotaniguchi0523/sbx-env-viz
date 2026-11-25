@@ -45,7 +45,7 @@ type resolver struct {
 
 	kits    []*kitState
 	kitArgs []ArgValue
-	// net holds every network-policy entry of every expanded kit.
+	// net is the compiled network policy of every expanded kit.
 	net networkPolicy
 	// skippedItems are items of capabilities the host would not select;
 	// they get no boundaries.
@@ -483,12 +483,10 @@ func indexOf(ls []*layerState, x *layerState) int {
 }
 
 func (rs *resolver) mergeLayers() {
-	m := &merger{}
+	// Only CLI-supplied args can be reported as ineffective, so only they are tracked.
+	m := &merger{lostByArg: map[string][]lostRef{}}
 	for _, a := range rs.envArgs {
-		if a.From == "flag" || a.From == "env-args-file" {
-			if m.lostByArg == nil {
-				m.lostByArg = make(map[string][]lostRef)
-			}
+		if a.fromCLI() {
 			m.lostByArg[a.Name] = nil
 		}
 	}
@@ -506,3 +504,6 @@ func (rs *resolver) mergeLayers() {
 	rs.root = root
 	rs.lostByArg = m.lostByArg
 }
+
+// fromCLI reports whether the argument came from --env-arg or --env-args-file.
+func (a ArgValue) fromCLI() bool { return a.From == "flag" || a.From == "env-args-file" }
