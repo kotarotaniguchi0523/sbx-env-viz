@@ -2,7 +2,6 @@ package live
 
 import (
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -291,32 +290,6 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 	c.Skipped = append(c.Skipped, "メモリ・CPU・lifecycle の実行履歴などは sbx の一覧から取得できないため比較していません。")
 	sort.SliceStable(c.Drifts, func(i, j int) bool { return c.Drifts[i].Severity.Rank() > c.Drifts[j].Severity.Rank() })
 	return c
-}
-
-func samePath(a, b string) bool {
-	if a == "" || b == "" {
-		return false
-	}
-	return Canonical(a) == Canonical(b)
-}
-
-// Canonical cleans p and resolves symbolic links in its longest existing
-// prefix, so /var/x and /private/var/x (macOS) compare equal even when x
-// itself does not exist.
-func Canonical(p string) string {
-	p = filepath.Clean(p)
-	rest := ""
-	for cur := p; ; {
-		if r, err := filepath.EvalSymlinks(cur); err == nil {
-			return filepath.Join(r, rest)
-		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			return p
-		}
-		rest = filepath.Join(filepath.Base(cur), rest)
-		cur = parent
-	}
 }
 
 func baseProto(p string) string {

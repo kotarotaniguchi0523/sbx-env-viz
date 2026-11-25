@@ -81,10 +81,10 @@ func Discover(ctx context.Context, req DiscoverRequest) ([]Target, Snapshot) {
 	var groups []Group
 	seenDir := map[string]bool{}
 	for _, d := range dirs {
-		if d == "" || seenDir[Canonical(d)] {
+		if d == "" || seenDir[canonical(d)] {
 			continue
 		}
-		seenDir[Canonical(d)] = true
+		seenDir[canonical(d)] = true
 		groups = append(groups, FileGroups(d)...)
 	}
 
@@ -145,6 +145,8 @@ func Discover(ctx context.Context, req DiscoverRequest) ([]Target, Snapshot) {
 // FileGroups lists the environment files of one directory. sbxenv.yaml
 // alone is the no-path default; sbxenv.X.yaml is resolved with its
 // sbxenv.X.local.yaml companion when one exists.
+//
+//declscope:ignore overexported // live_test.go tests the file pairing through it directly, apart from Discover
 func FileGroups(dir string) []Group {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

@@ -133,8 +133,6 @@ type missing struct{}
 
 func (missing) Run(context.Context, ...string) ([]byte, error) { return nil, ErrNoSbx }
 
-func clean(s string) string { return model.EscapeControl(firstLine(s)) }
-
 // --- reading sbx output -------------------------------------------------
 //
 // The structs below follow the JSON that sbx v0.54.0 prints. Fields this

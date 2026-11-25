@@ -23,6 +23,8 @@ type Runner interface {
 }
 
 // ErrNoSbx means the sbx command is not installed or not on PATH.
+//
+//declscope:ignore overexported // part of the Runner contract: a Runner returns it when sbx is missing, and live_test.go's fake runner does so to test the fallback
 var ErrNoSbx = errors.New("sbx command not found")
 
 // maxOutput bounds what one sbx command may print.
@@ -71,15 +73,4 @@ func (l *limited) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 	return l.b.Write(p)
-}
-
-func firstLine(s string) string {
-	s = strings.TrimSpace(s)
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		s = s[:i]
-	}
-	if len(s) > 200 {
-		s = s[:200] + "…"
-	}
-	return s
 }
