@@ -12,8 +12,8 @@ import (
 	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
-// LowCap is how many entries below high severity are listed in the Risk section.
-const LowCap = 15
+// lowCap is how many entries below high severity are listed in the Risk section.
+const lowCap = 15
 
 // Write renders p to w.
 func Write(w io.Writer, p *sbxenv.Plan) error {
@@ -33,7 +33,7 @@ func Write(w io.Writer, p *sbxenv.Plan) error {
 	shown, hidden := 0, 0
 	for _, r := range risks {
 		if r.Severity.Rank() < sbxenv.SeverityHigh.Rank() {
-			if shown >= LowCap {
+			if shown >= lowCap {
 				hidden++
 				continue
 			}

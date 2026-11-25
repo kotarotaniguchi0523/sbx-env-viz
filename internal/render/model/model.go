@@ -31,8 +31,8 @@ type RiskEntry struct {
 	Item     *sbxenv.Item
 }
 
-// DiagSeverity maps a diagnostic level onto the risk scale.
-func DiagSeverity(l sbxenv.DiagLevel) sbxenv.Severity {
+// diagSeverity maps a diagnostic level onto the risk scale.
+func diagSeverity(l sbxenv.DiagLevel) sbxenv.Severity {
 	switch l {
 	case sbxenv.LevelError:
 		return sbxenv.SeverityCritical
@@ -48,7 +48,7 @@ func RiskList(p *sbxenv.Plan) []RiskEntry {
 	var out []RiskEntry
 	for i := range p.Diagnostics {
 		dg := &p.Diagnostics[i]
-		out = append(out, RiskEntry{Severity: DiagSeverity(dg.Level), Kind: KindDiagnostic,
+		out = append(out, RiskEntry{Severity: diagSeverity(dg.Level), Kind: KindDiagnostic,
 			Label: fmt.Sprintf("%s %s", dg.Code, dg.Message), Badges: []string{"[" + strings.ToUpper(string(dg.Level)) + "]"}, ItemID: dg.ItemID, Diag: dg})
 	}
 	for i := range p.Items {

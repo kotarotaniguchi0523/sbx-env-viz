@@ -100,7 +100,6 @@ func (n *Node) KeyPos(key string) (Pos, bool) {
 
 // DuplicateKey reports a key that appears twice in one mapping.
 type DuplicateKey struct {
-	Key   string
 	Path  string
 	First Pos
 	Again Pos
@@ -113,6 +112,8 @@ type Result struct {
 }
 
 // ErrMultipleDocuments is returned when the input holds more than one document.
+//
+//declscope:ignore overexported // the sentinel Parse returns for multi-document input; parser_test.go asserts on it with errors.Is
 var ErrMultipleDocuments = errors.New("multiple YAML documents are not allowed; an environment file holds exactly one")
 
 // SyntaxError is a YAML syntax error without the offending source text.
@@ -229,7 +230,7 @@ func (c *converter) convert(y *yaml.Node, path string, depth int) *Node {
 			kp := Pos{Line: k.Line, Col: k.Column}
 			childPath := joinPath(path, key)
 			if first, ok := seen[key]; ok {
-				c.dups = append(c.dups, DuplicateKey{Key: key, Path: childPath, First: first, Again: kp})
+				c.dups = append(c.dups, DuplicateKey{Path: childPath, First: first, Again: kp})
 			} else {
 				seen[key] = kp
 			}
