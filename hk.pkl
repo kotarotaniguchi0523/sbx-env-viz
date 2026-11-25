@@ -11,6 +11,11 @@ local lint = new Mapping<String, Step> {
   ["go_vet"] = (Builtins.go_vet) {
     depends = List("gofmt")
   }
+  // GitHub Actions workflows: jactionlint (with shellcheck) and sisakulint.
+  ["actions_lint"] {
+    glob = List(".github/workflows/*.yml", ".github/workflows/*.yaml")
+    check = "jactionlint && sisakulint"
+  }
 }
 
 local unitTests = new Step {

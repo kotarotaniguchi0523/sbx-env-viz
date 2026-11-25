@@ -10,6 +10,12 @@ betterleaks = "1.10.1"
 "go:github.com/future-architect/uzomuzo-oss/cmd/uzomuzo" = "0.12.1"
 trivy = "0.76.2"
 goreleaser = "2.20.2"
+# GitHub Actions linters. jactionlint installs through its signed packslip
+# (mise verifies it); sisakulint builds from the Go module proxy, checked
+# against the Go checksum database. shellcheck lets jactionlint check run:.
+jactionlint = "2.6.0"
+shellcheck = "0.11.0"
+"go:github.com/gh-intel/sisakulint/cmd/sisakulint" = "0.4.0"
 
 [settings]
 lockfile = true
@@ -35,6 +41,10 @@ run = "go test -count=1 ./..."
 [tasks.lint]
 description = "gofmt check and go vet"
 run = ['test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)', "go vet ./..."]
+
+[tasks."lint:actions"]
+description = "Lint GitHub Actions workflows with jactionlint (with shellcheck) and sisakulint"
+run = ["jactionlint", "sisakulint"]
 
 [tasks.audit]
 description = "Supply-chain audit: govulncheck, SBOM, uzomuzo"

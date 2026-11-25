@@ -34,6 +34,8 @@ jobs:
         with:
           version: 2026.11.8
           install_args: go goreleaser go:github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod
+          # Never restore a cache into a job that builds release archives.
+          cache: false
       - name: go test -race
         run: go test -race -count=1 ./...
         env:
