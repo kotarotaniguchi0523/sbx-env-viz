@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -32,6 +31,9 @@ type docLine struct {
 	indent int
 }
 
+// doc is the detail pane's content before wrapping and styling.
+//
+//declscope:shared // view.go builds the detail and help panes from it
 type doc []docLine
 
 func (d *doc) title(s string) { *d = append(*d, docLine{kind: docTitle, text: s}) }
@@ -41,6 +43,10 @@ func (d *doc) heading(s string) {
 func (d *doc) field(label, s string) {
 	*d = append(*d, docLine{kind: docField, label: label, text: s})
 }
+
+// text adds a paragraph indented by indent cells.
+//
+//declscope:shared // view.go's detailLines writes the empty-list note with it
 func (d *doc) text(s string, indent int) {
 	*d = append(*d, docLine{kind: docText, text: s, indent: indent})
 }
@@ -48,6 +54,8 @@ func (d *doc) text(s string, indent int) {
 // render wraps every line to width w at spaces and path separators, so a
 // long path breaks after a "/" instead of in the middle of a name, and
 // continuation lines hang under their own text.
+//
+//declscope:shared // view.go draws the detail and help panes with it
 func (d doc) render(p palette, w int) []string {
 	if w < 8 {
 		w = 8
@@ -83,119 +91,6 @@ func (d doc) render(p palette, w int) []string {
 	return out
 }
 
-// wrap breaks plain text into lines at most w cells wide. Words break at
-// spaces; a token wider than the line (a path, a URL, a run of Japanese)
-// breaks after its last "/" that fits, and only then at the width itself.
-func wrap(s string, w int) []string {
-	if w < 4 {
-		w = 4
-	}
-	var out []string
-	for _, para := range strings.Split(s, "\n") {
-		line := ""
-		flush := func() {
-			out = append(out, strings.TrimRight(line, " "))
-			line = ""
-		}
-		for _, word := range strings.SplitAfter(para, " ") {
-			if ansi.StringWidth(line)+ansi.StringWidth(strings.TrimRight(word, " ")) <= w {
-				line += word
-				continue
-			}
-			long := ansi.StringWidth(strings.TrimRight(word, " ")) > w
-			room := w - ansi.StringWidth(line)
-			// Japanese has no spaces between words, so a run that holds
-			// wide characters may break anywhere instead of leaving the
-			// rest of the line empty.
-			if line != "" && wide(word) && room >= 4 {
-				head := kinsoku(word, keepASCIIWord(word, cutAt(word, room)))
-				out = append(out, line+head)
-				line, word = "", word[len(head):]
-			} else if line != "" && (!long || room < w/3) {
-				flush()
-			}
-			for ansi.StringWidth(line)+ansi.StringWidth(strings.TrimRight(word, " ")) > w {
-				head := kinsoku(word, keepASCIIWord(word, cutAt(word, w-ansi.StringWidth(line))))
-				out = append(out, line+head)
-				line, word = "", word[len(head):]
-			}
-			line += word
-		}
-		flush()
-	}
-	return out
-}
-
-// keepASCIIWord moves a cut that would split an ASCII word such as
-// "--skip-host-commands" back to the start of that word.
-func keepASCIIWord(word, head string) string {
-	if head == "" || len(head) >= len(word) || !asciiWord(word[len(head)]) || !asciiWord(head[len(head)-1]) {
-		return head
-	}
-	i := len(head)
-	for i > 0 && asciiWord(head[i-1]) {
-		i--
-	}
-	if i == 0 {
-		return head
-	}
-	return head[:i]
-}
-
-func asciiWord(b byte) bool {
-	return b == '-' || b == '_' || b == '.' || b == '/' || b == ':' || (b >= '0' && b <= '9') || (b|0x20 >= 'a' && b|0x20 <= 'z')
-}
-
-// kinsoku moves the last character of head to the next line when the
-// next line would otherwise start with closing punctuation such as "。".
-func kinsoku(word, head string) string {
-	rest := word[len(head):]
-	r, _ := utf8.DecodeRuneInString(rest)
-	if rest == "" || !strings.ContainsRune("、。，．）」』】・ー", r) {
-		return head
-	}
-	_, size := utf8.DecodeLastRuneInString(head)
-	if size >= len(head) {
-		return head
-	}
-	return head[:len(head)-size]
-}
-
-// wide reports whether s holds a character two cells wide.
-func wide(s string) bool {
-	for _, r := range s {
-		if ansi.StringWidth(string(r)) > 1 {
-			return true
-		}
-	}
-	return false
-}
-
-// cutAt returns the longest prefix of s that fits in w cells, ending just
-// after a "/" when one falls in the second half of that prefix.
-func cutAt(s string, w int) string {
-	width, end, slash := 0, 0, -1
-	for i, r := range s {
-		rw := ansi.StringWidth(string(r))
-		if width+rw > w {
-			break
-		}
-		width += rw
-		end = i + len(string(r))
-		if r == '/' && width > w/2 {
-			slash = end
-		}
-	}
-	if end == 0 {
-		_, size := utf8.DecodeRuneInString(s)
-		return s[:size]
-	}
-	if slash > 0 {
-		return s[:slash]
-	}
-	return s[:end]
-}
-
 // origin formats where a value came from, in Japanese.
 func (m *Model) origin(o sbxenv.Origin) string {
 	label := o.SourceID
@@ -222,6 +117,10 @@ func riskLine(s sbxenv.Severity) string {
 	return sbxenv.SeverityLabel(s) + "（" + strings.ToUpper(string(s)) + "）"
 }
 
+// itemDoc describes a setting: its value, the official note, this tool's
+// judgement, the override history, and the boundaries it crosses.
+//
+//declscope:shared // view.go's detailLines shows it for a selected item
 func (m *Model) itemDoc(d *doc, it *sbxenv.Item) {
 	d.title(it.ID)
 	d.field("値", it.Value)
@@ -305,6 +204,9 @@ func (m *Model) itemDoc(d *doc, it *sbxenv.Item) {
 	}
 }
 
+// diagDoc describes a diagnostic and, when it names one, its setting.
+//
+//declscope:shared // view.go's detailLines shows it for a selected diagnostic
 func (m *Model) diagDoc(d *doc, x *sbxenv.Diagnostic) {
 	e := sbxenv.ExplainDiagnostic(x.Code)
 	d.title(e.Title)
@@ -333,6 +235,9 @@ func (m *Model) diagDoc(d *doc, x *sbxenv.Diagnostic) {
 	}
 }
 
+// coverageDoc describes a part this static analysis did not expand.
+//
+//declscope:shared // view.go's detailLines shows it for a selected coverage gap
 func (m *Model) coverageDoc(d *doc, c *sbxenv.Coverage) {
 	d.title("未展開: " + sbxenv.CoverageTitle(c.Kind))
 	d.field("対象", c.Ref)
@@ -343,6 +248,9 @@ func (m *Model) coverageDoc(d *doc, c *sbxenv.Coverage) {
 	d.text(m.origin(c.Origin), 2)
 }
 
+// sourceDoc describes an input file and the settings it writes.
+//
+//declscope:shared // view.go's detailLines shows it for a selected source
 func (m *Model) sourceDoc(d *doc, s *sbxenv.Source) {
 	d.title(s.Path)
 	d.field("種類", sbxenv.SourceKindLabel(s.Kind))
@@ -384,6 +292,9 @@ func (m *Model) sourceDoc(d *doc, s *sbxenv.Source) {
 	}
 }
 
+// driftDoc describes a difference between the declaration and the sandbox.
+//
+//declscope:shared // view.go's detailLines shows it for a selected drift
 func driftDoc(d *doc, x *live.Drift) {
 	d.title("ズレ: " + x.Title)
 	d.field("分類", x.Kind)
@@ -404,6 +315,9 @@ func driftDoc(d *doc, x *live.Drift) {
 	}
 }
 
+// helpDoc is the content of the help panel.
+//
+//declscope:shared // view.go's helpLines draws it
 func helpDoc() doc {
 	var d doc
 	d.title("このツールについて")

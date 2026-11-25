@@ -1,3 +1,9 @@
+// view.go is the View half of Model: it draws the frame and records the
+// click zones that tui.go's Update resolves, and it draws the Overview
+// panes overview.go lays out, so the three files read and call each other.
+//
+//declscope:namespace tui // one Bubble Tea Model split across tui.go, view.go and overview.go
+
 package tui
 
 import (
@@ -467,6 +473,21 @@ func (m *Model) pickerLines(iw, top int) []string {
 
 func (m *Model) helpLines(iw int) []string {
 	return append([]string{m.paneTitle("ヘルプ（どのキーでも閉じる）", true)}, helpDoc().render(m.pal, iw-1)...)
+}
+
+// sevTag is the fixed-width severity pill text.
+func sevTag(s sbxenv.Severity) string {
+	switch s {
+	case sbxenv.SeverityCritical:
+		return " CRIT "
+	case sbxenv.SeverityHigh:
+		return " HIGH "
+	case sbxenv.SeverityMedium:
+		return " MED  "
+	case sbxenv.SeverityLow:
+		return " LOW  "
+	}
+	return " INFO "
 }
 
 func trunc(s string, w int) string {

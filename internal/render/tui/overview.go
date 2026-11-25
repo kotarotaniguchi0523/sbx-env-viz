@@ -1,3 +1,9 @@
+// overview.go is the Overview screen of Model: tui.go's rebuild builds its
+// cards and Enter jumps from them, and view.go draws them, so it reads and
+// calls the same Model state as the other two files.
+//
+//declscope:namespace tui // one Bubble Tea Model split across tui.go, view.go and overview.go
+
 package tui
 
 import (
@@ -25,8 +31,8 @@ type cardLine struct {
 	row    int
 }
 
-// OverviewMinTwoColumns is the narrowest width that lays cards in two columns.
-const OverviewMinTwoColumns = 100
+// overviewMinTwoColumns is the narrowest width that lays cards in two columns.
+const overviewMinTwoColumns = 100
 
 // buildOverview fills m.cards and m.rows: every entry that names an item,
 // diagnostic, or coverage gap becomes a selectable row.
@@ -299,7 +305,7 @@ func (m *Model) jump() {
 // scrolled so the selected entry is visible, and records entry zones.
 func (m *Model) overviewPanes(w, top, ph int) string {
 	cols := 1
-	if w >= OverviewMinTwoColumns {
+	if w >= overviewMinTwoColumns {
 		cols = 2
 	}
 	cw := w / cols

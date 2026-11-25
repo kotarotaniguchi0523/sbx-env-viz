@@ -12,6 +12,8 @@ import (
 // palette holds every style the TUI draws with. With NO_COLOR every style
 // keeps its structure (borders, bold, reverse video) and drops colour.
 // Green is never used: this tool does not draw a "safe" state.
+//
+//declscope:shared // the package's styles: Model holds one, and view.go, overview.go and detail.go draw with its fields
 type palette struct {
 	noColor bool
 
@@ -23,9 +25,16 @@ type palette struct {
 
 	borderFocus, borderBlur color.Color
 	sev                     map[sbxenv.Severity]lipgloss.Style
-	badge                   map[string]lipgloss.Style
+
+	// badge is the style of each known badge.
+	//
+	//declscope:private // only badges reads it
+	badge map[string]lipgloss.Style
 }
 
+// newPalette builds the styles, without colour when noColor is set.
+//
+//declscope:shared // tui.go's New and NewTargets build the model's palette with it
 func newPalette(noColor bool) palette {
 	base := lipgloss.NewStyle()
 	p := palette{
@@ -112,22 +121,9 @@ func newPalette(noColor bool) palette {
 	return p
 }
 
-// sevTag is the fixed-width severity pill text.
-func sevTag(s sbxenv.Severity) string {
-	switch s {
-	case sbxenv.SeverityCritical:
-		return " CRIT "
-	case sbxenv.SeverityHigh:
-		return " HIGH "
-	case sbxenv.SeverityMedium:
-		return " MED  "
-	case sbxenv.SeverityLow:
-		return " LOW  "
-	}
-	return " INFO "
-}
-
 // badges styles a run of ASCII badges such as "[HOST][RW]".
+//
+//declscope:shared // view.go's list rows and overview.go's card entries style their badges with it
 func (p palette) badges(list []string) string {
 	var b strings.Builder
 	for _, x := range list {
