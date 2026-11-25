@@ -213,9 +213,11 @@ func parseArgs(args []string) (*options, error) {
 		}
 	}
 	switch o.failOn {
-	case "none", "warning", "error", "critical", "high", "medium", "low":
+	case "none", "warning", "error":
 	default:
-		return nil, fmt.Errorf("--fail-on must be none, warning, error, critical, high, medium, or low")
+		if sbxenv.Severity(o.failOn).Rank() == 0 {
+			return nil, fmt.Errorf("--fail-on must be none, warning, error, critical, high, medium, or low")
+		}
 	}
 	if o.text && o.json {
 		return nil, errors.New("--text and --json cannot be combined")

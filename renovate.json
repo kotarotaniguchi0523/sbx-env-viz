@@ -5,9 +5,6 @@
     ":semanticCommits",
     ":enableVulnerabilityAlertsWithLabel(security)"
   ],
-  "ignorePaths": [
-    "**/node_modules/**"
-  ],
   "timezone": "Asia/Tokyo",
   "schedule": [
     "before 6am every weekday"
@@ -19,20 +16,21 @@
   "rangeStrategy": "pin",
   "pinDigests": true,
   "separateMajorMinor": false,
-  "separateMinorPatch": false,
-  "separateMultipleMajor": false,
-  "rebaseWhen": "auto",
   "prConcurrentLimit": 3,
   "prHourlyLimit": 0,
   "branchConcurrentLimit": 0,
   "packageRules": [
     {
-      "description": "グループ1: mise のツール一式を 1 PR にまとめる",
+      "description": "mise のツール一式を 1 PR にまとめる。mise.lock は relock ワークフローが再生成する（Mend hosted の Renovate は mise lock を実行できないため、artifact 更新は試行しない）",
       "matchManagers": [
         "mise"
       ],
       "groupName": "mise tools",
-      "groupSlug": "mise-tools"
+      "groupSlug": "mise-tools",
+      "skipArtifactsUpdate": true,
+      "lockFileMaintenance": {
+        "enabled": false
+      }
     },
     {
       "description": "グループ2: GitHub Actions 一式を 1 PR にまとめる（コミット SHA 固定）",
@@ -58,16 +56,6 @@
       "enabled": false
     },
     {
-      "description": "mise.lock は mise-relock ワークフローが再生成する。Mend hosted の Renovate は mise lock を実行できない（unsafe execution）ため、artifact 更新は試行しない",
-      "matchManagers": [
-        "mise"
-      ],
-      "skipArtifactsUpdate": true,
-      "lockFileMaintenance": {
-        "enabled": false
-      }
-    },
-    {
       "description": "minor / patch は必須チェックが通れば自動マージ。major と pin / digest は手動",
       "matchUpdateTypes": [
         "minor",
@@ -81,7 +69,6 @@
     "updatePinnedDependencies": true
   },
   "vulnerabilityAlerts": {
-    "enabled": true,
     "description": "脆弱性アラート由来の更新は、スケジュール・リリース経過日数・Dashboard 承認を迂回して即座に PR を作り、必須チェックが通れば自動マージする",
     "schedule": [
       "at any time"
@@ -95,5 +82,8 @@
   "automergeStrategy": "squash",
   "postUpdateOptions": [
     "gomodTidy"
+  ],
+  "gitIgnoredAuthors": [
+    "41898282+github-actions[bot]@users.noreply.github.com"
   ]
 }

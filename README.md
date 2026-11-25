@@ -163,7 +163,7 @@ doc, _ := sbxenv.LookupDoc("sandboxOptions.memory") // 日本語の解説と上�
 
 ## 開発
 
-ツールはすべて [`mise.toml`](mise.toml) で完全一致の版に固定し、`mise.lock` にプラットフォームごとのハッシュと署名者を記録しています（Go、hk、pkl、betterleaks、govulncheck、cyclonedx-gomod、uzomuzo、trivy、goreleaser、jactionlint、shellcheck、sisakulint）。Homebrew は使いません。
+ツールはすべて [`mise.toml`](mise.toml) で完全一致の版に固定し、`mise.lock` にプラットフォームごとのハッシュと署名者を記録しています。Homebrew は使いません。
 
 ```sh
 mise install          # mise.lock どおりの版を入れる（locked = true）
@@ -200,8 +200,9 @@ TUI は `e2e/tui` で、ビルドした実バイナリを実 PTY 上で操作し
 [mac-host-setup](https://github.com/kotarotaniguchi0523/mac-host-setup) と同じルールです。
 
 - **版の固定と 2 日ルール**: ツール・Actions・Go モジュール・nixpkgs はすべて完全一致で固定し（Actions はコミット SHA）、新しい版は公開から 2 日以上経ってから採用します（mise の `minimum_release_age`、Renovate の `minimumReleaseAge`、`flake-lock.yml`）。
-- **更新は PR だけ**: Renovate が mise のツール・Actions・Go モジュールをまとめて PR にし、minor / patch は必須チェックが通れば自動でマージします。脆弱性アラート由来の更新は待たずに PR を作ります。Renovate が再生成できない `mise.lock` と Nix の `vendorHash` は、[`mise-relock.yml`](.github/workflows/mise-relock.yml) と [`go-relock.yml`](.github/workflows/go-relock.yml) が PR ブランチで作り直します。
+- **更新は PR だけ**: Renovate が mise のツール・Actions・Go モジュールをまとめて PR にし、minor / patch は必須チェックが通れば自動でマージします。脆弱性アラート由来の更新は待たずに PR を作ります。Renovate が再生成できない `mise.lock` と Nix の `vendorHash` は、[`relock.yml`](.github/workflows/relock.yml) が PR ブランチで作り直し、1 つのコミットで push します（途中で Renovate が push していたら上書きしません）。
 - **main の保護**: 必須チェックが通るまでマージできず、履歴は直線（merge commit なし。squash か rebase）、force push と削除は禁止です。マージ後のブランチは自動で削除します。
+- **自動 PR の前提**: `flake-lock.yml` が PR を作って自動マージを予約するため、Settings → Actions の「Allow GitHub Actions to create and approve pull requests」と、Settings → General の「Allow auto-merge」を有効にしています。
 - **Actions の許可**: GitHub 製のほかは、`jdx/mise-action`・`jdx/packslip`・`cachix/install-nix-action` だけを許可し、すべてコミット SHA での指定を必須にしています。`GITHUB_TOKEN` の既定の権限は読み取りのみです。
 - **公開リポジトリ**: 個人名や `/Users/<user>` のような実パス、秘密情報はコミットしません。betterleaks が commit・push・CI のたびに検査します。
 

@@ -38,10 +38,13 @@ jobs:
       - name: update flake.lock (inputs >= 2 days old)
         id: lock
         run: tools/ci/flake-lock-update.sh
+      # Needs two repository settings (both on, as in mac-host-setup): Settings > Actions >
+      # "Allow GitHub Actions to create and approve pull requests", and "Allow auto-merge".
       - name: push, open / update the PR, start ci
         if: steps.lock.outputs.changed == 'true'
         run: |
-          tools/ci/push-and-dispatch.sh "$BRANCH" "chore(deps): update flake.lock (inputs >= 2 days old)" flake.lock
+          # "-": flake-lock/update is rebuilt from main each run and only this workflow writes it.
+          tools/ci/push-and-dispatch.sh "$BRANCH" - "chore(deps): update flake.lock (inputs >= 2 days old)" flake.lock
           if [[ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]]; then
             gh pr create --head "$BRANCH" --base main --title "chore(deps): update flake.lock" \
               --body "Inputs moved to their newest commits that are at least 2 days old (tools/ci/flake-lock-update.sh). ci.yml builds on this branch."

@@ -1,0 +1,68 @@
+# Renovate (Mend hosted) can run neither `mise lock` nor Nix, so its PRs that bump mise tools or
+# Go modules arrive with a stale mise.lock or Nix vendorHash. This job rebuilds whichever the PR
+# needs, makes one commit, pushes it to the PR branch, and dispatches ci.yml there (pushes made
+# with GITHUB_TOKEN do not trigger workflows by themselves). Like mac-host-setup's mise-relock.
+name: relock
+
+on:
+  pull_request:
+    paths:
+      - mise.toml
+      - go.mod
+      - go.sum
+
+permissions: {}
+
+concurrency:
+  group: relock-${{ github.head_ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  relock:
+    name: relock
+    # Only branches of this repository (Renovate). Fork PRs never get a write token.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the regenerated lock to the PR branch
+      actions: write # dispatch ci.yml on the PR branch
+      pull-requests: read # list the files the PR changes
+    # Go 1.27.4 builds from source until nixpkgs ships it (nix/package.nix).
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+      HEAD_REF: ${{ github.head_ref }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PR: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: true # needed to push to the PR branch
+      - name: what the PR changes
+        id: files
+        run: |
+          files="$(gh pr diff "$PR" --name-only)"
+          grep -qx 'mise.toml' <<<"$files" && echo "mise=true" >> "$GITHUB_OUTPUT"
+          grep -qxE 'go\.(mod|sum)' <<<"$files" && echo "go=true" >> "$GITHUB_OUTPUT"
+          true
+      - if: steps.files.outputs.mise == 'true'
+        uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
+        with:
+          version: 2026.11.8
+          install: false
+          cache: false
+      - if: steps.files.outputs.mise == 'true'
+        run: tools/ci/mise-lock.sh --write
+      - if: steps.files.outputs.go == 'true'
+        uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
+      - if: steps.files.outputs.go == 'true'
+        run: tools/ci/vendor-hash.sh --write
+      - name: push and start ci
+        run: |
+          tools/ci/push-and-dispatch.sh "$HEAD_REF" "$HEAD_SHA" "chore(deps): relock" mise.lock nix/package.nix

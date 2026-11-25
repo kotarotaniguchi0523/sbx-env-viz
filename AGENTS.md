@@ -12,9 +12,9 @@
 
 ## 版の固定と更新
 
-- すべて完全一致で固定する（範囲指定や `latest` は使わない）。Actions はコミット SHA に固定し、版をコメントで添える。
-- 新しい版は公開から 2 日以上経ってから採用する（mise `minimum_release_age = "2d"`、Renovate `minimumReleaseAge`、`flake-lock.yml`）。
-- `mise.toml` を変えたら `tools/ci/mise-lock.sh --write`、`go.mod` / `go.sum` を変えたら `tools/ci/vendor-hash.sh --write` で lock を作り直す。CI はどちらも `--check` で確かめる。
+ルールは README の「[リポジトリの運用ルール](README.md#リポジトリの運用ルール)」のとおり（完全一致の固定、2 日ルール、更新は PR だけ）。手で lock を作り直すときは次を使う。
+
+- `mise.toml` を変えたら `tools/ci/mise-lock.sh --write`、`go.mod` / `go.sum` を変えたら `tools/ci/vendor-hash.sh --write`（CI はどちらも `--check`）。
 - `nix flake update` は使わない。`flake.lock` は `tools/ci/flake-lock-update.sh`（2 日以上前のコミットだけ）で更新する。
 
 ## 変更の前後に確かめること

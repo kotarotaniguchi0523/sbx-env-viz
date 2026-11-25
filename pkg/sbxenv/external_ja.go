@@ -83,10 +83,3 @@ var externalNotes = map[string][]ExternalNote{
 	"cap:host-mount@1":                {asi03},
 	"cap:network-policy@1":            {asi02, cheatData},
 }
-
-func withExternal(docs []FieldDoc) []FieldDoc {
-	for i := range docs {
-		docs[i].External = externalNotes[docs[i].Key]
-	}
-	return docs
-}

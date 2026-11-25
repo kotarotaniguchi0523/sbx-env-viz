@@ -87,7 +87,7 @@ const (
 )
 
 // fieldDocs is keyed by Item.Path patterns (path.Match syntax over "." paths).
-var fieldDocs = withExternal(withOfficial([]FieldDoc{
+var fieldDocs = annotate([]FieldDoc{
 	d("schemaVersion", "schemaVersion", MergeReplace, false, refEnv+"#top-level-fields",
 		"このファイルの書き方のバージョン番号です。今は \"1\" しか使えず、違うと sbx はファイルを読み込みません。",
 		"kit 記述子の schemaVersion（\"3\"）とは無関係です。数値の 1 ではなく引用符付きの \"1\" で書きます。",
@@ -227,7 +227,7 @@ var fieldDocs = withExternal(withOfficial([]FieldDoc{
 		"このツールが意味を解釈できない Kit の要求です。内容はそのまま表示していますが、何が起きるかは判断していません。",
 		"未知の型が必須（optional でない）なら、それを知らないホストは kit を拒否します。optional なら省略して記録されます。privileged@1 や dockerd@1 は sandbox 内での最大の昇格です。",
 		"型ごとの規則に従います（各仕様ページ参照）。"),
-}))
+})
 
 var docIndex = func() map[string]FieldDoc {
 	m := map[string]FieldDoc{}
@@ -320,10 +320,27 @@ var officialNotes = map[string]officialNote{
 		[]string{refCap + "lifecycle@1.md"}},
 }
 
-func withOfficial(docs []FieldDoc) []FieldDoc {
+// annotate attaches the official notes and the external-standard notes to
+// their fields in one pass. A note keyed by a field that does not exist is
+// a typo or a renamed key; it panics at init instead of vanishing silently.
+func annotate(docs []FieldDoc) []FieldDoc {
+	known := map[string]bool{}
 	for i := range docs {
-		if n, ok := officialNotes[docs[i].Key]; ok {
+		k := docs[i].Key
+		known[k] = true
+		if n, ok := officialNotes[k]; ok {
 			docs[i].OfficialNote, docs[i].OfficialRefs = n.note, n.refs
+		}
+		docs[i].External = externalNotes[k]
+	}
+	for k := range officialNotes {
+		if !known[k] {
+			panic("sbxenv: official note for unknown field " + k)
+		}
+	}
+	for k := range externalNotes {
+		if !known[k] {
+			panic("sbxenv: external note for unknown field " + k)
 		}
 	}
 	return docs

@@ -44,9 +44,9 @@ in
   # Recompute after go.mod/go.sum change: set lib.fakeHash, build, copy "got:".
   vendorHash = "sha256-jVWC/OYPOtuP/StnxcAXwJlCKdZ6hYAarrDmaEEWJpk=";
 
+  # The same build as .goreleaser.yaml (buildGoModule already passes -trimpath).
   subPackages = [ "cmd/sbx-env-viz" ];
   env.CGO_ENABLED = "0";
-  flags = [ "-trimpath" ];
   ldflags = [
     "-s"
     "-w"
