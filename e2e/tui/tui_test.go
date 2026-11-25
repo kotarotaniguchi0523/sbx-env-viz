@@ -217,24 +217,6 @@ func TestHelpOpensAndAnyKeyCloses(t *testing.T) {
 	s.gone("キー操作")
 }
 
-// click presses and releases the left button on the first cell of the
-// first occurrence of text. The press is written as the SGR mouse sequence
-// a terminal sends (1-based coordinates): tui-test v0.1.1's Mouse.Click
-// fails on linux/amd64 with "null native string with nonzero length".
-func (s *screen) click(text string) {
-	s.t.Helper()
-	loc := s.locations(text)
-	if len(loc) == 0 {
-		s.t.Fatalf("click %q: not on screen\n%s", text, s.text())
-	}
-	x, y := loc[0].Start.Column+1, loc[0].Start.Row+1
-	before := s.text()
-	if err := s.term.Write(fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<0;%d;%dm", x, y, x, y)); err != nil {
-		s.t.Fatalf("click %q: %v", text, err)
-	}
-	s.settle(before)
-}
-
 // wheel scrolls at the first occurrence of text. tui-test v0.1.1's
 // Mouse.Scroll always reports column 0, row 0, so the wheel event is written
 // as the SGR mouse sequence a terminal sends (button 64 up, 65 down,

@@ -2,6 +2,8 @@
 // (Microsoft tui-test) and checks what a user sees: layout, keys, wide
 // characters, colours, and escaping. Every test owns its HOME, its copy of
 // the example project, and its terminal session, so tests run in parallel.
+//
+//declscope:shared // the terminal harness that every test file of this package drives
 package tui
 
 import (
@@ -19,6 +21,9 @@ import (
 	"github.com/microsoft/tui-test/bindings/go/tuitesttest"
 )
 
+// binary is the sbxray that TestMain builds for this run.
+//
+//declscope:private // only start runs it
 var binary string
 
 func TestMain(m *testing.M) {
@@ -43,6 +48,9 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+// repoRoot is the module root that holds cmd/sbxray and testdata.
+//
+//declscope:private // only TestMain and start read the tree
 func repoRoot() string {
 	wd, _ := os.Getwd()
 	return filepath.Clean(filepath.Join(wd, "..", ".."))
@@ -119,6 +127,8 @@ func start(t *testing.T, l launch) *screen {
 
 // fakeSbx writes an executable "sbx" that prints fixture JSON for the
 // read-only commands sbxray runs, and fails on anything else.
+//
+//declscope:private // tests describe sbx through launch.sbx; start installs it
 func fakeSbx(t *testing.T, proj string, outputs map[string]string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -140,6 +150,9 @@ func fakeSbx(t *testing.T, proj string, outputs map[string]string) string {
 	return dir
 }
 
+// idle waits for the screen to stop changing.
+//
+//declscope:private // tests wait through press, settle and snapshot, which call it
 func (s *screen) idle() {
 	s.t.Helper()
 	if err := s.term.WaitIdle(tuitest.WaitOptions{Timeout: tuitest.Ptr(5 * time.Second)}); err != nil {
@@ -172,6 +185,24 @@ func (s *screen) settle(before string) {
 		}
 	}
 	s.idle()
+}
+
+// click presses and releases the left button on the first cell of the
+// first occurrence of text. The press is written as the SGR mouse sequence
+// a terminal sends (1-based coordinates): tui-test v0.1.1's Mouse.Click
+// fails on linux/amd64 with "null native string with nonzero length".
+func (s *screen) click(text string) {
+	s.t.Helper()
+	loc := s.locations(text)
+	if len(loc) == 0 {
+		s.t.Fatalf("click %q: not on screen\n%s", text, s.text())
+	}
+	x, y := loc[0].Start.Column+1, loc[0].Start.Row+1
+	before := s.text()
+	if err := s.term.Write(fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<0;%d;%dm", x, y, x, y)); err != nil {
+		s.t.Fatalf("click %q: %v", text, err)
+	}
+	s.settle(before)
 }
 
 // expect waits until text is visible.
