@@ -24,7 +24,7 @@ jobs:
           persist-credentials: false
       - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
         with:
-          version: 2026.11.8
+          version: 2026.11.14
           install_args: go go:golang.org/x/vuln/cmd/govulncheck
       - name: Reachable vulnerabilities
         run: |
@@ -51,7 +51,7 @@ jobs:
           persist-credentials: false
       - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
         with:
-          version: 2026.11.8
+          version: 2026.11.14
           install_args: go
       - name: Fuzz for 5 minutes
         run: go test -run '^$' -fuzz FuzzStrictRedactionNeverEchoesValues -fuzztime 5m ./pkg/sbxenv/
@@ -73,7 +73,7 @@ jobs:
           persist-credentials: false
       - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
         with:
-          version: 2026.11.8
+          version: 2026.11.14
           install_args: >-
             go
             go:github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod
@@ -135,7 +135,7 @@ jobs:
           persist-credentials: false
       - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
         with:
-          version: 2026.11.8
+          version: 2026.11.14
           install_args: trivy
       - name: Install trivy-to-vuls (checksum verified)
         env:
