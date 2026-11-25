@@ -50,7 +50,7 @@ sbx-env-viz/
 - **展開式**: `${{ env.args.<NAME> }}`, `${{ env.projectDir }}`, `${{ env.fileDir }}`（それ以外の `$` はリテラル扱い）
 - **出力・終了コード**:
   - 判定順: `--json` / `--text` 優先 → stdin & stdout ともに TTY かつ `TERM!=dumb` なら TUI → それ以外は text
-  - `--fail-on=none|warning|error`（既定 `none`）: `0`=正常、`1`=閾値超過、`2`=引数エラー/パース失敗
+  - `--fail-on=none|warning|error|critical|high|medium|low`（既定 `none`。`critical`〜`low` は Risk 画面の尺度で、診断・項目・`--live` のズレを数え、Coverage は数えない）: `0`=正常、`1`=閾値超過、`2`=引数エラー/パース失敗
 
 ---
 

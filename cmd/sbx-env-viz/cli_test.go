@@ -104,6 +104,7 @@ func TestExitCodesFollowFailOn(t *testing.T) {
 	t.Parallel()
 	const warn = minimal + "ports:\n  - {sandbox: 1, hostIP: 0.0.0.0}\n"
 	const fail = minimal + "bogus: 1\n"
+	const rwWorkspace = minimal + "workspace: .\n"
 	cases := []struct {
 		name string
 		file string
@@ -117,6 +118,15 @@ func TestExitCodesFollowFailOn(t *testing.T) {
 		{"error, fail on error", fail, []string{"--fail-on=error"}, 1},
 		{"error, fail on warning", fail, []string{"--fail-on=warning"}, 1},
 		{"error, fail on none", fail, []string{"--fail-on=none"}, 0},
+		// The risk scale of the Risk view.
+		{"clean file, fail on low", minimal, []string{"--fail-on=low"}, 0},
+		{"rw workspace (medium), fail on medium", rwWorkspace, []string{"--fail-on=medium"}, 1},
+		{"rw workspace (medium), fail on high", rwWorkspace, []string{"--fail-on=high"}, 0},
+		{"warning (high), fail on high", warn, []string{"--fail-on=high"}, 1},
+		{"warning (high), fail on critical", warn, []string{"--fail-on=critical"}, 0},
+		{"error (critical), fail on critical", fail, []string{"--fail-on=critical"}, 1},
+		// A remote kit is an analysis gap, not a finding.
+		{"coverage gap only, fail on low", minimal + "kits:\n  - ghcr.io/example/kit:1\n", []string{"--fail-on=low"}, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -507,6 +517,27 @@ func TestLiveTextComparesWithTheRunningSandbox(t *testing.T) {
 		if !strings.HasSuffix(line, "--json --no-input") || !(strings.HasPrefix(line, "ls ") || strings.Contains(line, " ls ")) {
 			t.Errorf("only read-only listings may run, got %q", line)
 		}
+	}
+}
+
+func TestFailOnCountsDriftOnlyWithLive(t *testing.T) {
+	t.Parallel()
+	// Arrange: the declaration alone stays below medium; the running
+	// sandbox uses another agent, a medium drift.
+	s := newSandbox(t)
+	s.write(t, "sbxenv.yaml", liveEnv)
+	path, _ := s.fakeSbx(t)
+
+	// Act
+	offline := s.runPath(t, path, "--text", "--fail-on=medium")
+	withLive := s.runPath(t, path, "--text", "--live", "--fail-on=medium")
+
+	// Assert
+	if offline.code != 0 {
+		t.Errorf("offline exit %d, want 0: %s", offline.code, offline.stderr)
+	}
+	if withLive.code != 1 {
+		t.Errorf("--live exit %d, want 1: %s", withLive.code, withLive.stderr)
 	}
 }
 

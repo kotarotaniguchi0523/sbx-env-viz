@@ -99,7 +99,10 @@ otherwise text):
   --text                  plain text summary
   --json                  schemaVersion "1" JSON IR (strictly redacted)
   --redact                strict redaction for TUI / text too
-  --fail-on LEVEL         none (default) | warning | error; exit 1 when reached
+  --fail-on LEVEL         exit 1 when reached. none (default) | warning | error
+                          (diagnostic levels) | critical | high | medium | low
+                          (the Risk view's scale: diagnostics, risky items, and
+                          drift with --live; analysis coverage is not counted)
   --live                  also read existing sandboxes from sbx (any output)
   --offline               never run sbx (the default for paths, --text, --json)
 
@@ -210,9 +213,9 @@ func parseArgs(args []string) (*options, error) {
 		}
 	}
 	switch o.failOn {
-	case "none", "warning", "error":
+	case "none", "warning", "error", "critical", "high", "medium", "low":
 	default:
-		return nil, fmt.Errorf("--fail-on must be none, warning, or error")
+		return nil, fmt.Errorf("--fail-on must be none, warning, error, critical, high, medium, or low")
 	}
 	if o.text && o.json {
 		return nil, errors.New("--text and --json cannot be combined")
@@ -298,7 +301,7 @@ func run(args []string, e env) int {
 			worst := exitOK
 			for _, t := range targets {
 				if t.Plan != nil {
-					worst = max(worst, threshold(o.failOn, t.Plan))
+					worst = max(worst, threshold(o.failOn, t.Plan, t.Comparison))
 				}
 			}
 			return worst
@@ -342,10 +345,35 @@ func run(args []string, e env) int {
 		fmt.Fprintf(e.stderr, "sbx-env-viz: %s\n", shorten(err.Error()))
 		return exitUsage
 	}
-	return threshold(o.failOn, plan)
+	var cmp *live.Comparison
+	if target != nil {
+		cmp = target.Comparison
+	}
+	return threshold(o.failOn, plan, cmp)
 }
 
-func threshold(failOn string, p *sbxenv.Plan) int {
+// threshold decides the exit code. warning and error count diagnostics
+// only. The risk levels use the scale of the Risk view: diagnostics, items
+// rated above info, and drift found by --live. Coverage gaps are premises
+// of every analysis, not findings, so they never trip the threshold.
+func threshold(failOn string, p *sbxenv.Plan, cmp *live.Comparison) int {
+	if want := sbxenv.Severity(failOn); want.Rank() > 0 {
+		worst := 0
+		for _, r := range model.RiskList(p) {
+			if r.Kind != model.KindCoverage {
+				worst = max(worst, r.Severity.Rank())
+			}
+		}
+		if cmp != nil {
+			for _, d := range cmp.Drifts {
+				worst = max(worst, d.Severity.Rank())
+			}
+		}
+		if worst >= want.Rank() {
+			return exitThreshold
+		}
+		return exitOK
+	}
 	switch failOn {
 	case "error":
 		if p.Summary.Errors > 0 {

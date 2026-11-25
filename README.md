@@ -47,7 +47,7 @@ sbx-env-viz . --json > plan.json
 | `--cloud`, `--ttl`, `--on-timeout` | cloud 環境として検査（非対応フィールドを診断） |
 | `--text` / `--json` | 出力形式。どちらもなく、stdin と stdout が TTY で `TERM!=dumb` のときは TUI |
 | `--redact` | TUI / テキストでも厳格秘匿にする |
-| `--fail-on none\|warning\|error` | 終了コード: `0` 正常、`1` 閾値超過、`2` 引数エラー・パース失敗 |
+| `--fail-on none\|warning\|error\|critical\|high\|medium\|low` | 終了コード: `0` 正常、`1` 閾値超過、`2` 引数エラー・パース失敗。`warning` / `error` は診断だけを数えます。`critical`〜`low` は Risk 画面と同じ尺度で、診断・リスクのある項目・`--live` で見つかったズレのうち最も重いものと比べます。解析範囲外（Coverage）は毎回の前提なので数えません |
 
 対応する展開式は `${{ env.args.NAME }}`・`${{ env.projectDir }}`・`${{ env.fileDir }}` です（`$${{ … }}` はリテラル、`$VAR` は展開しません）。ローカル kit では `network-policy@1`・`credential@1`・`host-mount@1`・`ssh-agent@1`・`git-identity@1`・`lifecycle@1` を展開します。それ以外の capability も設定を落とさずそのまま表示します。
 
