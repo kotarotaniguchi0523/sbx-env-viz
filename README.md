@@ -8,6 +8,15 @@ Docker Sandboxes（`sbx`）の環境ファイル `sbxenv*.yaml` と、ローカ�
 
 ## インストール
 
+[Releases](https://github.com/kotarotaniguchi0523/sbx-env-viz/releases) から OS と CPU に合うアーカイブ（Linux・macOS は `tar.gz`、Windows は `zip`。amd64 / arm64）を取得します。checksums で改ざんがないこと、build provenance で GitHub Actions がこのリポジトリからビルドしたことを確認できます。
+
+```sh
+sha256sum -c sbx-env-viz_<版>_checksums.txt --ignore-missing
+gh attestation verify sbx-env-viz_<版>_linux_amd64.tar.gz -R kotarotaniguchi0523/sbx-env-viz
+```
+
+Go があればソースから入れることもできます。
+
 ```sh
 go install github.com/kotarotaniguchi0523/sbx-env-viz/cmd/sbx-env-viz@latest
 ```
@@ -144,6 +153,7 @@ UPDATE_SNAPSHOTS=1 mise run e2e                # 画面を意図して変えた�
 | commit / push | betterleaks（差分・履歴）、gofmt、go vet、go test -race | `hk.pkl` |
 | PR・main への push | テスト、macOS/Linux/Windows のクロスビルド、`govulncheck ./...`、betterleaks（全履歴） | [`ci.yml`](.github/workflows/ci.yml) |
 | 毎週 | `cyclonedx-gomod app` で本番ビルド条件の SBOM を作り、`uzomuzo scan --show-transitive --fail-on eol-confirmed` でメンテ停止・EOL を検査。Trivy の結果を `trivy-to-vuls` で vuls レポートに変換し、検査対象のライブラリ数が 0 でないこと、CVE が 0 件であることを確認。`govulncheck` | [`security-audit.yml`](.github/workflows/security-audit.yml) |
+| タグ `v*` の push | テスト後に GoReleaser で 6 種類のアーカイブ、checksums、SBOM（CycloneDX）、ソースアーカイブを作って Release を公開し、`actions/attest-build-provenance` で署名付きの build provenance を付ける。PR と main では同じ設定を `--snapshot` で毎回試す | [`release.yml`](.github/workflows/release.yml)、[`.goreleaser.yaml`](.goreleaser.yaml) |
 | 毎日 | `docker/sbx-releases` に公開から 2 日以上経った新しい安定版が出たら、`sbx env` 系の `--help` 差分、公式 docs の変更、リリースノートをまとめた Issue（ラベル `sbx-update`）を作成 | [`sbx-watch.yml`](.github/workflows/sbx-watch.yml) |
 
 Actions はコミット SHA で固定しています。

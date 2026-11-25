@@ -1,0 +1,84 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# Release by pushing a tag: git tag v0.1.0 && git push origin v0.1.0
+version: 2
+
+project_name: sbx-env-viz
+
+before:
+  hooks:
+    - go mod verify
+
+builds:
+  - id: sbx-env-viz
+    main: ./cmd/sbx-env-viz
+    binary: sbx-env-viz
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+sboms:
+  - id: source
+    artifacts: source
+    cmd: cyclonedx-gomod
+    args: ["app", "-json", "-licenses", "-output", "$document", "-main", "cmd/sbx-env-viz", ".."]
+    documents:
+      - "{{ .ProjectName }}_{{ .Version }}_sbom.cdx.json"
+    env:
+      - CGO_ENABLED=0
+
+source:
+  enabled: true
+  name_template: "{{ .ProjectName }}_{{ .Version }}_source"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^chore:"
+      - "^test:"
+  groups:
+    - title: 新機能
+      regexp: '^feat'
+      order: 0
+    - title: 修正
+      regexp: '^fix'
+      order: 1
+    - title: ドキュメント
+      regexp: '^docs'
+      order: 2
+    - title: その他
+      order: 999
+
+release:
+  github:
+    owner: kotarotaniguchi0523
+    name: sbx-env-viz
+  prerelease: auto
+  footer: |
+    ### 検証方法
+    ```sh
+    sha256sum -c {{ .ProjectName }}_{{ .Version }}_checksums.txt --ignore-missing
+    gh attestation verify {{ .ProjectName }}_{{ .Version }}_linux_amd64.tar.gz -R kotarotaniguchi0523/sbx-env-viz
+    ```

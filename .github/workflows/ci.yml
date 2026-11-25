@@ -104,6 +104,26 @@ jobs:
           path: dist/
           retention-days: 14
 
+  release-snapshot:
+    name: GoReleaser check + snapshot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
+        with:
+          version: 2026.11.8
+          install_args: go goreleaser go:github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod
+      - run: goreleaser check
+      - name: Build every archive without publishing
+        run: goreleaser release --snapshot --clean
+      - name: The archived binary reports the snapshot version
+        run: |
+          tar -xzf dist/*_linux_amd64.tar.gz -C "$RUNNER_TEMP" sbx-env-viz
+          "$RUNNER_TEMP/sbx-env-viz" --version | grep -q SNAPSHOT
+
   govulncheck:
     runs-on: ubuntu-latest
     steps:

@@ -9,6 +9,7 @@ betterleaks = "1.10.1"
 "go:github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod" = "1.12.0"
 "go:github.com/future-architect/uzomuzo-oss/cmd/uzomuzo" = "0.12.1"
 trivy = "0.76.2"
+goreleaser = "2.20.2"
 
 [settings]
 lockfile = true
@@ -42,3 +43,7 @@ run = [
   "cyclonedx-gomod app -json -licenses -output sbom.cdx.json -main cmd/sbx-env-viz .",
   "uzomuzo scan --sbom sbom.cdx.json --show-transitive --fail-on eol-confirmed",
 ]
+
+[tasks.snapshot]
+description = "Build release archives locally without publishing (GoReleaser)"
+run = "goreleaser release --snapshot --clean"
