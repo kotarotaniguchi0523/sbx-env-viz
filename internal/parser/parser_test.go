@@ -156,3 +156,22 @@ func TestKitSyntaxHeaderDetection(t *testing.T) {
 		}
 	}
 }
+
+func TestAliasExpansionBudget(t *testing.T) {
+	for _, merge := range []bool{false, true} {
+		doc := "a: &a {value: 1}\n"
+		for ch := 'b'; ch <= 'o'; ch++ {
+			name, prev := string(ch), string(ch-1)
+			pair := "[*" + prev + ", *" + prev + "]"
+			if merge {
+				pair = "{<<: " + pair + "}"
+			}
+			doc += name + ": &" + name + " " + pair + "\n"
+		}
+		_, err := parser.Parse([]byte(doc))
+		var syntax *parser.SyntaxError
+		if !errors.As(err, &syntax) || !strings.Contains(syntax.Msg, "expansion limit") {
+			t.Fatalf("merge=%v: %v", merge, err)
+		}
+	}
+}

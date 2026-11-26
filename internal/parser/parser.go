@@ -157,6 +157,9 @@ func Parse(data []byte) (*Result, error) {
 	} else {
 		root = &Node{Kind: Null, Pos: Pos{Line: 1, Col: 1}}
 	}
+	if c.err != nil {
+		return nil, c.err
+	}
 	return &Result{Root: root, Duplicates: c.dups}, nil
 }
 
@@ -189,12 +192,23 @@ func sanitizeYAMLError(err error) error {
 }
 
 type converter struct {
-	dups []DuplicateKey
+	dups     []DuplicateKey
+	expanded int
+	err      error
 }
 
 const maxAliasDepth = 32
 
 func (c *converter) convert(y *yaml.Node, path string, depth int) *Node {
+	// Count work caused by aliases and merge keys across the whole document.
+	if depth > 0 {
+		const maxExpandedNodes = 10000
+		c.expanded++
+		if c.expanded > maxExpandedNodes {
+			c.err = &SyntaxError{Line: y.Line, Msg: "YAML alias expansion limit exceeded"}
+			return nil
+		}
+	}
 	if y.Kind == yaml.AliasNode {
 		if depth > maxAliasDepth || y.Alias == nil {
 			return &Node{Kind: Null, Pos: Pos{y.Line, y.Column}}
@@ -235,6 +249,9 @@ func (c *converter) convert(y *yaml.Node, path string, depth int) *Node {
 				seen[key] = kp
 			}
 			n.Keys = append(n.Keys, KeyValue{Key: key, KeyPos: kp, Value: c.convert(v, childPath, depth)})
+			if c.err != nil {
+				return nil
+			}
 		}
 		// A merge key (<<) adds the keys of the referenced mapping, or of each
 		// mapping in a sequence with earlier ones first, that the mapping does
@@ -246,6 +263,9 @@ func (c *converter) convert(y *yaml.Node, path string, depth int) *Node {
 			}
 			for _, m := range sources {
 				mn := c.convert(m, path, depth+1)
+				if c.err != nil {
+					return nil
+				}
 				for _, kv := range mn.Keys {
 					if _, ok := seen[kv.Key]; !ok {
 						seen[kv.Key] = kv.KeyPos
@@ -259,6 +279,9 @@ func (c *converter) convert(y *yaml.Node, path string, depth int) *Node {
 		n := &Node{Kind: Seq, Pos: pos}
 		for i, it := range y.Content {
 			n.Items = append(n.Items, c.convert(it, fmt.Sprintf("%s[%d]", path, i), depth))
+			if c.err != nil {
+				return nil
+			}
 		}
 		return n
 	}
