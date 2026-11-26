@@ -52,7 +52,7 @@ run = [
   "go vet ./...",
   "declscope shrink ./...",
   "declscope ./...",
-  "cd e2e/tui && go vet ./... && declscope ./...",
+  "cd e2e/tui && go vet ./... && declscope shrink ./... && declscope ./...",
 ]
 
 [tasks."lint:actions"]
