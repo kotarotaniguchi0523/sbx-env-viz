@@ -24,10 +24,18 @@ sandbox を起動する前に、最終設定・セキュリティ境界・出典
 - **稼働中 sandbox とのズレ検出** — 読み取り専用の `sbx` コマンドだけで実体と比較。シークレットの値は一切取得しません。
 - **単一静的バイナリ** — 対話 TUI、テキスト、値を厳しく伏せた JSON（`--json`）で出力。
 
-![sbxray TUI — 1:Overview](docs/images/tui-overview.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/tui-overview-dark.svg">
+  <img alt="sbxray の TUI：概要（宣言と稼働中の sandbox の照合）" src="docs/images/tui-overview-light.svg">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/tui-risk-dark.svg">
+  <img alt="sbxray の TUI：リスク一覧とズレの詳細" src="docs/images/tui-risk-light.svg">
+</picture>
 
 > [!NOTE]
-> **`sbx` v0.54.0** を前提としています（[`.github/sbx-version`](.github/sbx-version)）。静的解析の範囲外（リモート kit、`:dev` テンプレート、ホスト共通ポリシー、未知の capability）は `--text` / `--json` の **Coverage** に毎回出力され、TUI では `4:Sources` に `[未展開]` として表示されます。
+> **`sbx` v0.54.0** を前提としています（[`.github/sbx-version`](.github/sbx-version)）。静的解析の範囲外（リモート kit、`:dev` テンプレート、ホスト共通ポリシー、未知の capability）は `--text` / `--json` の **Coverage** に毎回出力され、TUI では `4 ファイル` に `未展開` として表示されます。
 
 ## インストール
 
@@ -90,21 +98,21 @@ sbxray . --json > plan.json
 
 | 画面 | 内容 |
 |---|---|
-| `1:Overview` | 基本構成・kit・マウント・MCP と通信・資格情報・SSH・ポート・ホスト実行のカード一覧 |
-| `2:Risk` | 診断・リスク項目・実体とのズレを深刻度順に表示 |
-| `3:Items` | 全項目の一覧（`g` でレイヤー別 / 境界別 / kit 別に切り替え） |
-| `4:Sources` | 入力ファイルと kit の一覧（SHA-256・未展開リモートの表示） |
+| `1 概要` | 構成の申告書。ファイルの宣言と、稼働中なら `sbx` の実体を並べ、違うところに印を付ける |
+| `2 リスク` | 診断・リスク項目・実体とのズレを深刻度順に表示 |
+| `3 設定` | 全項目の一覧（`g` でレイヤー別 / 境界別 / kit 別に切り替え） |
+| `4 ファイル` | 入力ファイルと kit の一覧（SHA-256・未展開リモートの表示） |
+
+行の印は左端に 1 つだけです（`✗` 高、`!` 中）。境界の目印の一覧は詳細ペインに出ます。色は端末の 16 色だけを使うので明るい背景でも暗い背景でも読め、印は記号なので色がなくても意味が伝わります。
 
 詳細ペインでは公式ドキュメントの見解、OWASP 等の外部基準、sbxray 独自の境界判定、上書き履歴、`file:line` の出典を日本語で表示します。マウス操作・`NO_COLOR` に対応しています。
-
-![sbxray TUI — 3:Items 詳細ペイン](docs/images/tui-items.svg)
 
 | キー | 動作 |
 |---|---|
 | `1`–`4` / `[` `]` | 画面の切り替え |
 | `j` `k` / `h` `l` | 移動 / ペイン切り替え |
 | `Enter` / `Esc` | 詳細を開く / 戻る |
-| `g` / `f` / `/` | まとめ方切り替え（`Items`）/ レイヤー絞り込み / 検索 |
+| `g` / `f` / `/` | まとめ方切り替え（`3 設定`）/ レイヤー絞り込み / 検索 |
 | `<` `>` / `s` | 対象 sandbox 切り替え / 一覧から選択 |
 | `?` / `q` | ヘルプ / 終了 |
 

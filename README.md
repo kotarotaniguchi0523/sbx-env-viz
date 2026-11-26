@@ -24,10 +24,18 @@ Inspect effective config, security boundaries, provenance, and live drift before
 - **Live drift detection** — Compare declarations against existing `sbx` sandboxes using read-only commands without ever reading secret values.
 - **Single static binary** — Output as an interactive TUI, plain text, or strictly redacted JSON (`--json`).
 
-![sbxray TUI — 1:Overview](docs/images/tui-overview.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/tui-overview-dark.svg">
+  <img alt="sbxray TUI: the Overview manifest compares declarations with a running sandbox" src="docs/images/tui-overview-light.svg">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/tui-risk-dark.svg">
+  <img alt="sbxray TUI: the Risk list beside the drift detail" src="docs/images/tui-risk-light.svg">
+</picture>
 
 > [!NOTE]
-> Targets **`sbx` v0.54.0** ([`.github/sbx-version`](.github/sbx-version)). Items outside static analysis (remote kits, `:dev` templates, host-wide policies, unknown capabilities) are always reported under **Coverage** in `--text` / `--json` and marked `[未展開]` in `4:Sources`.
+> Targets **`sbx` v0.54.0** ([`.github/sbx-version`](.github/sbx-version)). Items outside static analysis (remote kits, `:dev` templates, host-wide policies, unknown capabilities) are always reported under **Coverage** in `--text` / `--json` and marked `未展開` in `4 ファイル`.
 
 ## Installation
 
@@ -90,14 +98,14 @@ Exit codes: `0` OK, `1` `--fail-on` threshold reached, `2` invalid arguments or 
 
 | View | Description |
 |---|---|
-| `1:Overview` | Summary cards for config, kits, mounts, MCP & network, credentials, SSH, ports, and host commands |
-| `2:Risk` | Diagnostics, risky items, and live drift sorted by severity |
-| `3:Items` | All resolved items (`g` toggles grouping by Layer / Boundary / Kit) |
-| `4:Sources` | Input files and kits with SHA-256 digests and unexpanded remote markers |
+| `1 概要` (Overview) | A manifest of the configuration: what the files declare and, with live data, what `sbx` actually has, stamped where they differ |
+| `2 リスク` (Risk) | Diagnostics, risky items, and live drift sorted by severity |
+| `3 設定` (Items) | All resolved items (`g` toggles grouping by Layer / Boundary / Kit) |
+| `4 ファイル` (Sources) | Input files and kits with SHA-256 digests and unexpanded remote markers |
+
+Rows carry at most one mark in the left margin (`✗` high, `!` medium); the full list of boundary tags is in the detail pane. Colours are the terminal's own 16 ANSI colours, so light and dark themes both work, and every mark is a glyph, so nothing depends on colour.
 
 Each detail pane shows official Docker Sandboxes docs, relevant OWASP references, and sbxray's boundary assessment (currently in Japanese), along with merge history and `file:line` provenance. Supports mouse navigation and `NO_COLOR`.
-
-![sbxray TUI — 3:Items with detail pane](docs/images/tui-items.svg)
 
 | Key | Action |
 |---|---|
