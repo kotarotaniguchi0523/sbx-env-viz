@@ -137,7 +137,8 @@ sbxray . --json > plan.json
 `sbxray` はバイナリ内にバージョン一致のドキュメントとワークフローを内蔵しています（Web 検索不要）。
 
 ```sh
-sbxray skills list              # 内蔵スキルの一覧を表示
+sbxray describe                 # コマンドとフラグの仕様を JSON で表示
+sbxray skills list --json           # 内蔵スキルの一覧を表示
 sbxray skills get core          # エージェント向け基本ワークフローと JSON ガイド
 sbxray skills get core --full   # 全フラグのリファレンスも含めて出力
 ```

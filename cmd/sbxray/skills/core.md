@@ -50,3 +50,5 @@ Key top-level fields in `schemaVersion: "1"`:
 - CI gating patterns: `sbxray skills get ci`
 - Live drift comparison: `sbxray skills get live-drift`
 - List all built-in skills: `sbxray skills list`
+
+Use `sbxray describe [command]` for the CLI contract and `sbxray skills list --json` for the skill catalog.

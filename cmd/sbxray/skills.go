@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 )
 
@@ -44,7 +45,7 @@ func parseSkillDoc(raw string) (description, body string) {
 
 //declscope:shared // main.go prints this for `sbxray help skills` and `sbxray skills --help`.
 const skillsUsage = `Usage:
-  sbxray skills [list]
+  sbxray skills [list] [--json]
   sbxray skills get <name> [--full]
 
 Print version-matched documentation and agent workflows embedded in this binary.
@@ -64,47 +65,63 @@ Examples:
 
 //declscope:shared // main.go dispatches `sbxray skills ...` subcommands here.
 func runSkills(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		writeSkillList(stdout)
-		return exitOK
+	jsonMode := slices.Contains(args, "--json")
+	if len(args) > 0 && args[0] == "get" {
+		return runSkillsGet(args[1:], stdout, stderr, jsonMode)
 	}
-	switch args[0] {
-	case "-h", "--help", "help":
-		fmt.Fprint(stdout, skillsUsage)
-		return exitOK
-	case "list":
-		if len(args) > 1 {
-			if args[1] == "-h" || args[1] == "--help" {
-				fmt.Fprint(stdout, skillsUsage)
-				return exitOK
+	args = slices.DeleteFunc(args, func(s string) bool { return s == "--json" })
+	if len(args) > 0 {
+		switch args[0] {
+		case "-h", "--help", "help":
+			fmt.Fprint(stdout, skillsUsage)
+			return exitOK
+		case "list":
+			if len(args) > 1 {
+				if args[1] == "--help" || args[1] == "-h" {
+					fmt.Fprint(stdout, skillsUsage)
+					return exitOK
+				}
+				if strings.HasPrefix(args[1], "-") {
+					return report(stderr, jsonMode, problem("unknown_flag", "unknown flag "+args[1], "sbxray skills list", args[1], []string{"--json", "--help"}))
+				}
+				return report(stderr, jsonMode, problem("usage", fmt.Sprintf("unexpected argument %q", args[1]), "sbxray skills list", args[1], []string{"--json", "--help"}))
 			}
-			fmt.Fprintf(stderr, "sbxray skills list: unexpected argument %q\n\n%s", args[1], skillsUsage)
-			return exitUsage
+		default:
+			if strings.HasPrefix(args[0], "-") {
+				return report(stderr, jsonMode, problem("unknown_flag", "unknown flag "+args[0], "sbxray skills list", args[0], []string{"--json", "--help"}))
+			}
+			return report(stderr, jsonMode, problem("unknown_subcommand", fmt.Sprintf("unknown subcommand %q", args[0]), "sbxray skills list", args[0], []string{"list", "get", "help"}))
 		}
-		writeSkillList(stdout)
-		return exitOK
-	case "get":
-		return runSkillsGet(args[1:], stdout, stderr)
-	default:
-		fmt.Fprintf(stderr, "sbxray skills: unknown subcommand %q (use 'list' or 'get <name>')\n\n%s", args[0], skillsUsage)
-		return exitUsage
 	}
-}
-
-func writeSkillList(w io.Writer) {
-	fmt.Fprintln(w, "Built-in skills (run 'sbxray skills get <name>' to read):")
-	fmt.Fprintln(w)
+	type entry struct {
+		Name         string `json:"name"`
+		Description  string `json:"description"`
+		SupportsFull bool   `json:"supportsFull"`
+	}
+	var entries []entry
+	if !jsonMode {
+		fmt.Fprintln(stdout, "Built-in skills (run 'sbxray skills get <name>' to read):")
+		fmt.Fprintln(stdout)
+	}
 	for _, s := range builtinSkills {
 		raw, err := embeddedSkills.ReadFile(s.file)
 		if err != nil {
-			continue
+			return report(stderr, jsonMode, problem("load", err.Error(), "sbxray skills list", "", nil))
 		}
 		desc, _ := parseSkillDoc(string(raw))
-		fmt.Fprintf(w, "  %-12s %s\n", s.name, desc)
+		if jsonMode {
+			entries = append(entries, entry{s.name, desc, s.fullFile != ""})
+		} else {
+			fmt.Fprintf(stdout, "  %-12s %s\n", s.name, desc)
+		}
 	}
+	if jsonMode {
+		return writeJSON(stdout, stderr, true, map[string][]entry{"skills": entries})
+	}
+	return exitOK
 }
 
-func runSkillsGet(args []string, stdout, stderr io.Writer) int {
+func runSkillsGet(args []string, stdout, stderr io.Writer, jsonMode bool) int {
 	var name string
 	var full bool
 	for _, a := range args {
@@ -112,48 +129,49 @@ func runSkillsGet(args []string, stdout, stderr io.Writer) int {
 		case "-h", "--help":
 			fmt.Fprint(stdout, skillsUsage)
 			return exitOK
+		case "--json":
+			continue
 		case "--full":
 			full = true
 		default:
 			if strings.HasPrefix(a, "-") {
-				fmt.Fprintf(stderr, "sbxray skills get: unknown flag %s\n\n%s", a, skillsUsage)
-				return exitUsage
+				return report(stderr, jsonMode, problem("unknown_flag", "unknown flag "+a, "sbxray skills get core --full", a, []string{"--full", "--help"}))
 			}
 			if name != "" {
-				fmt.Fprintf(stderr, "sbxray skills get: expected one skill name, got extra %q\n\n%s", a, skillsUsage)
-				return exitUsage
+				return report(stderr, jsonMode, problem("usage", fmt.Sprintf("expected one skill name, got extra %q", a), "sbxray skills list", "", nil))
 			}
 			name = a
 		}
 	}
 	if name == "" {
-		fmt.Fprintf(stderr, "sbxray skills get: missing skill name\n\n")
-		writeSkillList(stderr)
-		return exitUsage
+		return report(stderr, jsonMode, problem("usage", "missing skill name", "sbxray skills list", "", nil))
 	}
 	for _, s := range builtinSkills {
 		if s.name != name {
 			continue
 		}
+		if jsonMode {
+			return report(stderr, true, problem("unknown_flag", "unknown flag --json for skills get", "sbxray skills list --json", "", nil))
+		}
 		raw, err := embeddedSkills.ReadFile(s.file)
 		if err != nil {
-			fmt.Fprintf(stderr, "sbxray skills get: %v\n", err)
-			return exitUsage
+			return report(stderr, jsonMode, problem("load", err.Error(), "sbxray skills list", "", nil))
 		}
 		_, body := parseSkillDoc(string(raw))
 		fmt.Fprint(stdout, body)
 		if full && s.fullFile != "" {
 			extra, err := embeddedSkills.ReadFile(s.fullFile)
 			if err != nil {
-				fmt.Fprintf(stderr, "sbxray skills get: %v\n", err)
-				return exitUsage
+				return report(stderr, jsonMode, problem("load", err.Error(), "sbxray skills list", "", nil))
 			}
 			fmt.Fprintln(stdout)
 			fmt.Fprint(stdout, string(extra))
 		}
 		return exitOK
 	}
-	fmt.Fprintf(stderr, "sbxray skills get: unknown skill %q\n\n", name)
-	writeSkillList(stderr)
-	return exitUsage
+	var names []string
+	for _, s := range builtinSkills {
+		names = append(names, s.name)
+	}
+	return report(stderr, jsonMode, problem("unknown_skill", fmt.Sprintf("unknown skill %q", name), "sbxray skills list", name, names))
 }

@@ -28,6 +28,8 @@ import (
 )
 
 // version is set with -ldflags "-X main.version=..." at release time.
+//
+//declscope:shared // describe reports the release version.
 var version = "dev"
 
 // Exit codes.
@@ -98,7 +100,8 @@ Examples:
 
 Commands:
   help [command]          Show help (e.g. 'sbxray help skills')
-  skills [list]           List built-in agent skills embedded in this binary
+  describe [command]      Print the CLI contract as JSON
+  skills [list] [--json]  List built-in agent skills embedded in this binary
   skills get <name>       Print a built-in skill guide (e.g. 'core', 'ci', 'live-drift')
 
 For coding agents:
@@ -135,11 +138,37 @@ Pass '--' before a path if a filename matches a command (e.g. 'sbxray -- help').
 Exit codes: 0 ok, 1 --fail-on threshold reached, 2 usage or parse error.
 `
 
-var valueFlags = map[string]bool{
-	"env-arg": true, "env-args-file": true, "kit-arg": true, "kit-args-file": true,
-	"name": true, "ttl": true, "on-timeout": true, "fail-on": true,
+func flagTakesValue(arg string) bool {
+	for _, f := range flags {
+		if f.Name == arg {
+			return f.Type == "string"
+		}
+	}
+	return false
+}
+func unknownFlag(arg string) error {
+	var names []string
+	for _, f := range flags {
+		names = append(names, f.Name)
+	}
+	return problem("unknown_flag", "unknown flag "+arg, "sbxray skills get core --full", arg, names)
 }
 
+func wantsJSON(args []string) bool {
+	enabled := false
+	for i := 0; i < len(args); i++ {
+		name, value, assigned := strings.Cut(args[i], "=")
+		switch {
+		case args[i] == "--":
+			return enabled
+		case name == "--json":
+			enabled = !assigned || strings.EqualFold(value, "true") || value == "1"
+		case flagTakesValue(name) && !assigned:
+			i++
+		}
+	}
+	return enabled
+}
 func parseArgs(args []string) (*options, error) {
 	o := &options{failOn: "none"}
 	for i := 0; i < len(args); i++ {
@@ -154,13 +183,13 @@ func parseArgs(args []string) (*options, error) {
 		}
 		if !strings.HasPrefix(a, "--") || a == "-" {
 			if strings.HasPrefix(a, "-") && a != "-" {
-				return nil, fmt.Errorf("unknown flag %s", a)
+				return nil, unknownFlag(a)
 			}
 			o.paths = append(o.paths, a)
 			continue
 		}
 		name, val, hasVal := strings.Cut(a[2:], "=")
-		if valueFlags[name] && !hasVal {
+		if flagTakesValue("--"+name) && !hasVal {
 			if i+1 >= len(args) {
 				return nil, fmt.Errorf("flag --%s needs a value", name)
 			}
@@ -218,7 +247,7 @@ func parseArgs(args []string) (*options, error) {
 		case "version":
 			o.version = true
 		default:
-			return nil, fmt.Errorf("unknown flag --%s", name)
+			return nil, unknownFlag("--" + name)
 		}
 		if err != nil {
 			return nil, err
@@ -228,7 +257,7 @@ func parseArgs(args []string) (*options, error) {
 	case "none", "warning", "error":
 	default:
 		if sbxenv.Severity(o.failOn).Rank() == 0 {
-			return nil, fmt.Errorf("--fail-on must be none, warning, error, critical, high, medium, or low")
+			return nil, problem("invalid_value", "--fail-on must be none, warning, error, critical, high, medium, or low", "sbxray skills get core --full", o.failOn, failOnValues)
 		}
 	}
 	if o.text && o.json {
@@ -243,7 +272,13 @@ func parseArgs(args []string) (*options, error) {
 func run(args []string, e env) int {
 	if len(args) > 0 {
 		switch args[0] {
+		case "describe":
+			return runDescribe(args[1:], e.stdout, e.stderr)
 		case "help":
+			if len(args) > 1 && args[1] == "describe" {
+				fmt.Fprint(e.stdout, describeUsage)
+				return exitOK
+			}
 			if len(args) > 1 && args[1] == "skills" {
 				fmt.Fprint(e.stdout, skillsUsage)
 				return exitOK
@@ -256,8 +291,11 @@ func run(args []string, e env) int {
 	}
 	o, err := parseArgs(args)
 	if err != nil {
-		fmt.Fprintf(e.stderr, "sbxray: %v\nHint: run 'sbxray help' or (for coding agents) 'sbxray skills get core'.\n\n%s", err, usage)
-		return exitUsage
+		detail, ok := err.(*cliError)
+		if !ok {
+			detail = problem("usage", err.Error(), "sbxray skills get core --full", "", nil)
+		}
+		return report(e.stderr, wantsJSON(args), detail)
 	}
 	if o.help {
 		fmt.Fprint(e.stdout, usage)
@@ -269,8 +307,7 @@ func run(args []string, e env) int {
 	}
 	wd, err := e.getwd()
 	if err != nil {
-		fmt.Fprintf(e.stderr, "sbxray: cannot determine the working directory\n")
-		return exitUsage
+		return report(e.stderr, o.json, problem("resolve", "cannot determine the working directory", "sbxray skills get core --full", "", nil))
 	}
 	home, _ := e.home()
 	var homeAliases []string
@@ -338,8 +375,7 @@ func run(args []string, e env) int {
 
 	plan, err := resolve(loader.Request{Paths: o.paths, EnvArgsFiles: o.envArgsFiles, KitArgsFiles: o.kitArgsFiles, WorkDir: wd, HomeDir: home})
 	if err != nil {
-		fmt.Fprintf(e.stderr, "sbxray: %s\nHint: run 'sbxray help' or (for coding agents) 'sbxray skills get core --full'.\n", shorten(err.Error()))
-		return exitUsage
+		return report(e.stderr, o.json, problem("resolve", shorten(err.Error()), "sbxray skills get core --full", "", nil))
 	}
 	var target *live.Target
 	if o.live {
@@ -369,8 +405,7 @@ func run(args []string, e env) int {
 		}
 	}
 	if err != nil {
-		fmt.Fprintf(e.stderr, "sbxray: %s\n", shorten(err.Error()))
-		return exitUsage
+		return report(e.stderr, o.json, problem("output", shorten(err.Error()), "sbxray skills get core --full", "", nil))
 	}
 	var cmp *live.Comparison
 	if target != nil {

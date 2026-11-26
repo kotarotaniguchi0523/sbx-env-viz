@@ -137,7 +137,8 @@ Each detail pane shows official Docker Sandboxes docs, relevant OWASP references
 `sbxray` embeds version-matched documentation and workflows directly in the binary (no web search needed):
 
 ```sh
-sbxray skills list              # list built-in skills
+sbxray describe                 # CLI contract as JSON
+sbxray skills list --json           # list built-in skills
 sbxray skills get core          # core agent workflow & JSON output guide
 sbxray skills get core --full   # include full flag reference
 ```

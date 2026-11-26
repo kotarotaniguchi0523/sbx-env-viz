@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -695,5 +696,94 @@ func TestDoubleDashAllowsFilenameMatchingSubcommand(t *testing.T) {
 
 	if r.code != 0 || !strings.Contains(r.stdout, "宣言の静的解析") {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", r.code, r.stdout, r.stderr)
+	}
+}
+
+func TestDiscovery(t *testing.T) {
+	t.Parallel()
+	s := newSandbox(t)
+	schema := s.run(t, "describe")
+	if schema.code != 0 || schema.stderr != "" {
+		t.Fatal(schema)
+	}
+	doc := schema.json(t)
+	for _, key := range []string{"version", "schemaVersion", "targetSbxVersion", "exitCodes", "commands", "flags", "jsonOutputFields"} {
+		if doc[key] == nil {
+			t.Errorf("missing %s", key)
+		}
+	}
+	if doc["name"] != "sbxray" || s.run(t, "describe", "--json") != schema {
+		t.Fatal("inconsistent describe contract")
+	}
+	for _, cmd := range []string{"skills", "help", "describe"} {
+		r := s.run(t, "describe", cmd)
+		topic := r.json(t)
+		if r.code != 0 || topic["name"] != cmd || topic["usage"] == nil {
+			t.Fatal(r)
+		}
+		if cmd == "skills" && len(topic["subcommands"].([]any)) != 2 {
+			t.Fatal(topic)
+		}
+	}
+	help := s.run(t, "help", "describe")
+	if help.code != 0 || !strings.Contains(help.stdout, "Usage: sbxray describe") || s.run(t, "describe", "--help") != help {
+		t.Fatal(help)
+	}
+	list := s.run(t, "skills", "list", "--json")
+	if list.code != 0 || list != s.run(t, "skills", "--json") {
+		t.Fatal(list)
+	}
+	skills := list.json(t)["skills"].([]any)
+	if len(skills) != 3 {
+		t.Fatal(skills)
+	}
+	for _, v := range skills {
+		entry := v.(map[string]any)
+		if entry["description"] == "" || entry["supportsFull"] != (entry["name"] == "core") {
+			t.Fatal(entry)
+		}
+	}
+	s.write(t, "describe", minimal)
+	if r := s.run(t, "--", "describe"); r.code != 0 || !strings.Contains(r.stdout, "宣言の静的解析") {
+		t.Fatal(r)
+	}
+}
+
+func TestActionableErrors(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		args               []string
+		message, candidate string
+	}{
+		{[]string{"--jsno"}, "unknown flag", "--json"},
+		{[]string{"--fail-on=warnng"}, "--fail-on", "warning"},
+		{[]string{"skills", "get", "cor"}, "unknown skill", "core"},
+		{[]string{"skills", "lst"}, "unknown subcommand", "list"},
+		{[]string{"describe", "skils"}, "unknown command", "skills"},
+		{nil, "no environment file", ""},
+	} {
+		t.Run(tc.message, func(t *testing.T) {
+			t.Parallel()
+			s := newSandbox(t)
+			plain := s.run(t, tc.args...)
+			if plain.code != 2 || plain.stdout != "" || !strings.Contains(plain.stderr, "next_step: sbxray ") || !strings.Contains(plain.stderr, tc.message) || (tc.candidate != "" && !strings.Contains(plain.stderr, "candidates:")) {
+				t.Fatal(plain)
+			}
+			r := s.run(t, append(tc.args, "--json")...)
+			var doc struct {
+				Error struct {
+					Code, Message string
+					Next          string `json:"next_step"`
+					Candidates    []string
+				}
+			}
+			if r.code != 2 || r.stdout != "" || json.Unmarshal([]byte(r.stderr), &doc) != nil {
+				t.Fatal(r)
+			}
+			e := doc.Error
+			if e.Code == "" || !strings.Contains(e.Message, tc.message) || !strings.HasPrefix(e.Next, "sbxray ") || (tc.candidate != "" && !slices.Contains(e.Candidates, tc.candidate)) || (tc.candidate == "" && e.Candidates != nil) {
+				t.Fatal(e)
+			}
+		})
 	}
 }

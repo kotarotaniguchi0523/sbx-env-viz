@@ -47,3 +47,5 @@ Paths and flags mirror `sbx env create`. Passing a directory reads `<dir>/sbxenv
 - **`multiple YAML documents`**: `sbxenv*.yaml` must contain a single YAML document (`---` document separators are rejected).
 - **Filename matches subcommand**: Use `--` before positional paths (e.g. `sbxray --json -- help`).
 - **`--text and --json cannot be combined`** / **`--live and --offline cannot be combined`**: Pass only one flag from each pair.
+
+With `--json`, read `error.message`, optional `error.candidates`, and `error.next_step` from stderr. Use `sbxray describe` to check flags or `sbxray skills list --json` to find a guide.
