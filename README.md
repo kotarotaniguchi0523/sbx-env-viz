@@ -208,7 +208,7 @@ betterleaks git --redact --no-banner .   # 全履歴から秘密情報を探す
 nix flake check       # Nix でビルドし、--version が動くかを確かめる
 ```
 
-`mise run mutation` は Gremlins で `internal/parser` の条件や演算子を変え、Go のテストがその変更を検出できるかを調べます。検出率（KILLED / (KILLED + LIVED)）が 76% を下回ると CI が失敗します。未検出の変異はログの `LIVED` にファイルと行が出ます。
+`mise run mutation` は Gremlins で `internal/parser` の条件や演算子を変え、Go のテストがその変更を検出できるかを調べます。検出率と変異のカバレッジの両方に 100% を要求します。未検出の変異はログの `LIVED` にファイルと行が出ます。
 
 declscope は、ファイルの中だけで使うはずの宣言が別のファイルから使われていないかを検査します。複数のファイルで共有する宣言には `//declscope:shared // <使う側と理由>` を付けます。`declscope shrink` は、`internal/` の公開名のうちパッケージの外から使われていないものを見つけます。どちらも指摘が 1 件でもあれば lint が失敗します（ベースラインは置いていません）。
 

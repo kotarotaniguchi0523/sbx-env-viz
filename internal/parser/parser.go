@@ -151,12 +151,8 @@ func Parse(data []byte) (*Result, error) {
 		return nil, sanitizeYAMLError(err)
 	}
 	c := &converter{}
-	var root *Node
-	if doc.Kind == yaml.DocumentNode && len(doc.Content) > 0 {
-		root = c.convert(doc.Content[0], "", 0)
-	} else {
-		root = &Node{Kind: Null, Pos: Pos{Line: 1, Col: 1}}
-	}
+	// A successful yaml.v3 document parse has exactly one root child.
+	root := c.convert(doc.Content[0], "", 0)
 	if c.err != nil {
 		return nil, c.err
 	}
@@ -168,8 +164,8 @@ func Parse(data []byte) (*Result, error) {
 func sanitizeYAMLError(err error) error {
 	msg := err.Error()
 	line := 0
-	if i := strings.Index(msg, "line "); i >= 0 {
-		fmt.Sscanf(msg[i:], "line %d", &line)
+	if _, tail, ok := strings.Cut(msg, "line "); ok {
+		fmt.Sscanf(tail, "%d", &line)
 	}
 	reason := "the document could not be parsed"
 	switch {
@@ -234,7 +230,7 @@ func (c *converter) convert(y *yaml.Node, path string, depth int) *Node {
 		n := &Node{Kind: Map, Pos: pos}
 		seen := map[string]Pos{}
 		var merged []*yaml.Node
-		for i := 0; i+1 < len(y.Content); i += 2 {
+		for i := 0; i < len(y.Content); i += 2 {
 			k, v := y.Content[i], y.Content[i+1]
 			if k.ShortTag() == "!!merge" {
 				merged = append(merged, v)
@@ -258,8 +254,12 @@ func (c *converter) convert(y *yaml.Node, path string, depth int) *Node {
 		// not set itself. Explicit keys win wherever they appear.
 		for _, src := range merged {
 			sources := []*yaml.Node{src}
-			if deref(src).Kind == yaml.SequenceNode {
-				sources = deref(src).Content
+			// yaml.v3 resolves aliases to anchored scalars or collections.
+			if src.Kind == yaml.AliasNode {
+				src = src.Alias
+			}
+			if src.Kind == yaml.SequenceNode {
+				sources = src.Content
 			}
 			for _, m := range sources {
 				mn := c.convert(m, path, depth+1)
@@ -286,13 +286,6 @@ func (c *converter) convert(y *yaml.Node, path string, depth int) *Node {
 		return n
 	}
 	return &Node{Kind: Null, Pos: pos}
-}
-
-func deref(y *yaml.Node) *yaml.Node {
-	for i := 0; y.Kind == yaml.AliasNode && y.Alias != nil && i < maxAliasDepth; i++ {
-		y = y.Alias
-	}
-	return y
 }
 
 func joinPath(parent, key string) string {

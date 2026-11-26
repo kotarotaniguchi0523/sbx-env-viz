@@ -2,6 +2,7 @@ package parser_test
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -42,6 +43,9 @@ func TestPositionsAreOneBased(t *testing.T) {
 	// Assert
 	if err != nil {
 		t.Fatal(err)
+	}
+	if p, ok := res.Root.KeyPos("a"); !ok || p != (parser.Pos{Line: 1, Col: 1}) {
+		t.Errorf("first key position = %+v, found=%v", p, ok)
 	}
 	c := res.Root.Get("b").Get("c")
 	if c.Pos.Line != 3 || !c.Quoted {
@@ -112,32 +116,57 @@ func TestOnlyOneDocumentIsAccepted(t *testing.T) {
 	}
 }
 
-func TestSyntaxErrorsCarryALineButNoContent(t *testing.T) {
-	t.Parallel()
-	// Arrange
-	doc := []byte("a: 1\nb: \"SECRETVALUE\n")
-
-	// Act
-	_, err := parser.Parse(doc)
-
-	// Assert
-	var se *parser.SyntaxError
-	if !errors.As(err, &se) {
-		t.Fatalf("want *parser.SyntaxError, got %v", err)
-	}
-	if strings.Contains(err.Error(), "SECRETVALUE") {
-		t.Errorf("error quotes content: %v", err)
+func TestSyntaxErrorsHideInputAndPreserveKnownLine(t *testing.T) {
+	for _, tc := range []struct {
+		doc     string
+		line    int
+		message string
+	}{
+		{"a: ok\nb: value: PRIVATE\n", 2, "YAML syntax error at line 2: mapping values are not allowed in this context"},
+		{"a: *PRIVATE\n", 0, "YAML syntax error: unknown anchor"},
+	} {
+		_, err := parser.Parse([]byte(tc.doc))
+		var se *parser.SyntaxError
+		if !errors.As(err, &se) || se.Line != tc.line || err.Error() != tc.message {
+			t.Fatalf("got %v, want %q", err, tc.message)
+		}
 	}
 }
 
-func TestAliasesResolveToTheirAnchor(t *testing.T) {
-	t.Parallel()
-	// Act
-	res, err := parser.Parse([]byte("base: &b\n  x: 1\nother: *b\n"))
+func TestAliasesAndMergeSequencePreservePrecedence(t *testing.T) {
+	res, err := parser.Parse([]byte("a: &a {shared: first, x: 1}\nb: &b {shared: later, y: 2}\nseq: &seq [*a, *b]\nmerged: {<<: *seq, x: override}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for k, want := range map[string]string{"shared": "first", "x": "override", "y": "2"} {
+		got := res.Root.Get("merged").Get(k)
+		if got == nil || got.Value != want {
+			t.Errorf("merged.%s = %+v, want %q", k, got, want)
+		}
+	}
+	if got := res.Root.Get("seq").Items[0].Get("x"); got == nil || got.Value != "1" {
+		t.Fatalf("plain alias: %+v", got)
+	}
+}
 
-	// Assert
-	if err != nil || res.Root.Get("other").Get("x").Value != "1" {
-		t.Errorf("alias did not resolve: %v", err)
+func TestAliasDepthBoundary(t *testing.T) {
+	var doc strings.Builder
+	doc.WriteString("base: &a0 value\n")
+	for i := 1; i <= 34; i++ {
+		fmt.Fprintf(&doc, "level%d: &a%d [*a%d]\n", i, i, i-1)
+	}
+	res, err := parser.Parse([]byte(doc.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, depth := range []int{33, 34} {
+		n := res.Root.Get(fmt.Sprintf("level%d", depth))
+		for n.Kind == parser.Seq {
+			n = n.Items[0]
+		}
+		if depth == 33 && n.Value != "value" || depth == 34 && n.Kind != parser.Null {
+			t.Errorf("depth %d: %+v", depth, n)
+		}
 	}
 }
 
@@ -187,16 +216,5 @@ func TestAliasExpansionAcceptsExactlyTheBudget(t *testing.T) {
 		if (err == nil) != tc.accepted {
 			t.Fatalf("%d elements: %v", tc.count, err)
 		}
-	}
-}
-
-func TestKeyPositionIncludesFirstEntry(t *testing.T) {
-	doc, err := parser.Parse([]byte("first: 1\nsecond: 2\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	pos, ok := doc.Root.KeyPos("first")
-	if !ok || pos != (parser.Pos{Line: 1, Col: 1}) {
-		t.Fatalf("first key: %+v, found=%v", pos, ok)
 	}
 }

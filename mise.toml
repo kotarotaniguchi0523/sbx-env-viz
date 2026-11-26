@@ -39,7 +39,7 @@ run = "go test -race ./..."
 
 [tasks.mutation]
 description = "Check parser test efficacy with Gremlins"
-run = "gremlins unleash ./internal/parser --workers 2 --timeout-coefficient 15 --threshold-efficacy 76"
+run = "gremlins unleash ./internal/parser --workers 2 --timeout-coefficient 15 --threshold-efficacy 100 --threshold-mcover 100"
 
 [tasks.build]
 description = "Static build for the current platform"
