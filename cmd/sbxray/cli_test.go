@@ -639,3 +639,55 @@ func TestLiveQueriesOnlyTheMatchedSandbox(t *testing.T) {
 		t.Errorf("queried an unrelated sandbox: %s", calls)
 	}
 }
+
+func TestHelpAndSkillsSubcommands(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		args []string
+		want []string
+		code int
+	}{
+		{"help command", []string{"help"}, []string{"Usage: sbxray", "For coding agents:", "sbxray skills get core"}, 0},
+		{"help skills", []string{"help", "skills"}, []string{"sbxray skills get <name>", "--full"}, 0},
+		{"skills default lists", []string{"skills"}, []string{"core", "ci", "live-drift"}, 0},
+		{"skills list", []string{"skills", "list"}, []string{"core", "ci", "live-drift"}, 0},
+		{"skills get core", []string{"skills", "get", "core"}, []string{"Rules for Agents", "--json"}, 0},
+		{"skills get core full", []string{"skills", "get", "core", "--full"}, []string{"Rules for Agents", "Full Flag Reference", "--fail-on"}, 0},
+		{"skills get ci", []string{"skills", "get", "ci"}, []string{"CI & Pull Request Gating", "--fail-on"}, 0},
+		{"skills get live-drift", []string{"skills", "get", "live-drift"}, []string{"Live Sandbox Drift", "--live"}, 0},
+		{"skills unknown", []string{"skills", "get", "nope"}, []string{"unknown skill"}, 2},
+		{"skills missing name", []string{"skills", "get"}, []string{"missing skill name"}, 2},
+		{"skills unknown subcommand", []string{"skills", "nope"}, []string{"unknown subcommand"}, 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := newSandbox(t)
+
+			r := s.run(t, tc.args...)
+
+			if r.code != tc.code {
+				t.Fatalf("exit %d, want %d\nstdout: %s\nstderr: %s", r.code, tc.code, r.stdout, r.stderr)
+			}
+			out := r.stdout + r.stderr
+			for _, w := range tc.want {
+				if !strings.Contains(out, w) {
+					t.Errorf("output missing %q:\n%s", w, out)
+				}
+			}
+		})
+	}
+}
+
+func TestDoubleDashAllowsFilenameMatchingSubcommand(t *testing.T) {
+	t.Parallel()
+	s := newSandbox(t)
+	s.write(t, "help", minimal)
+
+	r := s.run(t, "--text", "--", "help")
+
+	if r.code != 0 || !strings.Contains(r.stdout, "宣言の静的解析") {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", r.code, r.stdout, r.stderr)
+	}
+}

@@ -1,6 +1,6 @@
 # AGENTS.md: sbxray の作業ルール
 
-このリポジトリは **Public** です。設計は [`DESIGN.md`](DESIGN.md)、使い方と自動チェックの一覧は [`README.md`](README.md) にあります。このファイルにはエージェント（Claude Code など）が守るルールだけを書きます。
+このリポジトリは **Public** です。設計は [`DESIGN.md`](DESIGN.md)、使い方と自動チェックの一覧は [`README.md`](README.md)（日本語版: [`README.ja.md`](README.ja.md)）にあります。このファイルにはエージェント（Claude Code など）が守るルールだけを書きます。
 
 ## してはいけないこと
 
@@ -12,7 +12,7 @@
 
 ## 版の固定と更新
 
-ルールは README の「[リポジトリの運用ルール](README.md#リポジトリの運用ルール)」のとおり（版の完全な固定、2 日ルール、更新は PR だけで行う）。手で lock を作り直すときは次を使う。
+ツール・Actions・Go モジュール・nixpkgs は版を完全固定し、公開から 2 日以上たった版を PR 経由でのみ更新する。手で lock を作り直すときは次を使う。
 
 - `mise.toml` を変えたら `tools/ci/mise-lock.sh --write`、`go.mod` / `go.sum` を変えたら `tools/ci/vendor-hash.sh --write` を実行する（CI はどちらも `--check` で確かめる）。
 - `nix flake update` は使わない。`flake.lock` は `tools/ci/flake-lock-update.sh`（公開から 2 日以上たったコミットだけを使う）で更新する。

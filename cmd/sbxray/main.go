@@ -31,11 +31,14 @@ import (
 var version = "dev"
 
 // Exit codes.
+//
+//declscope:shared // skills.go returns the same CLI exit codes.
 const (
-	exitOK        = 0
-	exitThreshold = 1
-	exitUsage     = 2
+	exitOK    = 0
+	exitUsage = 2
 )
+
+const exitThreshold = 1
 
 func main() {
 	os.Exit(run(os.Args[1:], env{
@@ -80,46 +83,55 @@ type options struct {
 }
 
 const usage = `Usage: sbxray [PATH...] [flags]
+       sbxray <command> [args]
 
-Statically resolves sbx environment files (sbxenv.yaml) and local kits and
-shows the effective configuration, provenance, boundaries, and diagnostics.
-Paths and flags mirror "sbx env create". A directory means <dir>/sbxenv.yaml;
-with no path, ./sbxenv.yaml is merged over ~/.sbxenv.yaml.
+Statically resolves Docker Sandboxes environment files (sbxenv*.yaml) and local
+kits (./kits/*) offline, showing effective config, provenance, boundaries,
+diagnostics, and optional read-only drift against running sandboxes.
 
-With no path in a terminal (TUI), it also finds sandboxes automatically:
-read-only "sbx ls / policy ls / secret ls / mcp ls --json" list the
-existing sandboxes, sbxenv*.yaml files are searched in the working
-directory and next to each workspace, declarations are paired with
-sandboxes, and differences (drift) are shown. Without sbx, or when the
-daemon is stopped, only the files are analysed. Secret values are never
-requested.
+Examples:
+  sbxray                                  Interactive TUI (auto-discovers files & sandboxes)
+  sbxray --json                           Structured, strictly redacted JSON output
+  sbxray base.sbxenv.yaml local.sbxenv.yaml --env-arg workspace=./app
+  sbxray . --text --fail-on=warning       CI gate (exit 1 on warnings or errors)
+  sbxray . --json --live                  Include read-only live sandbox drift
 
-Output (default: TUI when stdin and stdout are terminals and TERM != dumb,
-otherwise text):
-  --text                  plain text summary
-  --json                  schemaVersion "1" JSON IR (strictly redacted)
-  --redact                strict redaction for TUI / text too
-  --fail-on LEVEL         exit 1 when reached. none (default) | warning | error
-                          (diagnostic levels) | critical | high | medium | low
-                          (the Risk view's scale: diagnostics, risky items, and
-                          drift with --live; analysis coverage is not counted)
-  --live                  also read existing sandboxes from sbx (any output)
-  --offline               never run sbx (the default for paths, --text, --json)
+Commands:
+  help [command]          Show help (e.g. 'sbxray help skills')
+  skills [list]           List built-in agent skills embedded in this binary
+  skills get <name>       Print a built-in skill guide (e.g. 'core', 'ci', 'live-drift')
 
-sbx env flags:
-  --env-arg NAME=VALUE    environment argument (repeatable)
+For coding agents:
+  Always use --json (preferred) or --text instead of the interactive TUI.
+  Run 'sbxray skills get core' (or 'sbxray skills list') to read version-matched
+  instructions directly from this binary without searching the web.
+
+Output & mode flags (default: TUI on a TTY, otherwise --text):
+  --json                  Emit schemaVersion "1" JSON IR (strictly redacted)
+  --text                  Emit plain-text summary
+  --redact                Apply strict redaction to TUI / --text too
+  --fail-on LEVEL         Exit 1 when reached: none (default) | warning | error |
+                          critical | high | medium | low
+  --live                  Compare against running sbx sandboxes (read-only)
+  --offline               Never run sbx (default for explicit paths, --text, --json)
+
+sbx env create compatible flags:
+  --env-arg NAME=VALUE    Environment argument (repeatable; highest priority)
   --env-args-file FILE    NAME=VALUE lines (repeatable; later files win)
-  --kit-arg [KIT.]NAME=VALUE  kit argument override (repeatable)
-  --kit-args-file FILE    kit argument lines (repeatable)
-  --name NAME             sandbox name override
-  --clone[=true|false]    override workspace.clone
-  --skip-host-commands    treat lifecycle and local MCP commands as skipped
-  --cloud                 analyse for sbx --cloud
-  --ttl DURATION          cloud expiration (with --cloud)
-  --on-timeout ACTION     cloud expiration action (with --cloud)
+  --kit-arg [KIT.]NAME=VALUE  Override kit argument (repeatable)
+  --kit-args-file FILE    Kit argument lines (repeatable)
+  --name NAME             Override sandbox name
+  --clone[=true|false]    Override workspace.clone
+  --skip-host-commands    Treat lifecycle and local MCP commands as skipped
+  --cloud                 Validate for sbx --cloud
+  --ttl DURATION          Cloud expiration (with --cloud)
+  --on-timeout ACTION     Cloud expiration action (with --cloud)
 
-  --version, -h/--help
+General flags:
+  --version               Print version, IR schema, and target sbx version
+  -h, --help              Show this help
 
+Pass '--' before a path if a filename matches a command (e.g. 'sbxray -- help').
 Exit codes: 0 ok, 1 --fail-on threshold reached, 2 usage or parse error.
 `
 
@@ -229,9 +241,22 @@ func parseArgs(args []string) (*options, error) {
 }
 
 func run(args []string, e env) int {
+	if len(args) > 0 {
+		switch args[0] {
+		case "help":
+			if len(args) > 1 && args[1] == "skills" {
+				fmt.Fprint(e.stdout, skillsUsage)
+				return exitOK
+			}
+			fmt.Fprint(e.stdout, usage)
+			return exitOK
+		case "skills":
+			return runSkills(args[1:], e.stdout, e.stderr)
+		}
+	}
 	o, err := parseArgs(args)
 	if err != nil {
-		fmt.Fprintf(e.stderr, "sbxray: %v\n\n%s", err, usage)
+		fmt.Fprintf(e.stderr, "sbxray: %v\nHint: run 'sbxray help' or (for coding agents) 'sbxray skills get core'.\n\n%s", err, usage)
 		return exitUsage
 	}
 	if o.help {
