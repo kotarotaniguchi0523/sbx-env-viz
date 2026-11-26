@@ -1,3 +1,7 @@
+---
+name: ci
+description: CI and pull request gating with --fail-on, --redact, and --cloud
+---
 # sbxray — CI & Pull Request Gating
 
 Use `sbxray` in CI or automated review to fail fast on misconfigurations and high-risk boundary changes without needing Docker or `sbx`.

@@ -338,7 +338,7 @@ func run(args []string, e env) int {
 
 	plan, err := resolve(loader.Request{Paths: o.paths, EnvArgsFiles: o.envArgsFiles, KitArgsFiles: o.kitArgsFiles, WorkDir: wd, HomeDir: home})
 	if err != nil {
-		fmt.Fprintf(e.stderr, "sbxray: %s\n", shorten(err.Error()))
+		fmt.Fprintf(e.stderr, "sbxray: %s\nHint: run 'sbxray help' or (for coding agents) 'sbxray skills get core --full'.\n", shorten(err.Error()))
 		return exitUsage
 	}
 	var target *live.Target

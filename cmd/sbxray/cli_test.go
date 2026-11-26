@@ -181,6 +181,9 @@ func TestUsageAndParseErrorsExitTwo(t *testing.T) {
 			if !strings.Contains(r.stderr, tc.msg) {
 				t.Errorf("stderr %q should mention %q", r.stderr, tc.msg)
 			}
+			if !strings.Contains(r.stderr, "sbxray skills get core") {
+				t.Errorf("stderr %q should guide coding agents to embedded skills", r.stderr)
+			}
 		})
 	}
 }
@@ -653,7 +656,7 @@ func TestHelpAndSkillsSubcommands(t *testing.T) {
 		{"skills default lists", []string{"skills"}, []string{"core", "ci", "live-drift"}, 0},
 		{"skills list", []string{"skills", "list"}, []string{"core", "ci", "live-drift"}, 0},
 		{"skills get core", []string{"skills", "get", "core"}, []string{"Rules for Agents", "--json"}, 0},
-		{"skills get core full", []string{"skills", "get", "core", "--full"}, []string{"Rules for Agents", "Full Flag Reference", "--fail-on"}, 0},
+		{"skills get core full", []string{"skills", "get", "core", "--full"}, []string{"Rules for Agents", "Full Flag Reference", "Troubleshooting Common Exit 2 Errors", "--fail-on"}, 0},
 		{"skills get ci", []string{"skills", "get", "ci"}, []string{"CI & Pull Request Gating", "--fail-on"}, 0},
 		{"skills get live-drift", []string{"skills", "get", "live-drift"}, []string{"Live Sandbox Drift", "--live"}, 0},
 		{"skills unknown", []string{"skills", "get", "nope"}, []string{"unknown skill"}, 2},
@@ -671,6 +674,9 @@ func TestHelpAndSkillsSubcommands(t *testing.T) {
 				t.Fatalf("exit %d, want %d\nstdout: %s\nstderr: %s", r.code, tc.code, r.stdout, r.stderr)
 			}
 			out := r.stdout + r.stderr
+			if strings.HasPrefix(r.stdout, "---\n") {
+				t.Errorf("skills output should strip YAML frontmatter:\n%s", r.stdout)
+			}
 			for _, w := range tc.want {
 				if !strings.Contains(out, w) {
 					t.Errorf("output missing %q:\n%s", w, out)

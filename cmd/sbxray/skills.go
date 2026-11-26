@@ -11,29 +11,35 @@ import (
 var embeddedSkills embed.FS
 
 type builtinSkill struct {
-	name        string
-	description string
-	file        string
-	fullFile    string
+	name     string
+	file     string
+	fullFile string
 }
 
 var builtinSkills = []builtinSkill{
-	{
-		name:        "core",
-		description: "Core agent workflow, JSON IR schema, and rules (--full adds flag reference)",
-		file:        "skills/core.md",
-		fullFile:    "skills/core_full.md",
-	},
-	{
-		name:        "ci",
-		description: "CI and pull request gating with --fail-on, --redact, and --cloud",
-		file:        "skills/ci.md",
-	},
-	{
-		name:        "live-drift",
-		description: "Read-only comparison against running sbx sandboxes with --live",
-		file:        "skills/live-drift.md",
-	},
+	{name: "core", file: "skills/core.md", fullFile: "skills/core_full.md"},
+	{name: "ci", file: "skills/ci.md"},
+	{name: "live-drift", file: "skills/live-drift.md"},
+}
+
+// parseSkillDoc splits optional YAML frontmatter (--- ... ---) from a skill
+// markdown document and returns its description and body.
+func parseSkillDoc(raw string) (description, body string) {
+	if !strings.HasPrefix(raw, "---\n") {
+		return "", raw
+	}
+	rest := raw[len("---\n"):]
+	fm, after, ok := strings.Cut(rest, "\n---\n")
+	if !ok {
+		return "", raw
+	}
+	for _, line := range strings.Split(fm, "\n") {
+		k, v, found := strings.Cut(line, ":")
+		if found && strings.TrimSpace(k) == "description" {
+			description = strings.TrimSpace(v)
+		}
+	}
+	return description, after
 }
 
 //declscope:shared // main.go prints this for `sbxray help skills` and `sbxray skills --help`.
@@ -89,7 +95,12 @@ func writeSkillList(w io.Writer) {
 	fmt.Fprintln(w, "Built-in skills (run 'sbxray skills get <name>' to read):")
 	fmt.Fprintln(w)
 	for _, s := range builtinSkills {
-		fmt.Fprintf(w, "  %-12s %s\n", s.name, s.description)
+		raw, err := embeddedSkills.ReadFile(s.file)
+		if err != nil {
+			continue
+		}
+		desc, _ := parseSkillDoc(string(raw))
+		fmt.Fprintf(w, "  %-12s %s\n", s.name, desc)
 	}
 }
 
@@ -124,12 +135,13 @@ func runSkillsGet(args []string, stdout, stderr io.Writer) int {
 		if s.name != name {
 			continue
 		}
-		body, err := embeddedSkills.ReadFile(s.file)
+		raw, err := embeddedSkills.ReadFile(s.file)
 		if err != nil {
 			fmt.Fprintf(stderr, "sbxray skills get: %v\n", err)
 			return exitUsage
 		}
-		fmt.Fprint(stdout, string(body))
+		_, body := parseSkillDoc(string(raw))
+		fmt.Fprint(stdout, body)
 		if full && s.fullFile != "" {
 			extra, err := embeddedSkills.ReadFile(s.fullFile)
 			if err != nil {

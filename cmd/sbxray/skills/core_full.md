@@ -27,8 +27,8 @@ Paths and flags mirror `sbx env create`. Passing a directory reads `<dir>/sbxenv
 | `--clone[=true\|false]` | No | Override `workspace.clone` |
 | `--skip-host-commands` | No | Treat lifecycle and local stdio MCP commands as skipped |
 | `--cloud` | No | Validate for `sbx --cloud` (flags unsupported fields) |
-| `--ttl DURATION` | No | Cloud expiration (with `--cloud`) |
-| `--on-timeout ACTION` | No | Cloud expiration action (with `--cloud`) |
+| `--ttl DURATION` | No | Cloud expiration (with --cloud) |
+| `--on-timeout ACTION` | No | Cloud expiration action (with --cloud) |
 
 ## Expressions & Local Kits
 
@@ -40,3 +40,10 @@ Paths and flags mirror `sbx env create`. Passing a directory reads `<dir>/sbxenv
 
 - Secret values (`secrets.*.value`, string-form `secrets`) and URL credentials (`user:token@`) are never emitted in any mode.
 - `--json` and `--redact` additionally redact env values, arg values (including interpolated path/port/domain segments), command bodies, `op://` vault details, and URL paths/queries.
+
+## Troubleshooting Common Exit 2 Errors
+
+- **`no environment file`**: No `./sbxenv.yaml` or `~/.sbxenv.yaml` was found. Pass an explicit file or directory path (e.g. `sbxray path/to/sbxenv.yaml --json`).
+- **`multiple YAML documents`**: `sbxenv*.yaml` must contain a single YAML document (`---` document separators are rejected).
+- **Filename matches subcommand**: Use `--` before positional paths (e.g. `sbxray --json -- help`).
+- **`--text and --json cannot be combined`** / **`--live and --offline cannot be combined`**: Pass only one flag from each pair.

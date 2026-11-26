@@ -1,3 +1,7 @@
+---
+name: live-drift
+description: Read-only comparison against running sbx sandboxes with --live
+---
 # sbxray — Live Sandbox Drift Comparison
 
 Compare declarative `sbxenv*.yaml` files against existing `sbx` sandboxes safely.

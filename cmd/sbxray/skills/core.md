@@ -1,3 +1,7 @@
+---
+name: core
+description: Core agent workflow, exit codes, JSON IR fields, and rules (--full adds flag reference, JSON schema example, and troubleshooting)
+---
 # sbxray — Core Workflow for Coding Agents
 
 `sbxray` statically inspects Docker Sandboxes (`sbxenv*.yaml` and `./kits/*`) offline and optionally compares declarations against running `sbx` sandboxes using read-only commands.
@@ -32,7 +36,8 @@ sbxray . --json --live
 
 Key top-level fields in `schemaVersion: "1"`:
 
-- `meta`: `schemaVersion`, `targetSbxVersion`, `redaction` (`strict`), `sources[]` (id, path, sha256)
+- `meta`: `schemaVersion`, `targetSbxVersion`, `redaction` (`strict`), `sources[]` (`id`, `path`, `sha256`)
+- `invocation`: resolved CLI options (`projectDir`, `name`, `clone`, `skipHostCommands`, `cloud`, etc.)
 - `summary`: counts (`hostExec`, `hostPersistent`, `rwMounts`, `egressAllows`, `errors`, `warnings`)
 - `diagnostics[]`: `level` (`error` | `warning` | `info`), `code`, `message`, `origin`
 - `items[]`: resolved effective settings with `id`, `value`, `severity`, `badges`, `origins[]`, `history[]`
@@ -41,7 +46,7 @@ Key top-level fields in `schemaVersion: "1"`:
 
 ## Need More Detail?
 
-- Full flag & workflow reference: `sbxray skills get core --full`
+- Full flag reference, JSON structure & troubleshooting: `sbxray skills get core --full`
 - CI gating patterns: `sbxray skills get ci`
 - Live drift comparison: `sbxray skills get live-drift`
 - List all built-in skills: `sbxray skills list`
