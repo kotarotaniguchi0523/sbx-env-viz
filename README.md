@@ -24,28 +24,7 @@ Inspect effective config, security boundaries, provenance, and live drift before
 - **Live drift detection** — Compare declarations against existing `sbx` sandboxes using read-only commands without ever reading secret values.
 - **Single static binary** — Output as an interactive TUI, plain text, or strictly redacted JSON (`--json`).
 
-```text
-╭────────────────────────────────────────────────────────────────────────────────╮
-│ sbxray   1:Overview   2:Risk   3:Items   4:Sources                             │
-│Host実行2 永続4 RW2 許可3 E0 W5                                                 │
-│宣言の静的解析（稼働中 sandbox の状態ではない） env-args: workspace=./web-app (…│
-│絞り込み  全て   L1   L2   K1   K2                                              │
-│╭──────────────────────────────────────────────────────────────────────────────╮│
-││● 一覧 · Risk（24 件）                                                        ││
-││ HIGH  [WARNING] 認証情報の差し込み先が未承認                                 ││
-││ HIGH  [WARNING] ポートが外部ネットワークに公開される                         ││
-││ HIGH  [WARNING] SSH 鍵で何にでも署名できる                                   ││
-││ HIGH  [CRED][HOST][OPAQUE] secrets.github = command: gh auth token           ││
-││ HIGH  [!] ports[3000/tcp4] = 0.0.0.0:4000 -> sandbox:3000/tcp4               ││
-││ HIGH  [HOST][OPAQUE] lifecycle.postCreate[0] = ./hooks/load-secrets.sh       ││
-││ HIGH  [!][SSH][HOST] kit:egress/ssh-agent@1/runtime = phase=runtime unrestri…││
-││ HIGH  [!][RW][PERSIST] kit:history/host-mount@1//home/agent/.history = /home…││
-││ MED   [RW] workspace = ~/proj/web-app                                        ││
-││ MED   [CRED] secrets.example = ref: op://Private/Example/credential          ││
-││ MED   [NET] kit:egress/network-policy@1/runtime.allow/*.cdn.example.com = ru…││
-││ LOW   [!] sandboxOptions.template = ghcr.io/example/common-claude:dev        ││
-│╰──────────────────────────────────────────────────────────────────────────────╯│
-```
+![sbxray TUI — 1:Overview](docs/images/tui-overview.svg)
 
 > [!NOTE]
 > Targets **`sbx` v0.54.0** ([`.github/sbx-version`](.github/sbx-version)). Items outside static analysis (remote kits, `:dev` templates, host-wide policies, unknown capabilities) are always reported under **Coverage** in `--text` / `--json` and marked `[未展開]` in `4:Sources`.
@@ -117,6 +96,8 @@ Exit codes: `0` OK, `1` `--fail-on` threshold reached, `2` invalid arguments or 
 | `4:Sources` | Input files and kits with SHA-256 digests and unexpanded remote markers |
 
 Each detail pane shows official Docker Sandboxes docs, relevant OWASP references, and sbxray's boundary assessment (currently in Japanese), along with merge history and `file:line` provenance. Supports mouse navigation and `NO_COLOR`.
+
+![sbxray TUI — 3:Items with detail pane](docs/images/tui-items.svg)
 
 | Key | Action |
 |---|---|

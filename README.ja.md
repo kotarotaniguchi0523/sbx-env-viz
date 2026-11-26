@@ -24,28 +24,7 @@ sandbox を起動する前に、最終設定・セキュリティ境界・出典
 - **稼働中 sandbox とのズレ検出** — 読み取り専用の `sbx` コマンドだけで実体と比較。シークレットの値は一切取得しません。
 - **単一静的バイナリ** — 対話 TUI、テキスト、値を厳しく伏せた JSON（`--json`）で出力。
 
-```text
-╭────────────────────────────────────────────────────────────────────────────────╮
-│ sbxray   1:Overview   2:Risk   3:Items   4:Sources                             │
-│Host実行2 永続4 RW2 許可3 E0 W5                                                 │
-│宣言の静的解析（稼働中 sandbox の状態ではない） env-args: workspace=./web-app (…│
-│絞り込み  全て   L1   L2   K1   K2                                              │
-│╭──────────────────────────────────────────────────────────────────────────────╮│
-││● 一覧 · Risk（24 件）                                                        ││
-││ HIGH  [WARNING] 認証情報の差し込み先が未承認                                 ││
-││ HIGH  [WARNING] ポートが外部ネットワークに公開される                         ││
-││ HIGH  [WARNING] SSH 鍵で何にでも署名できる                                   ││
-││ HIGH  [CRED][HOST][OPAQUE] secrets.github = command: gh auth token           ││
-││ HIGH  [!] ports[3000/tcp4] = 0.0.0.0:4000 -> sandbox:3000/tcp4               ││
-││ HIGH  [HOST][OPAQUE] lifecycle.postCreate[0] = ./hooks/load-secrets.sh       ││
-││ HIGH  [!][SSH][HOST] kit:egress/ssh-agent@1/runtime = phase=runtime unrestri…││
-││ HIGH  [!][RW][PERSIST] kit:history/host-mount@1//home/agent/.history = /home…││
-││ MED   [RW] workspace = ~/proj/web-app                                        ││
-││ MED   [CRED] secrets.example = ref: op://Private/Example/credential          ││
-││ MED   [NET] kit:egress/network-policy@1/runtime.allow/*.cdn.example.com = ru…││
-││ LOW   [!] sandboxOptions.template = ghcr.io/example/common-claude:dev        ││
-│╰──────────────────────────────────────────────────────────────────────────────╯│
-```
+![sbxray TUI — 1:Overview](docs/images/tui-overview.svg)
 
 > [!NOTE]
 > **`sbx` v0.54.0** を前提としています（[`.github/sbx-version`](.github/sbx-version)）。静的解析の範囲外（リモート kit、`:dev` テンプレート、ホスト共通ポリシー、未知の capability）は `--text` / `--json` の **Coverage** に毎回出力され、TUI では `4:Sources` に `[未展開]` として表示されます。
@@ -117,6 +96,8 @@ sbxray . --json > plan.json
 | `4:Sources` | 入力ファイルと kit の一覧（SHA-256・未展開リモートの表示） |
 
 詳細ペインでは公式ドキュメントの見解、OWASP 等の外部基準、sbxray 独自の境界判定、上書き履歴、`file:line` の出典を日本語で表示します。マウス操作・`NO_COLOR` に対応しています。
+
+![sbxray TUI — 3:Items 詳細ペイン](docs/images/tui-items.svg)
 
 | キー | 動作 |
 |---|---|
