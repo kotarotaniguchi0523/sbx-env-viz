@@ -45,6 +45,20 @@ jobs:
         if: always()
         with: { mode: save, key: test-race }
 
+  mutation:
+    name: Parser mutation tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
+        with:
+          version: 2026.11.8
+          install_args: go go:github.com/go-gremlins/gremlins/cmd/gremlins
+      - run: mise run mutation
+
   tui-e2e:
     name: TUI e2e, real PTY (${{ matrix.os }})
     strategy:

@@ -197,6 +197,7 @@ doc, _ := sbxenv.LookupDoc("sandboxOptions.memory") // 日本語の解説と上�
 ```sh
 mise install          # mise.lock のとおりの版を入れる（locked = true）
 hk install            # pre-commit / pre-push のフックを入れる
+mise run mutation     # Gremlins で internal/parser のテストが条件変更を検出できるか確認
 mise run test         # go test -race ./...
 mise run e2e          # 実際の端末（PTY）での TUI テスト（UPDATE_SNAPSHOTS=1 でスナップショットを更新）
 mise run lint         # gofmt、go vet、declscope shrink、declscope（本体と e2e）
@@ -206,6 +207,8 @@ mise run snapshot     # 公開せずにリリース用のアーカイブを作�
 betterleaks git --redact --no-banner .   # 全履歴から秘密情報を探す
 nix flake check       # Nix でビルドし、--version が動くかを確かめる
 ```
+
+`mise run mutation` は Gremlins で `internal/parser` の条件や演算子を変え、Go のテストがその変更を検出できるかを調べます。検出率（KILLED / (KILLED + LIVED)）が 76% を下回ると CI が失敗します。未検出の変異はログの `LIVED` にファイルと行が出ます。
 
 declscope は、ファイルの中だけで使うはずの宣言が別のファイルから使われていないかを検査します。複数のファイルで共有する宣言には `//declscope:shared // <使う側と理由>` を付けます。`declscope shrink` は、`internal/` の公開名のうちパッケージの外から使われていないものを見つけます。どちらも指摘が 1 件でもあれば lint が失敗します（ベースラインは置いていません）。
 
@@ -220,7 +223,7 @@ TUI のテスト（`e2e/tui`）はビルドしたバイナリを実際の端末�
 | いつ | 何をするか | どこで |
 |---|---|---|
 | commit / push | betterleaks（差分と push する履歴）、gofmt、go vet、go test -race、workflow を変えたときは jactionlint と sisakulint | [`hk.pkl`](hk.pkl) |
-| PR と main への push | gofmt・go vet・declscope（`mise run lint`）、macOS・Linux でのテストと実際の端末での TUI テスト、6 プラットフォームへのクロスビルド、`nix flake check`（macOS・Linux）と `vendorHash` の確認、`mise.lock` の整合、jactionlint と sisakulint（`--online`）、GoReleaser の `--snapshot`、`govulncheck`、betterleaks（全履歴） | [`ci.yml`](.github/workflows/ci.yml) |
+| PR と main への push | gofmt・go vet・declscope（`mise run lint`）、parser の mutation テスト、macOS・Linux でのテストと実際の端末での TUI テスト、6 プラットフォームへのクロスビルド、`nix flake check`（macOS・Linux）と `vendorHash` の確認、`mise.lock` の整合、jactionlint と sisakulint（`--online`）、GoReleaser の `--snapshot`、`govulncheck`、betterleaks（全履歴） | [`ci.yml`](.github/workflows/ci.yml) |
 | タグ `v*` の push | テストのあと、GoReleaser で macOS・Windows 向けの 4 種類の `tar.gz`、チェックサム、SBOM（CycloneDX）、ソースのアーカイブを作って Release を公開する。続いて書き込み権限のないジョブで `jdx/packslip` が各アーカイブに build provenance を付け、アーカイブの一覧に keyless 署名した `packslip.sigstore.json` を作る。最後に別のジョブがそれを Release に添付する | [`release.yml`](.github/workflows/release.yml)、[`.goreleaser.yaml`](.goreleaser.yaml) |
 | 毎週 | 本番と同じ条件で作った SBOM を `uzomuzo` で調べ、メンテナンスが止まった依存やサポートの切れた依存を探す。Trivy の結果を vuls のレポートに変えて CVE が 0 件かを確かめる。`govulncheck` と、値の伏せ方のファジング（5 分） | [`security-audit.yml`](.github/workflows/security-audit.yml) |
 | 毎週 | `flake.lock` を、公開から 2 日以上たった nixpkgs のコミットに上げる PR を作る | [`flake-lock.yml`](.github/workflows/flake-lock.yml) |

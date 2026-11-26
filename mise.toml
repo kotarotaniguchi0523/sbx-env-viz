@@ -3,6 +3,7 @@
 [tools]
 go = "1.27.4"
 "go:github.com/mpyw/declscope/cmd/declscope" = "0.25.0"
+"go:github.com/go-gremlins/gremlins/cmd/gremlins" = "0.6.0"
 hk = "2.13.0"
 pkl = "0.33.1"
 betterleaks = "1.10.1"
@@ -35,6 +36,10 @@ GOTOOLCHAIN = "local"
 [tasks.test]
 description = "Run unit tests with the race detector"
 run = "go test -race ./..."
+
+[tasks.mutation]
+description = "Check parser test efficacy with Gremlins"
+run = "gremlins unleash ./internal/parser --workers 2 --timeout-coefficient 15 --threshold-efficacy 76"
 
 [tasks.build]
 description = "Static build for the current platform"

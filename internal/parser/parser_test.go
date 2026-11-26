@@ -175,3 +175,28 @@ func TestAliasExpansionBudget(t *testing.T) {
 		}
 	}
 }
+
+func TestAliasExpansionAcceptsExactlyTheBudget(t *testing.T) {
+	// Expanding the anchored sequence visits its root and each scalar once.
+	for _, tc := range []struct {
+		count    int
+		accepted bool
+	}{{9999, true}, {10000, false}} {
+		input := "base: &base [" + strings.Repeat("x,", tc.count) + "]\ncopy: *base\n"
+		_, err := parser.Parse([]byte(input))
+		if (err == nil) != tc.accepted {
+			t.Fatalf("%d elements: %v", tc.count, err)
+		}
+	}
+}
+
+func TestKeyPositionIncludesFirstEntry(t *testing.T) {
+	doc, err := parser.Parse([]byte("first: 1\nsecond: 2\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pos, ok := doc.Root.KeyPos("first")
+	if !ok || pos != (parser.Pos{Line: 1, Col: 1}) {
+		t.Fatalf("first key: %+v, found=%v", pos, ok)
+	}
+}
