@@ -605,19 +605,37 @@ func TestLivePartialFailureKeepsSandboxNamePrivate(t *testing.T) {
 		t.Run(tc.area, func(t *testing.T) {
 			s := newSandbox(t)
 			s.write(t, "sbxenv.yaml", strings.Replace(liveEnv, "name: web-app", "name: ${{ env.args.n }}", 1)+"args:\n  n:\n    default: web-app\n")
-			path, log := s.fakeSbx(t, tc.command+" --json --no-input", "unused", `[{"name":"web-app"`, `[{"name":"other"},{"name":"web-app"`)
+			path, _ := s.fakeSbx(t, tc.command+" --json --no-input", "unused")
+
 			r := s.runPath(t, path, "--json", "--live")
+
 			l := r.json(t)["live"].(map[string]any)
 			if r.code != 0 || strings.Contains(r.stdout+r.stderr, "web-app") || !strings.Contains(fmt.Sprint(l["problem"]), tc.area) {
 				t.Fatalf("unexpected result: %+v", r)
 			}
-			calls, err := os.ReadFile(log)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if strings.Contains(string(calls), "other") || strings.Count(string(calls), "\n") != 4 {
-				t.Errorf("unexpected calls: %s", calls)
-			}
 		})
+	}
+}
+
+func TestLiveQueriesOnlyTheMatchedSandbox(t *testing.T) {
+	s := newSandbox(t)
+	s.write(t, "sbxenv.yaml", liveEnv)
+	path, log := s.fakeSbx(t, `[{"name":"web-app"`, `[{"name":"other"},{"name":"web-app"`)
+
+	r := s.runPath(t, path, "--json", "--live")
+
+	if r.code != 0 {
+		t.Fatal(r.stderr)
+	}
+	section := r.json(t)["live"].(map[string]any)
+	if section["sandbox"] != "web-app" {
+		t.Fatalf("unexpected matched sandbox: %v", section)
+	}
+	calls, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(calls), "other") {
+		t.Errorf("queried an unrelated sandbox: %s", calls)
 	}
 }

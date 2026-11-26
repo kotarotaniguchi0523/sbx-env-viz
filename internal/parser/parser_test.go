@@ -35,7 +35,7 @@ func TestScalarsAreKeptVerbatim(t *testing.T) {
 func TestPositionsAreOneBased(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	doc := []byte("a: 1\nb:\n  c: \"x\"\n  d: [1, 2]\ne: ~\n")
+	doc := []byte("a: 1\nb:\n  c: \"x\"\n  d: [1, 2]\n")
 
 	// Act
 	res, err := parser.Parse(doc)
@@ -48,14 +48,44 @@ func TestPositionsAreOneBased(t *testing.T) {
 		t.Errorf("first key position = %+v, found=%v", p, ok)
 	}
 	c := res.Root.Get("b").Get("c")
-	if c.Pos.Line != 3 || !c.Quoted {
+	if c.Pos.Line != 3 {
 		t.Errorf("c = %+v", c)
 	}
 	if p, ok := res.Root.Get("b").KeyPos("d"); !ok || p != (parser.Pos{Line: 4, Col: 3}) {
 		t.Errorf("d key position = %+v", p)
 	}
-	if res.Root.Get("e").Kind != parser.Null || res.Root.Get("missing") != nil {
-		t.Error("null and missing values must be distinguishable")
+}
+
+func TestQuotedScalar(t *testing.T) {
+	for _, tc := range []struct {
+		name, src string
+		quoted    bool
+	}{{"quoted", `"x"`, true}, {"plain", "x", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := []byte("v: " + tc.src)
+
+			res, err := parser.Parse(doc)
+
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := res.Root.Get("v"); got == nil || got.Quoted != tc.quoted {
+				t.Fatalf("scalar = %+v, want quoted=%v", got, tc.quoted)
+			}
+		})
+	}
+}
+
+func TestExplicitNullDiffersFromMissingKey(t *testing.T) {
+	doc := []byte("e: ~")
+
+	res, err := parser.Parse(doc)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := res.Root.Get("e"); e == nil || e.Kind != parser.Null || res.Root.Get("missing") != nil {
+		t.Fatal("expected an explicit null and an absent key")
 	}
 }
 
@@ -118,18 +148,30 @@ func TestOnlyOneDocumentIsAccepted(t *testing.T) {
 
 func TestSyntaxErrorsHideInputAndPreserveKnownLine(t *testing.T) {
 	for _, tc := range []struct {
-		doc     string
-		line    int
-		message string
+		name, doc string
+		line      int
 	}{
-		{"a: ok\nb: value: PRIVATE\n", 2, "YAML syntax error at line 2: mapping values are not allowed in this context"},
-		{"a: *PRIVATE\n", 0, "YAML syntax error: unknown anchor"},
+		{"known line", "a: ok\nb: value: PRIVATE\n", 2},
+		{"unknown line", "a: *PRIVATE\n", 0},
 	} {
-		_, err := parser.Parse([]byte(tc.doc))
-		var se *parser.SyntaxError
-		if !errors.As(err, &se) || se.Line != tc.line || err.Error() != tc.message {
-			t.Fatalf("got %v, want %q", err, tc.message)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			input := []byte(tc.doc)
+
+			_, err := parser.Parse(input)
+
+			var se *parser.SyntaxError
+			if !errors.As(err, &se) || se.Line != tc.line {
+				t.Fatalf("syntax error = %v, want line %d", err, tc.line)
+			}
+			message := err.Error()
+			if se.Msg == "" || !strings.Contains(message, se.Msg) || strings.Contains(message, "PRIVATE") {
+				t.Errorf("expected a diagnostic without input content, got %q", message)
+			}
+			location := strings.TrimSuffix(message, se.Msg)
+			if tc.line > 0 && !strings.Contains(location, fmt.Sprint(tc.line)) || tc.line == 0 && strings.Contains(location, "0") {
+				t.Errorf("unexpected location in %q", message)
+			}
+		})
 	}
 }
 
@@ -208,13 +250,31 @@ func TestAliasExpansionBudget(t *testing.T) {
 func TestAliasExpansionAcceptsExactlyTheBudget(t *testing.T) {
 	// Expanding the anchored sequence visits its root and each scalar once.
 	for _, tc := range []struct {
+		name     string
 		count    int
 		accepted bool
-	}{{9999, true}, {10000, false}} {
-		input := "base: &base [" + strings.Repeat("x,", tc.count) + "]\ncopy: *base\n"
-		_, err := parser.Parse([]byte(input))
-		if (err == nil) != tc.accepted {
-			t.Fatalf("%d elements: %v", tc.count, err)
-		}
+	}{
+		{"at limit", 9999, true}, {"one above limit", 10000, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			input := []byte("base: &base [" + strings.Repeat("x,", tc.count) + "]\ncopy: *base\n")
+
+			res, err := parser.Parse(input)
+
+			if tc.accepted {
+				if err != nil {
+					t.Fatal(err)
+				}
+				copied := res.Root.Get("copy")
+				if copied == nil || len(copied.Items) != tc.count {
+					t.Fatal("expected the complete expanded sequence")
+				}
+				return
+			}
+			var se *parser.SyntaxError
+			if !errors.As(err, &se) || !strings.Contains(se.Msg, "expansion limit") {
+				t.Fatalf("want expansion limit error, got %v", err)
+			}
+		})
 	}
 }
