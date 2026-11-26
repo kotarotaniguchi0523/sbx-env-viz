@@ -17,35 +17,70 @@ env:
   GOTOOLCHAIN: local
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      test: ${{ steps.select.outputs.test }}
+      mutation: ${{ steps.select.outputs.mutation }}
+      e2e: ${{ steps.select.outputs.e2e }}
+      build: ${{ steps.select.outputs.build }}
+      snapshot: ${{ steps.select.outputs.snapshot }}
+      nix: ${{ steps.select.outputs.nix }}
+      lock: ${{ steps.select.outputs.lock }}
+      workflows: ${{ steps.select.outputs.workflows }}
+      vuln: ${{ steps.select.outputs.vuln }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: select
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 tools/ci/select-checks.py
+
   test:
+    needs: changes
+    if: ${{ !cancelled() }}
     name: test (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      RUN_CHECK: ${{ needs.changes.result != 'success' || needs.changes.outputs.test != 'false' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.RUN_CHECK == 'true'
         with:
           persist-credentials: false
       - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
+        if: env.RUN_CHECK == 'true'
         with:
           version: 2026.11.8
           install_args: go go:github.com/mpyw/declscope/cmd/declscope
       - uses: ./.github/actions/go-cache
+        if: env.RUN_CHECK == 'true'
         with: { mode: restore, key: test-race }
       - name: Lint Go modules
+        if: env.RUN_CHECK == 'true'
         run: mise run lint
       - name: go test -race
+        if: env.RUN_CHECK == 'true'
         run: go test -race -count=1 ./...
         env:
           CGO_ENABLED: "1"
       - uses: ./.github/actions/go-cache
-        if: always()
+        if: always() && env.RUN_CHECK == 'true'
         with: { mode: save, key: test-race }
 
   mutation:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.mutation != 'false') }}
     name: Parser mutation tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -60,34 +95,45 @@ jobs:
       - run: mise run mutation
 
   tui-e2e:
+    needs: changes
+    if: ${{ !cancelled() }}
     name: TUI e2e, real PTY (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      RUN_CHECK: ${{ needs.changes.result != 'success' || needs.changes.outputs.e2e != 'false' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.RUN_CHECK == 'true'
         with:
           persist-credentials: false
       - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
+        if: env.RUN_CHECK == 'true'
         with:
           version: 2026.11.8
           install_args: go
       - uses: ./.github/actions/go-cache
+        if: env.RUN_CHECK == 'true'
         with: { mode: restore, key: e2e }
       - name: go vet (e2e module)
+        if: env.RUN_CHECK == 'true'
         working-directory: e2e/tui
         run: go vet ./...
       - name: Drive the built binary in a real PTY (Microsoft tui-test)
+        if: env.RUN_CHECK == 'true'
         working-directory: e2e/tui
         run: go test -count=1 -v ./...
       - uses: ./.github/actions/go-cache
-        if: always()
+        if: always() && env.RUN_CHECK == 'true'
         with: { mode: save, key: e2e }
 
   build:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.build != 'false') }}
     # One runner builds the six targets in parallel; they share the module and build caches.
     name: build (6 targets)
     runs-on: ubuntu-latest
@@ -127,6 +173,8 @@ jobs:
           retention-days: 14
 
   release-snapshot:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.snapshot != 'false') }}
     name: GoReleaser check + snapshot
     # Releases ship macOS and Windows only, so run an archived binary here.
     runs-on: macos-latest
@@ -158,29 +206,40 @@ jobs:
           "$RUNNER_TEMP/sbxray" --version | grep -q SNAPSHOT
 
   nix:
+    needs: changes
+    if: ${{ !cancelled() }}
     name: Nix flake (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      RUN_CHECK: ${{ needs.changes.result != 'success' || needs.changes.outputs.nix != 'false' }}
     # Go 1.27.4 builds from source until nixpkgs ships it (nix/package.nix).
     timeout-minutes: 45
     cache-mode: none # uses no cache
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.RUN_CHECK == 'true'
         with:
           persist-credentials: false
       - uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
+        if: env.RUN_CHECK == 'true'
       # First, so a stale vendorHash fails with its own message, not inside the package build.
       - name: vendorHash matches go.mod/go.sum
+        if: env.RUN_CHECK == 'true'
         run: tools/ci/vendor-hash.sh --check
       - name: nix flake check (builds the package, runs its --version check)
+        if: env.RUN_CHECK == 'true'
         run: nix flake check -L
       - name: nix run works as documented
+        if: env.RUN_CHECK == 'true'
         run: nix run . -- --version
 
   mise-lock:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.lock != 'false') }}
     name: mise-lock
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -198,6 +257,8 @@ jobs:
         run: tools/ci/mise-lock.sh --check
 
   actions-lint:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.workflows != 'false') }}
     name: Lint workflows (jactionlint + sisakulint)
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -217,6 +278,8 @@ jobs:
         run: sisakulint --online --repo "$GITHUB_REPOSITORY"
 
   govulncheck:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.vuln != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
