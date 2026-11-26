@@ -28,14 +28,19 @@ import (
 )
 
 // version is set with -ldflags "-X main.version=..." at release time.
+//
+//declscope:shared // describe reports the release version.
 var version = "dev"
 
 // Exit codes.
+//
+//declscope:shared // skills.go returns the same CLI exit codes.
 const (
-	exitOK        = 0
-	exitThreshold = 1
-	exitUsage     = 2
+	exitOK    = 0
+	exitUsage = 2
 )
+
+const exitThreshold = 1
 
 func main() {
 	os.Exit(run(os.Args[1:], env{
@@ -80,54 +85,90 @@ type options struct {
 }
 
 const usage = `Usage: sbxray [PATH...] [flags]
+       sbxray <command> [args]
 
-Statically resolves sbx environment files (sbxenv.yaml) and local kits and
-shows the effective configuration, provenance, boundaries, and diagnostics.
-Paths and flags mirror "sbx env create". A directory means <dir>/sbxenv.yaml;
-with no path, ./sbxenv.yaml is merged over ~/.sbxenv.yaml.
+Statically resolves Docker Sandboxes environment files (sbxenv*.yaml) and local
+kits (./kits/*) offline, showing effective config, provenance, boundaries,
+diagnostics, and optional read-only drift against running sandboxes.
 
-With no path in a terminal (TUI), it also finds sandboxes automatically:
-read-only "sbx ls / policy ls / secret ls / mcp ls --json" list the
-existing sandboxes, sbxenv*.yaml files are searched in the working
-directory and next to each workspace, declarations are paired with
-sandboxes, and differences (drift) are shown. Without sbx, or when the
-daemon is stopped, only the files are analysed. Secret values are never
-requested.
+Examples:
+  sbxray                                  Interactive TUI (auto-discovers files & sandboxes)
+  sbxray --json                           Structured, strictly redacted JSON output
+  sbxray base.sbxenv.yaml local.sbxenv.yaml --env-arg workspace=./app
+  sbxray . --text --fail-on=warning       CI gate (exit 1 on warnings or errors)
+  sbxray . --json --live                  Include read-only live sandbox drift
 
-Output (default: TUI when stdin and stdout are terminals and TERM != dumb,
-otherwise text):
-  --text                  plain text summary
-  --json                  schemaVersion "1" JSON IR (strictly redacted)
-  --redact                strict redaction for TUI / text too
-  --fail-on LEVEL         exit 1 when reached. none (default) | warning | error
-                          (diagnostic levels) | critical | high | medium | low
-                          (the Risk view's scale: diagnostics, risky items, and
-                          drift with --live; analysis coverage is not counted)
-  --live                  also read existing sandboxes from sbx (any output)
-  --offline               never run sbx (the default for paths, --text, --json)
+Commands:
+  help [command]          Show help (e.g. 'sbxray help skills')
+  describe [command]      Print the CLI contract as JSON
+  skills [list] [--json]  List built-in agent skills embedded in this binary
+  skills get <name>       Print a built-in skill guide (e.g. 'core', 'ci', 'live-drift')
 
-sbx env flags:
-  --env-arg NAME=VALUE    environment argument (repeatable)
+For coding agents:
+  Always use --json (preferred) or --text instead of the interactive TUI.
+  Run 'sbxray skills get core' (or 'sbxray skills list') to read version-matched
+  instructions directly from this binary without searching the web.
+
+Output & mode flags (default: TUI on a TTY, otherwise --text):
+  --json                  Emit schemaVersion "1" JSON IR (strictly redacted)
+  --text                  Emit plain-text summary
+  --redact                Apply strict redaction to TUI / --text too
+  --fail-on LEVEL         Exit 1 when reached: none (default) | warning | error |
+                          critical | high | medium | low
+  --live                  Compare against running sbx sandboxes (read-only)
+  --offline               Never run sbx (default for explicit paths, --text, --json)
+
+sbx env create compatible flags:
+  --env-arg NAME=VALUE    Environment argument (repeatable; highest priority)
   --env-args-file FILE    NAME=VALUE lines (repeatable; later files win)
-  --kit-arg [KIT.]NAME=VALUE  kit argument override (repeatable)
-  --kit-args-file FILE    kit argument lines (repeatable)
-  --name NAME             sandbox name override
-  --clone[=true|false]    override workspace.clone
-  --skip-host-commands    treat lifecycle and local MCP commands as skipped
-  --cloud                 analyse for sbx --cloud
-  --ttl DURATION          cloud expiration (with --cloud)
-  --on-timeout ACTION     cloud expiration action (with --cloud)
+  --kit-arg [KIT.]NAME=VALUE  Override kit argument (repeatable)
+  --kit-args-file FILE    Kit argument lines (repeatable)
+  --name NAME             Override sandbox name
+  --clone[=true|false]    Override workspace.clone
+  --skip-host-commands    Treat lifecycle and local MCP commands as skipped
+  --cloud                 Validate for sbx --cloud
+  --ttl DURATION          Cloud expiration (with --cloud)
+  --on-timeout ACTION     Cloud expiration action (with --cloud)
 
-  --version, -h/--help
+General flags:
+  --version               Print version, IR schema, and target sbx version
+  -h, --help              Show this help
 
+Pass '--' before a path if a filename matches a command (e.g. 'sbxray -- help').
 Exit codes: 0 ok, 1 --fail-on threshold reached, 2 usage or parse error.
 `
 
-var valueFlags = map[string]bool{
-	"env-arg": true, "env-args-file": true, "kit-arg": true, "kit-args-file": true,
-	"name": true, "ttl": true, "on-timeout": true, "fail-on": true,
+func flagTakesValue(arg string) bool {
+	for _, f := range flags {
+		if f.Name == arg {
+			return f.Type == "string"
+		}
+	}
+	return false
+}
+func unknownFlag(arg string) error {
+	var names []string
+	for _, f := range flags {
+		names = append(names, f.Name)
+	}
+	return problem("unknown_flag", "unknown flag "+arg, "sbxray skills get core --full", arg, names)
 }
 
+func wantsJSON(args []string) bool {
+	enabled := false
+	for i := 0; i < len(args); i++ {
+		name, value, assigned := strings.Cut(args[i], "=")
+		switch {
+		case args[i] == "--":
+			return enabled
+		case name == "--json":
+			enabled = !assigned || strings.EqualFold(value, "true") || value == "1"
+		case flagTakesValue(name) && !assigned:
+			i++
+		}
+	}
+	return enabled
+}
 func parseArgs(args []string) (*options, error) {
 	o := &options{failOn: "none"}
 	for i := 0; i < len(args); i++ {
@@ -142,13 +183,13 @@ func parseArgs(args []string) (*options, error) {
 		}
 		if !strings.HasPrefix(a, "--") || a == "-" {
 			if strings.HasPrefix(a, "-") && a != "-" {
-				return nil, fmt.Errorf("unknown flag %s", a)
+				return nil, unknownFlag(a)
 			}
 			o.paths = append(o.paths, a)
 			continue
 		}
 		name, val, hasVal := strings.Cut(a[2:], "=")
-		if valueFlags[name] && !hasVal {
+		if flagTakesValue("--"+name) && !hasVal {
 			if i+1 >= len(args) {
 				return nil, fmt.Errorf("flag --%s needs a value", name)
 			}
@@ -206,7 +247,7 @@ func parseArgs(args []string) (*options, error) {
 		case "version":
 			o.version = true
 		default:
-			return nil, fmt.Errorf("unknown flag --%s", name)
+			return nil, unknownFlag("--" + name)
 		}
 		if err != nil {
 			return nil, err
@@ -216,7 +257,7 @@ func parseArgs(args []string) (*options, error) {
 	case "none", "warning", "error":
 	default:
 		if sbxenv.Severity(o.failOn).Rank() == 0 {
-			return nil, fmt.Errorf("--fail-on must be none, warning, error, critical, high, medium, or low")
+			return nil, problem("invalid_value", "--fail-on must be none, warning, error, critical, high, medium, or low", "sbxray skills get core --full", o.failOn, failOnValues)
 		}
 	}
 	if o.text && o.json {
@@ -229,10 +270,32 @@ func parseArgs(args []string) (*options, error) {
 }
 
 func run(args []string, e env) int {
+	if len(args) > 0 {
+		switch args[0] {
+		case "describe":
+			return runDescribe(args[1:], e.stdout, e.stderr)
+		case "help":
+			if len(args) > 1 && args[1] == "describe" {
+				fmt.Fprint(e.stdout, describeUsage)
+				return exitOK
+			}
+			if len(args) > 1 && args[1] == "skills" {
+				fmt.Fprint(e.stdout, skillsUsage)
+				return exitOK
+			}
+			fmt.Fprint(e.stdout, usage)
+			return exitOK
+		case "skills":
+			return runSkills(args[1:], e.stdout, e.stderr)
+		}
+	}
 	o, err := parseArgs(args)
 	if err != nil {
-		fmt.Fprintf(e.stderr, "sbxray: %v\n\n%s", err, usage)
-		return exitUsage
+		detail, ok := err.(*cliError)
+		if !ok {
+			detail = problem("usage", err.Error(), "sbxray skills get core --full", "", nil)
+		}
+		return report(e.stderr, wantsJSON(args), detail)
 	}
 	if o.help {
 		fmt.Fprint(e.stdout, usage)
@@ -244,8 +307,7 @@ func run(args []string, e env) int {
 	}
 	wd, err := e.getwd()
 	if err != nil {
-		fmt.Fprintf(e.stderr, "sbxray: cannot determine the working directory\n")
-		return exitUsage
+		return report(e.stderr, o.json, problem("resolve", "cannot determine the working directory", "sbxray skills get core --full", "", nil))
 	}
 	home, _ := e.home()
 	var homeAliases []string
@@ -313,8 +375,7 @@ func run(args []string, e env) int {
 
 	plan, err := resolve(loader.Request{Paths: o.paths, EnvArgsFiles: o.envArgsFiles, KitArgsFiles: o.kitArgsFiles, WorkDir: wd, HomeDir: home})
 	if err != nil {
-		fmt.Fprintf(e.stderr, "sbxray: %s\n", shorten(err.Error()))
-		return exitUsage
+		return report(e.stderr, o.json, problem("resolve", shorten(err.Error()), "sbxray skills get core --full", "", nil))
 	}
 	var target *live.Target
 	if o.live {
@@ -344,8 +405,7 @@ func run(args []string, e env) int {
 		}
 	}
 	if err != nil {
-		fmt.Fprintf(e.stderr, "sbxray: %s\n", shorten(err.Error()))
-		return exitUsage
+		return report(e.stderr, o.json, problem("output", shorten(err.Error()), "sbxray skills get core --full", "", nil))
 	}
 	var cmp *live.Comparison
 	if target != nil {

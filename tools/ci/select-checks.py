@@ -30,7 +30,7 @@ def checks(path):
         return ALL
     if path.startswith(".github/workflows/"):
         return {"workflows"}
-    if path in {"DESIGN.md", "AGENTS.md", "CLAUDE.md"}:
+    if path in {"DESIGN.md", "AGENTS.md", "CLAUDE.md", "README.ja.md"} or path.startswith("skills/"):
         return set()
     return ALL
 

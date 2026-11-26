@@ -80,7 +80,7 @@ func (m *Model) buildOverview() {
 
 	if t := m.target(); t != nil {
 		switch {
-		case t.Err != "":
+		case t.Err != "" && t.Plan == nil:
 			newCard("設定ファイルを解析できません")
 			info(t.Err)
 			for _, f := range t.Files {
