@@ -33,6 +33,10 @@ type Comparison struct {
 	// not compared and why.
 	Checked []string
 	Skipped []string
+	// NotCompared lists declared items inside a checked area that sbx's
+	// output could not confirm either way (Kit network rules that sbx
+	// policy ls does not show), so a reader must not take them as matching.
+	NotCompared []string
 }
 
 const (
@@ -250,6 +254,9 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		if !kitVisible {
 			if len(d.Network) > 0 {
 				c.Skipped = append(c.Skipped, "sbx policy ls の結果に Kit 由来のルールが含まれていないため、宣言した通信ルールが反映済みかは比較していません。")
+			}
+			for _, r := range d.Network {
+				c.NotCompared = append(c.NotCompared, r.ItemID)
 			}
 		} else {
 			for _, r := range d.Network {
