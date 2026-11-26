@@ -66,17 +66,19 @@ func (d doc) render(p palette, w int) []string {
 		case docBlank:
 			out = append(out, "")
 		case docTitle:
-			for _, s := range wrap(l.text, w) {
-				out = append(out, p.title.Render(s))
+			ind := strings.Repeat(" ", l.indent)
+			for _, s := range wrap(l.text, w-l.indent) {
+				out = append(out, ind+p.title.Render(s))
 			}
 		case docHeading:
-			out = append(out, p.heading.Render("▍"+l.text))
+			out = append(out, strings.Repeat(" ", l.indent)+p.heading.Render(l.text))
 		case docField:
+			ind := strings.Repeat(" ", l.indent)
 			lead := l.label + ": "
-			pad := ansi.StringWidth(lead)
+			pad := l.indent + ansi.StringWidth(lead)
 			for i, s := range wrap(l.text, w-pad) {
 				if i == 0 {
-					out = append(out, p.label.Render(lead)+s)
+					out = append(out, ind+p.muted.Render(lead)+s)
 				} else {
 					out = append(out, strings.Repeat(" ", pad)+s)
 				}
@@ -104,7 +106,7 @@ func (m *Model) origin(o sbxenv.Origin) string {
 		label = fmt.Sprintf("%s の %d 行目", label, o.Line)
 	}
 	if len(o.Via) > 0 {
-		label += "（" + strings.Join(o.Via, " → ") + " 経由）"
+		label += "（" + strings.Join(o.Via, " -> ") + " 経由）"
 	}
 	return label
 }
@@ -158,7 +160,7 @@ func (m *Model) itemDoc(d *doc, it *sbxenv.Item) {
 	}
 	d.field("  理由", reason)
 	for _, b := range it.Badges {
-		d.text(b+" "+sbxenv.BadgeLabel(b), 2)
+		d.text("・"+sbxenv.BadgeLabel(b), 2)
 	}
 	d.text(judgementBasis, 2)
 	if doc := it.Doc; doc != nil {
@@ -207,10 +209,11 @@ func (m *Model) itemDoc(d *doc, it *sbxenv.Item) {
 // diagDoc describes a diagnostic and, when it names one, its setting.
 //
 //declscope:shared // view.go's detailLines shows it for a selected diagnostic
-func (m *Model) diagDoc(d *doc, x *sbxenv.Diagnostic) {
+func (m *Model) diagDoc(d *doc, x *sbxenv.Diagnostic, sev sbxenv.Severity) {
 	e := sbxenv.ExplainDiagnostic(x.Code)
 	d.title(e.Title)
-	d.field("重要度", sbxenv.LevelLabel(x.Level))
+	d.field("危険度", riskLine(sev))
+	d.field("種類", sbxenv.LevelLabel(x.Level))
 	d.heading("何が起きるか")
 	d.text(e.What, 2)
 	if e.Fix != "" {
@@ -227,8 +230,14 @@ func (m *Model) diagDoc(d *doc, x *sbxenv.Diagnostic) {
 		for i := range m.plan.Items {
 			if m.plan.Items[i].ID == x.ItemID {
 				d.heading("対象の設定")
-				*d = append(*d, docLine{kind: docBlank})
-				m.itemDoc(d, &m.plan.Items[i])
+				// The setting reads as part of this section: every line of
+				// its own document is indented under the heading.
+				var sub doc
+				m.itemDoc(&sub, &m.plan.Items[i])
+				for _, l := range sub {
+					l.indent += 2
+					*d = append(*d, l)
+				}
 				break
 			}
 		}
@@ -311,7 +320,7 @@ func driftDoc(d *doc, x *live.Drift) {
 	d.text("宣言: 設定ファイルの静的解析", 2)
 	d.text("実体: "+x.Source+" の出力（読み取り専用のコマンド）", 2)
 	if x.ItemID != "" {
-		d.text("関連する設定: "+x.ItemID+"（3: Items で詳細を確認できます）", 2)
+		d.text("関連する設定: "+x.ItemID+"（「3 設定」で詳細を確認できます）", 2)
 	}
 }
 
@@ -322,31 +331,36 @@ func helpDoc() doc {
 	var d doc
 	d.title("このツールについて")
 	d.text("設定ファイルの静的解析です。緑の「安全」表示は出しません。", 2)
-	d.text("静的解析の前提: PC 全体の sbx 設定（sbx policy・credentials.yaml）、sbx secret に保存した秘密、組み込みエージェントやリモート Kit の中身は読みません（ファイルに書いたリモート Kit などは 4: Sources に表示）。", 2)
-	d.text("危険度（HIGH / MEDIUM / LOW）は隔離境界に基づくこのツール独自の基準です。公式の記述は詳細の「公式の見解」に分けて表示します。", 2)
+	d.text("静的解析の前提: PC 全体の sbx 設定（sbx policy・credentials.yaml）、sbx secret に保存した秘密、組み込みエージェントやリモート Kit の中身は読みません（ファイルに書いたリモート Kit などは「4 ファイル」に表示）。", 2)
+	d.text("危険度（最重要 / 高 / 中 / 低）は隔離境界に基づくこのツール独自の基準です。公式の記述は詳細の「公式の見解」に分けて表示します。", 2)
 	d.heading("キー操作")
 	for _, kv := range [][2]string{
-		{"1 / 2 / 3 / 4, [ / ]", "画面切替（Overview / Risk / Items / Sources）"},
+		{"1 / 2 / 3 / 4, [ / ]", "画面切替（概要 / リスク / 設定 / ファイル）"},
 		{"< / >, s", "対象の sandbox を切替 / 一覧から選ぶ（自動検出時）"},
 		{"j / k, ↑ / ↓", "移動（詳細ペインではスクロール）"},
 		{"h / l", "ペイン移動（狭い画面では戻る / 詳細）"},
-		{"Enter / Esc", "詳細を開く（Overview では詳細へ移動）/ 戻る・検索解除"},
-		{"g", "Items のグループ切替（層別 / 境界別 / kit別）"},
+		{"Enter / Esc", "詳細を開く（概要では詳細へ移動）/ 戻る・検索解除"},
+		{"g", "設定のグループ切替（層別 / 境界別 / kit別）"},
 		{"f", "レイヤー絞り込み（入力ファイル・kit を順に切替）"},
 		{"/", "検索（Enter で確定、Esc で解除）"},
-		{"?", "このヘルプ（どのキーでも閉じる）"},
+		{"?", "このヘルプ（j / k でスクロール、ほかのキーで閉じる）"},
 		{"q", "終了（1 行要約を出力）"},
 	} {
 		d.text(fmt.Sprintf("%-20s %s", kv[0], kv[1]), 2)
 	}
 	d.heading("マウス")
-	d.text("タブ・グループ・絞り込みのチップをクリックで切替", 2)
+	d.text("タブ・グループ・絞り込みの項目をクリックで切替", 2)
 	d.text("一覧の行をクリックで選択（狭い画面では詳細を開く）", 2)
-	d.text("Overview のカードの項目をクリックで詳細へ移動", 2)
+	d.text("概要の行をクリックで詳細へ移動", 2)
 	d.text("ペインをクリックでフォーカス、ホイールでカーソル下のペインをスクロール", 2)
-	d.heading("目印（バッジ）")
+	d.heading("一覧の印")
+	d.text("✗  このツールの基準で危険度が最重要・高", 2)
+	d.text("!  危険度が中", 2)
+	d.text("概要の「実体（sbx）」の列で太字・下線の値は、宣言と違う（ズレている）ことを示します。", 2)
+	d.text("印のない行も、問題がないという意味ではありません。理由は詳細の「このツールの判定」に出ます。", 2)
+	d.heading("詳細に出る目印")
 	for _, b := range []string{sbxenv.BadgeHost, sbxenv.BadgeOpaque, sbxenv.BadgeRW, sbxenv.BadgeRO, sbxenv.BadgePersist, sbxenv.BadgeNet, sbxenv.BadgeCred, sbxenv.BadgeSSH, sbxenv.BadgeSkip, sbxenv.BadgeWarn, sbxenv.BadgeUnknown, sbxenv.BadgeLiteral, "[DRIFT]"} {
-		d.text(fmt.Sprintf("%-10s %s", b, sbxenv.BadgeLabel(b)), 2)
+		d.text("・"+sbxenv.BadgeLabel(b), 2)
 	}
 	return d
 }

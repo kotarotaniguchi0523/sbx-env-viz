@@ -1,9 +1,10 @@
 // Package tui is the interactive Bubble Tea v2 view of a Plan.
 //
-// Views: 1 Overview (default; cards that jump to details), 2 Risk, 3 Items
-// (g cycles layer / boundary / kit grouping), 4 Sources. At 120 columns or wider the list and the detail
-// pane sit side by side in rounded panels; narrower terminals show one pane
-// at a time. Tabs, chips, list rows, and panes respond to the mouse.
+// Views: 1 概要 (default; a manifest of what is declared and, with live
+// data, what sbx has, that jumps to details), 2 リスク, 3 設定 (g cycles
+// layer / boundary / kit grouping), 4 ファイル. At 120 columns or wider the
+// list and the detail pane sit side by side; narrower terminals show one
+// pane at a time. Tabs, switches, list rows, and panes respond to the mouse.
 package tui
 
 import (
@@ -33,7 +34,7 @@ const (
 	viewCount
 )
 
-var viewNames = []string{"1:Overview", "2:Risk", "3:Items", "4:Sources"}
+var viewNames = []string{"概要", "リスク", "設定", "ファイル"}
 
 type groupMode int
 
@@ -48,6 +49,8 @@ var groupNames = []string{"層別", "境界別", "kit別"}
 type row struct {
 	header bool
 	label  string
+	// note follows the label in muted ink (a risky item's value).
+	note   string
 	badges []string
 	sev    sbxenv.Severity
 	item   *sbxenv.Item
@@ -77,9 +80,9 @@ type Model struct {
 	searching bool
 	query     string
 
-	pal   palette
-	rows  []row
-	cards []card
+	pal      palette
+	rows     []row
+	manifest []manifestLine
 
 	// targets are the sandboxes found by discovery; empty for a single
 	// plan given on the command line.
@@ -90,8 +93,9 @@ type Model struct {
 	picker   bool
 	pCursor  int
 	drifts   []live.Drift
-	// oScroll is the first visible canvas line of the Overview.
-	oScroll int
+	// oScroll is the first visible canvas line of the Overview; hScroll
+	// is the first visible line of the help.
+	oScroll, hScroll int
 	// zones are the clickable regions of the last frame; mouse events are
 	// resolved against them so drawing and hit-testing never disagree.
 	zones []zone
@@ -187,14 +191,17 @@ func (m *Model) rebuild() {
 		m.buildOverview()
 		rows = m.rows
 	case viewRisk:
+		// Three sections, each ordered by risk level: drift from the
+		// running sandbox, this tool's findings, and risky settings.
+		var drifts, diags, items []row
 		if m.filter() == "" {
 			for i := range m.drifts {
 				d := &m.drifts[i]
-				label := "ズレ: " + d.Title
-				if m.matches(label + " " + d.Kind) {
-					rows = append(rows, row{label: label, badges: []string{"[DRIFT]"}, sev: d.Severity, drift: d})
+				if m.matches(d.Title + " " + d.Kind) {
+					drifts = append(drifts, row{label: d.Kind + ": " + d.Title, badges: []string{"[DRIFT]"}, sev: d.Severity, drift: d})
 				}
 			}
+			sort.SliceStable(drifts, func(i, j int) bool { return drifts[i].sev.Rank() > drifts[j].sev.Rank() })
 		}
 		for _, r := range model.RiskList(m.plan) {
 			if r.Cover != nil {
@@ -208,23 +215,27 @@ func (m *Model) rebuild() {
 					continue
 				case r.Diag != nil && !model.DiagTouchesSource(r.Diag, f):
 					continue
-				case r.Cover != nil && r.Cover.Origin.SourceID != f:
-					continue
 				}
 			}
-			label, search := r.Label, r.Label
-			switch {
-			case r.Diag != nil:
-				label = sbxenv.ExplainDiagnostic(r.Diag.Code).Title
-				search = label + " " + r.Label
-			case r.Cover != nil:
-				label = "未展開 " + sbxenv.CoverageTitle(r.Cover.Kind) + ": " + r.Cover.Ref
-				search = label + " " + r.Label
-			}
-			if !m.matches(strings.Join(r.Badges, "") + " " + search) {
+			if r.Diag != nil {
+				label := sbxenv.ExplainDiagnostic(r.Diag.Code).Title
+				if m.matches(strings.Join(r.Badges, "") + " " + label + " " + r.Label) {
+					diags = append(diags, row{label: label, badges: r.Badges, sev: r.Severity, diag: r.Diag})
+				}
 				continue
 			}
-			rows = append(rows, row{label: label, badges: r.Badges, sev: r.Severity, item: r.Item, diag: r.Diag, cover: r.Cover})
+			if m.matches(strings.Join(r.Badges, "") + " " + r.Label) {
+				items = append(items, row{label: r.Item.ID, note: r.Item.Value, badges: r.Badges, sev: r.Severity, item: r.Item})
+			}
+		}
+		for _, sec := range []struct {
+			title string
+			rows  []row
+		}{{"稼働中とのズレ", drifts}, {"このツールの指摘", diags}, {"設定ごとの危険度", items}} {
+			if len(sec.rows) > 0 {
+				rows = append(rows, row{header: true, label: fmt.Sprintf("%s（%d 件）", sec.title, len(sec.rows))})
+				rows = append(rows, sec.rows...)
+			}
 		}
 	case viewItems:
 		groups := map[string][]*sbxenv.Item{}
@@ -244,7 +255,12 @@ func (m *Model) rebuild() {
 		for _, k := range keys {
 			rows = append(rows, row{header: true, label: k})
 			for _, it := range groups[k] {
-				rows = append(rows, row{label: it.ID + " = " + it.Value, badges: it.Badges, sev: it.Risk, item: it})
+				id := it.ID
+				if m.group != groupBoundary && it.Kit != "" {
+					// The group header already names the kit.
+					id = strings.TrimPrefix(id, "kit:"+it.Kit+"/")
+				}
+				rows = append(rows, row{label: id + " = " + it.Value, badges: it.Badges, sev: it.Risk, item: it})
 			}
 		}
 	case viewSources:
@@ -257,7 +273,7 @@ func (m *Model) rebuild() {
 			if !s.Expanded {
 				state = "未展開"
 			}
-			label := fmt.Sprintf("%-7s [%s] %s（%s）", s.ID, state, s.Path, sbxenv.SourceKindLabel(s.Kind))
+			label := pad(s.ID, 7) + "  " + pad(state, 8) + "  " + s.Path + "（" + sbxenv.SourceKindLabel(s.Kind) + "）"
 			if !m.matches(label) {
 				continue
 			}
@@ -271,7 +287,7 @@ func (m *Model) rebuild() {
 			if f := m.filter(); f != "" && c.Origin.SourceID != f {
 				continue
 			}
-			label := fmt.Sprintf("%-7s [未展開] %s（%s）", "-", c.Ref, sbxenv.CoverageTitle(c.Kind))
+			label := pad("-", 7) + "  " + pad("未展開", 8) + "  " + c.Ref + "（" + sbxenv.CoverageTitle(c.Kind) + "）"
 			if m.matches(label) {
 				rows = append(rows, row{label: label, sev: sbxenv.SeverityInfo, cover: c})
 			}
@@ -470,10 +486,16 @@ func (m *Model) key(k string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.help {
-		if k == "q" || k == "ctrl+c" {
+		switch k {
+		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "j", "down":
+			m.hScroll++
+		case "k", "up":
+			m.hScroll = max(m.hScroll-1, 0)
+		default:
+			m.help = false
 		}
-		m.help = false
 		return m, nil
 	}
 	if m.picker {
@@ -498,7 +520,7 @@ func (m *Model) key(k string) (tea.Model, tea.Cmd) {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "?":
-		m.help = true
+		m.help, m.hScroll = true, 0
 	case "s":
 		if m.multi() {
 			m.picker, m.pCursor = true, m.tIdx

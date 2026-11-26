@@ -1,72 +1,72 @@
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ sbxray   1:Overview   2:Risk   3:Items   4:Sources                                                                               │
-│ [Host実行 2]   [Host永続 4]   [RWマウント 2]   [外への許可 3]   [エラー 0]   [警告 5]                                            │
-│宣言の静的解析（稼働中 sandbox の状態ではない） env-args: workspace=./web-app (default), channel=stable (default)                 │
-│グループ  層別   境界別   kit別   絞り込み  全て   L1   L2   K1   K2                                                              │
-│検索: RELEASE（Esc で解除）                                                                                                       │
-│╭────────────────────────────────────────────────────────╮╭──────────────────────────────────────────────────────────────────────╮│
-││● 一覧 · Items（1 件）                                  ││  詳細                                                                ││
-││▸ 層 L2 ~/proj/local.sbxenv.yaml                        ││ env.RELEASE_CHANNEL                                                  ││
-││ INFO  env.RELEASE_CHANNEL = beta                       ││ 値: beta                                                             ││
-││                                                        ││                                                                      ││
-││                                                        ││ ▍公式の見解（Docker Sandboxes / sandbox-kit-spec）                   ││
-││                                                        ││   公式ドキュメントに特段の警告記載なし                               ││
-││                                                        ││   出典: https://docs.docker.com/ai/sandboxes/configuration/          ││
-││                                                        ││         environment-files/#top-level-fields                          ││
-││                                                        ││                                                                      ││
-││                                                        ││ ▍外部セキュリティ基準の観点（OWASP 等）                              ││
-││                                                        ││   ・OWASP MCP Top 10（ベータ版） MCP01:2025 Token Mismanagement &    ││
-││                                                        ││   Secret Exposure                                                    ││
-││                                                        ││     設定ファイルや環境変数に埋め込まれた秘密は、ログや会話の文脈から ││
-││                                                        ││     取り出され、つながったシステムの乗っ取りにつながるとしています。 ││
-││                                                        ││     出典: https://github.com/OWASP/www-project-mcp-top-10/blob/main/ ││
-││                                                        ││           2025/MCP01-2025-Token-Mismanagement-and-Secret-Exposure.md ││
-││                                                        ││                                                                      ││
-││                                                        ││ ▍このツールの判定（独自基準）                                        ││
-││                                                        ││   危険度: 情報（INFO）                                               ││
-││                                                        ││   理由: 一般的な設定値で、sandbox の外には影響しません。             ││
-││                                                        ││   ※ 危険度は、sandbox の隔離境界（PC 上での実行・PC のファイルの書き ││
-││                                                        ││   換え・外部への公開・sandbox 削除後も残るもの）に基づくこのツール独 ││
-││                                                        ││   自の基準で、公式の評価ではありません。                             ││
-││                                                        ││                                                                      ││
-││                                                        ││ ▍解説（env.<VAR>）                                                   ││
-││                                                        ││ 要は: sandbox の中のエージェントに渡す環境変数です。sandbox の中から ││
-││                                                        ││       誰でも読めるので、パスワードなどの秘密は書かないでください。   ││
-││                                                        ││ 注意: ホストのライフサイクルコマンドには渡されません。秘密はここに書 ││
-││                                                        ││       かず secrets / credential@1 を使います。既存 sandbox でも次の  ││
-││                                                        ││       sbx env run のセッションから反映されます。                     ││
-││                                                        ││                                                                      ││
-││                                                        ││ ▍複数ファイルでの上書き規則                                          ││
-││                                                        ││ 規則: マップ結合                                                     ││
-││                                                        ││   マップはキー単位で結合されます。別のキーは両方残り、同じキーは後の ││
-││                                                        ││   レイヤーの値で置き換わります。                                     ││
-││                                                        ││ 参照: https://docs.docker.com/ai/sandboxes/configuration/            ││
-││                                                        ││       environment-files/#top-level-fields                            ││
-││                                                        ││                                                                      ││
-││                                                        ││ ▍上書きの履歴（上から順に適用）                                      ││
-││                                                        ││   上書きされた（無効）: stable                                       ││
-││                                                        ││     場所: ~/proj/base.sbxenv.yaml の 24 行目                         ││
-││                                                        ││   上書き: beta                                                       ││
-││                                                        ││     場所: ~/proj/local.sbxenv.yaml の 3 行目                         ││
-││                                                        ││                                                                      ││
-││                                                        ││ ▍どこで設定されたか                                                  ││
-││                                                        ││   ~/proj/local.sbxenv.yaml の 3 行目                                 ││
-││                                                        ││                                                                      ││
-││                                                        ││                                                                      ││
-││                                                        ││                                                                      ││
-││                                                        ││                                                                      ││
-││                                                        ││                                                                      ││
-││                                                        ││                                                                      ││
-││                                                        ││                                                                      ││
-││                                                        ││                                                                      ││
-││                                                        ││                                                                      ││
-││                                                        ││                                                                      ││
-││                                                        ││                                                                      ││
-││                                                        ││                                                                      ││
-││                                                        ││                                                                      ││
-││                                                        ││                                                                      ││
-││                                                        ││                                                                      ││
-││                                                        ││                                                                      ││
-│╰────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────╯│
-│ q  終了  ?  ヘルプ  1-4  画面  j/k  移動  Enter  詳細  h/l  ペイン  g  グループ  f  絞り込み  /  検索  マウス: クリックで選択・… │
+│ sbxray  web-app                                                                1 概要   2 リスク 24   3 設定 34   4 ファイル 9   │
+│ グループ  層別 境界別 kit別     絞り込み  全て L1 L2 K1 K2                                                                       │
+│ 検索: RELEASE（Esc で解除）                                                                                                      │
+│                                                                                                                                  │
+│    設定                 値                                |  env.RELEASE_CHANNEL                                                 │
+│ 層 L2 ~/proj/local.sbxenv.yaml                            |  値: beta                                                            │
+│    env.RELEASE_CHANNEL  beta                              |                                                                      │
+│                                                           |  公式の見解（Docker Sandboxes / sandbox-kit-spec）                   │
+│                                                           |    公式ドキュメントに特段の警告記載なし                              │
+│                                                           |    出典: https://docs.docker.com/ai/sandboxes/configuration/         │
+│                                                           |          environment-files/#top-level-fields                         │
+│                                                           |                                                                      │
+│                                                           |  外部セキュリティ基準の観点（OWASP 等）                              │
+│                                                           |    ・OWASP MCP Top 10（ベータ版） MCP01:2025 Token Mismanagement &   │
+│                                                           |    Secret Exposure                                                   │
+│                                                           |      設定ファイルや環境変数に埋め込まれた秘密は、ログや会話の文脈か  │
+│                                                           |      ら取り出され、つながったシステムの乗っ取りにつながるとしていま  │
+│                                                           |      す。                                                            │
+│                                                           |      出典: https://github.com/OWASP/www-project-mcp-top-10/blob/     │
+│                                                           |            main/2025/MCP01-2025-Token-Mismanagement-and-Secret-Expos │
+│                                                           |            ure.md                                                    │
+│                                                           |                                                                      │
+│                                                           |  このツールの判定（独自基準）                                        │
+│                                                           |    危険度: 情報（INFO）                                              │
+│                                                           |    理由: 一般的な設定値で、sandbox の外には影響しません。            │
+│                                                           |    ※ 危険度は、sandbox の隔離境界（PC 上での実行・PC のファイルの書  │
+│                                                           |    き換え・外部への公開・sandbox 削除後も残るもの）に基づくこのツー  │
+│                                                           |    ル独自の基準で、公式の評価ではありません。                        │
+│                                                           |                                                                      │
+│                                                           |  解説（env.<VAR>）                                                   │
+│                                                           |  要は: sandbox の中のエージェントに渡す環境変数です。sandbox の中か  │
+│                                                           |        ら誰でも読めるので、パスワードなどの秘密は書かないでくださ    │
+│                                                           |        い。                                                          │
+│                                                           |  注意: ホストのライフサイクルコマンドには渡されません。秘密はここに  │
+│                                                           |        書かず secrets / credential@1 を使います。既存 sandbox でも次 │
+│                                                           |        の sbx env run のセッションから反映されます。                 │
+│                                                           |                                                                      │
+│                                                           |  複数ファイルでの上書き規則                                          │
+│                                                           |  規則: マップ結合                                                    │
+│                                                           |    マップはキー単位で結合されます。別のキーは両方残り、同じキーは後  │
+│                                                           |    のレイヤーの値で置き換わります。                                  │
+│                                                           |  参照: https://docs.docker.com/ai/sandboxes/configuration/           │
+│                                                           |        environment-files/#top-level-fields                           │
+│                                                           |                                                                      │
+│                                                           |  上書きの履歴（上から順に適用）                                      │
+│                                                           |    上書きされた（無効）: stable                                      │
+│                                                           |      場所: ~/proj/base.sbxenv.yaml の 24 行目                        │
+│                                                           |    上書き: beta                                                      │
+│                                                           |      場所: ~/proj/local.sbxenv.yaml の 3 行目                        │
+│                                                           |                                                                      │
+│                                                           |  どこで設定されたか                                                  │
+│                                                           |    ~/proj/local.sbxenv.yaml の 3 行目                                │
+│                                                           |                                                                      │
+│                                                           |                                                                      │
+│                                                           |                                                                      │
+│                                                           |                                                                      │
+│                                                           |                                                                      │
+│                                                           |                                                                      │
+│                                                           |                                                                      │
+│                                                           |                                                                      │
+│                                                           |                                                                      │
+│                                                           |                                                                      │
+│                                                           |                                                                      │
+│                                                           |                                                                      │
+│                                                           |                                                                      │
+│                                                           |                                                                      │
+│                                                           |                                                                      │
+│                                                           |                                                                      │
+│                                                           |                                                                      │
+│ j/k 移動   enter 詳細   / 検索   g グループ   f 絞り込み   ? ヘルプ   q 終了                                                     │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

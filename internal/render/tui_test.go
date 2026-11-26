@@ -69,6 +69,12 @@ func (u *ui) lines() []string { return strings.Split(ansi.Strip(u.frame()), "\n"
 
 func (u *ui) text() string { return ansi.Strip(u.frame()) }
 
+// footer is the key-hint line at the bottom of the screen.
+func (u *ui) footer() string {
+	l := u.lines()
+	return l[len(l)-1]
+}
+
 // find returns the screen cell where text first appears at or after row
 // minRow, counting display width so wide characters are measured right.
 func (u *ui) find(text string, minRow int) (x, y int) {
@@ -96,6 +102,23 @@ func (u *ui) clickOn(text string, minRow int) *ui {
 	return u.click(x+1, y)
 }
 
+// rowY returns the screen row whose list part (the left pane, or the whole
+// line on a one-pane screen) matches pattern.
+func (u *ui) rowY(pattern string) int {
+	u.t.Helper()
+	re := regexp.MustCompile(pattern)
+	for y, l := range u.lines() {
+		if left, _, _ := splitPanes(l); re.MatchString(left) {
+			return y
+		}
+	}
+	u.t.Fatalf("no row matches %q:\n%s", pattern, u.text())
+	return 0
+}
+
+// clickRow clicks the list row matching pattern.
+func (u *ui) clickRow(pattern string) *ui { return u.click(2, u.rowY(pattern)) }
+
 func (u *ui) wheel(x, y int, down bool) *ui {
 	b := tea.MouseWheelUp
 	if down {
@@ -117,73 +140,233 @@ func (u *ui) want(texts ...string) {
 	}
 }
 
-// listTitle reads the list panel's title ("一覧 · Items（N 件）").
-func (u *ui) listTitle() string {
+// wantRe checks that every pattern matches some line of the screen.
+func (u *ui) wantRe(patterns ...string) {
+	u.t.Helper()
+	for _, p := range patterns {
+		if !regexp.MustCompile("(?m)" + p).MatchString(u.text()) {
+			u.t.Errorf("no line matches %q\n%s", p, u.text())
+		}
+	}
+}
+
+// hasLine reports whether some screen line, trimmed, is exactly s (a
+// section heading, for example).
+func (u *ui) hasLine(s string) bool {
 	for _, l := range u.lines() {
-		if i := strings.Index(l, "一覧 · "); i >= 0 {
-			return strings.TrimRight(strings.SplitN(l[i:], "│", 2)[0], " ")
+		if strings.TrimSpace(l) == s {
+			return true
 		}
 	}
-	return ""
+	return false
 }
 
-// detailTitle returns the first content line of the detail panel.
-func (u *ui) detailFirstLine() string {
+// paneRule separates the list and the detail on a two-pane screen.
+const paneRule = " | "
+
+// backLink is the first line of the detail shown alone on a narrow screen.
+const backLink = "< 一覧に戻る（esc）"
+
+// splitPanes cuts a two-pane line at the rule between list and detail.
+func splitPanes(l string) (left, right string, ok bool) {
+	i := strings.Index(l, paneRule)
+	if i < 0 {
+		return l, "", false
+	}
+	return l[:i], l[i+len(paneRule):], true
+}
+
+// detailText is the detail pane: the right of the rule on a two-pane
+// screen, or what follows the back link when the detail is shown alone.
+func (u *ui) detailText() string {
 	lines := u.lines()
-	for i, l := range lines {
-		if strings.Contains(l, "詳細") && i+1 < len(lines) {
-			next := lines[i+1]
-			if j := strings.LastIndex(next, "│ "); j >= 0 && strings.Contains(l, "││") {
-				return strings.TrimSpace(strings.Trim(next[j:], "│ "))
+	var out []string
+	for _, l := range lines {
+		if _, r, ok := splitPanes(l); ok {
+			out = append(out, strings.TrimRight(r, " "))
+		}
+	}
+	if len(out) == 0 {
+		for i, l := range lines {
+			if strings.Contains(l, backLink) {
+				for _, d := range lines[i+1 : len(lines)-1] {
+					out = append(out, strings.TrimRight(d, " "))
+				}
+				break
 			}
-			return strings.TrimSpace(strings.Trim(next, "│ "))
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// detailFirstLine returns the first non-blank line of the detail pane.
+func (u *ui) detailFirstLine() string {
+	for _, l := range strings.Split(u.detailText(), "\n") {
+		if s := strings.TrimSpace(l); s != "" {
+			return s
 		}
 	}
 	return ""
 }
 
-// colorRe matches SGR colour parameters (truecolor, 256-colour, basic).
-var colorRe = regexp.MustCompile("\x1b\\[[0-9;]*(38;[25];|48;[25];|3[0-7]m|4[0-7]m|9[0-7]m)")
+// viewHeads tell the views apart by their underlined column-header rows.
+var viewHeads = []struct {
+	name string
+	re   *regexp.Regexp
+}{
+	{"概要", regexp.MustCompile(`^ {4}項目 +宣言（sbxenv\.yaml）`)},
+	{"リスク", regexp.MustCompile(`^ {4}危険度  内容`)},
+	{"設定", regexp.MustCompile(`^ {4}設定 +値`)},
+	{"ファイル", regexp.MustCompile(`^ {4}ID +状態 +ファイル`)},
+}
+
+// view names the view on screen by its column-header row, or "".
+func (u *ui) view() string {
+	for _, l := range u.lines() {
+		for _, h := range viewHeads {
+			if h.re.MatchString(l) {
+				return h.name
+			}
+		}
+	}
+	return ""
+}
+
+func (u *ui) wantView(name string) {
+	u.t.Helper()
+	if got := u.view(); got != name {
+		u.t.Errorf("view = %q, want %q\n%s", got, name, u.text())
+	}
+}
+
+// sgrRe matches one Select Graphic Rendition escape.
+var sgrRe = regexp.MustCompile(`\x1b\[([0-9;]*)m`)
+
+// attrsAt returns the SGR parameters in effect at the first cell of text
+// on a raw (styled) screen line, or nil when text is not on the line.
+func attrsAt(raw, text string) map[string]bool {
+	at := strings.Index(ansi.Strip(raw), text)
+	if at < 0 {
+		return nil
+	}
+	attrs := map[string]bool{}
+	plain := 0
+	for i := 0; i < len(raw); {
+		if m := sgrRe.FindStringSubmatchIndex(raw[i:]); m != nil && m[0] == 0 {
+			params := raw[i+m[2] : i+m[3]]
+			if params == "" || params == "0" {
+				attrs = map[string]bool{}
+			}
+			for _, p := range strings.Split(params, ";") {
+				if p != "" && p != "0" {
+					attrs[p] = true
+				}
+			}
+			i += m[1]
+			continue
+		}
+		if plain == at {
+			return attrs
+		}
+		plain++
+		i++
+	}
+	return nil
+}
+
+// rawLine returns the styled screen line whose plain text contains text.
+func (u *ui) rawLine(text string) string {
+	u.t.Helper()
+	for _, l := range strings.Split(u.frame(), "\n") {
+		if strings.Contains(ansi.Strip(l), text) {
+			return l
+		}
+	}
+	u.t.Fatalf("%q not on screen:\n%s", text, u.text())
+	return ""
+}
+
+// sgrParams lists every SGR parameter a frame uses.
+func sgrParams(frame string) []int {
+	var out []int
+	for _, m := range sgrRe.FindAllStringSubmatch(frame, -1) {
+		for _, p := range strings.Split(m[1], ";") {
+			if p == "" {
+				continue
+			}
+			n, err := strconv.Atoi(p)
+			if err != nil {
+				panic(err)
+			}
+			out = append(out, n)
+		}
+	}
+	return out
+}
 
 // --- layout and look -------------------------------------------------------
 
-func TestTUIHeaderShowsTabsSummaryChipsAndStatusBar(t *testing.T) {
+func TestTUIHeaderShowsTabsContextAndKeyHints(t *testing.T) {
 	t.Parallel()
 	// Arrange / Act
 	u := newUI(t, 140, 40, true)
 
 	// Assert
 	lines := u.lines()
-	for _, want := range []string{"sbxray", "1:Overview", "2:Risk", "3:Items", "4:Sources"} {
-		if !strings.Contains(lines[0], want) {
+	for _, want := range []string{`^ sbxray `, `1 概要`, `2 リスク \d+`, `3 設定 \d+`, `4 ファイル \d+`} {
+		if !regexp.MustCompile(want).MatchString(lines[0]) {
 			t.Errorf("title bar missing %q: %q", want, lines[0])
 		}
 	}
-	for _, want := range []string{"[Host実行 ", "[Host永続 ", "[RWマウント ", "[外への許可 ", "[警告 "} {
-		if !strings.Contains(lines[1], want) {
-			t.Errorf("summary chips missing %q: %q", want, lines[1])
-		}
+	raw := strings.Split(u.frame(), "\n")[0]
+	if !attrsAt(raw, "1 概要")["4"] || attrsAt(raw, "2 リスク")["4"] {
+		t.Errorf("only the active tab is underlined: %q", raw)
+	}
+	if !strings.Contains(lines[1], "宣言 2 ファイル・Kit 1 を静的に解析（稼働中の状態ではありません）") {
+		t.Errorf("the static-analysis notice is missing: %q", lines[1])
 	}
 	if strings.Contains(lines[1], "未展開") {
 		t.Errorf("gaps of the static analysis are not a header count: %q", lines[1])
 	}
-	if !strings.Contains(lines[2], "宣言の静的解析") {
-		t.Errorf("the static-analysis notice is missing: %q", lines[2])
-	}
-	if last := lines[len(lines)-1]; !strings.Contains(last, " q  終了 ") || !strings.Contains(last, "ヘルプ") || !strings.Contains(last, "マウス") {
-		t.Errorf("status bar = %q", last)
+	u.wantRe(`^ ✗ 最重要・高 \d+    ! 中 \d+    印なしでも問題がないとは限りません`)
+	if f := u.footer(); !strings.Contains(f, "q 終了") || !strings.Contains(f, "? ヘルプ") || !strings.Contains(f, "enter 詳細") {
+		t.Errorf("key hints = %q", f)
 	}
 	if strings.Contains(u.text(), "安全") {
 		t.Error("the TUI must never claim safety")
 	}
 }
 
-func TestTUIPanelsUseRoundedBordersAndSplitAt120Columns(t *testing.T) {
+func TestTUITabCountsMatchTheirLists(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ key, name string }{{"2", "リスク"}, {"3", "設定"}, {"4", "ファイル"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			// Arrange
+			u := newUI(t, 250, 200, true).press(tc.key)
+			n, _ := strconv.Atoi(regexp.MustCompile(tc.name + ` (\d+)`).FindStringSubmatch(u.lines()[0])[1])
+
+			// Act: walk the list, past its end.
+			seen := map[string]bool{}
+			for i := 0; i < n+3; i++ {
+				seen[u.detailFirstLine()] = true
+				u.press("j")
+			}
+
+			// Assert
+			if n == 0 || len(seen) != n {
+				t.Errorf("tab says %d, the list holds %d entries", n, len(seen))
+			}
+		})
+	}
+}
+
+func TestTUIPanesSplitAt120Columns(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		width  int
-		panels int
-	}{{80, 1}, {119, 1}, {120, 2}, {160, 2}}
+		width int
+		two   bool
+	}{{80, false}, {119, false}, {120, true}, {160, true}}
 	for _, tc := range cases {
 		t.Run(strconv.Itoa(tc.width), func(t *testing.T) {
 			t.Parallel()
@@ -191,73 +374,66 @@ func TestTUIPanelsUseRoundedBordersAndSplitAt120Columns(t *testing.T) {
 			u := newUI(t, tc.width, 30, true).press("2")
 
 			// Assert
-			corners := 0
-			for _, l := range u.lines() {
-				corners += strings.Count(l, "╭")
-			}
-			if corners != tc.panels {
-				t.Errorf("width %d: %d rounded panels, want %d", tc.width, corners, tc.panels)
-			}
+			cols := map[int]bool{}
 			for i, l := range u.lines() {
 				if w := ansi.StringWidth(l); w > tc.width {
 					t.Errorf("row %d is %d cells wide, terminal is %d", i, w, tc.width)
 				}
+				if strings.ContainsAny(l, "╭╮╰╯│…") {
+					t.Errorf("row %d draws a border, box rule or ellipsis glyph: %q", i, l)
+				}
+				if left, _, ok := splitPanes(l); ok {
+					cols[ansi.StringWidth(left)] = true
+				}
+			}
+			if two := len(cols) > 0; two != tc.two {
+				t.Errorf("width %d: two panes = %v, want %v\n%s", tc.width, two, tc.two, u.text())
+			}
+			if len(cols) > 1 {
+				t.Errorf("the rule between the panes moves between rows: %v", cols)
 			}
 		})
 	}
 }
 
-// borderColours returns the SGR sequence in effect at each panel's top-left
-// corner on the first row that has one.
-func borderColours(frame string) []string {
-	for _, line := range strings.Split(frame, "\n") {
-		if !strings.Contains(line, "╭") {
-			continue
-		}
-		var out []string
-		rest := line
-		for {
-			i := strings.Index(rest, "╭")
-			if i < 0 {
-				return out
-			}
-			before := rest[:i]
-			if j := strings.LastIndex(before, "\x1b["); j >= 0 {
-				out = append(out, before[j:])
-			} else {
-				out = append(out, "")
-			}
-			rest = rest[i+len("╭"):]
-		}
-	}
-	return nil
-}
-
-func TestTUIFocusedPanelIsMarkedAndAccented(t *testing.T) {
+func TestTUIFocusShowsInTheListCursorAndTheKeyHints(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	u := newUI(t, 130, 30, false).press("2")
-	const accent, blur = "122;162;247", "59;66;97" // #7aa2f7, #3b4261
+	u := newUI(t, 130, 30, true).press("2")
+	const first = "Kit が書き換え可能な場所にある"
+	cursorRow := func() string { return u.lines2raw(u.rowY(`^.[✗! ]  高 +` + first)) }
 
-	// Act / Assert: the list starts focused.
-	if !u.has("● 一覧") || u.has("● 詳細") {
-		t.Errorf("the list starts focused:\n%s", u.text())
+	// Act / Assert: the list starts focused; its cursor row is reverse video.
+	if a := attrsAt(cursorRow(), first); !a["7"] {
+		t.Errorf("the focused list's cursor row is reverse video: %v", a)
 	}
-	if c := borderColours(u.frame()); len(c) != 2 || !strings.Contains(c[0], accent) || !strings.Contains(c[1], blur) {
-		t.Errorf("border colours = %q, want accent then dim", c)
+	if !strings.Contains(u.footer(), "j/k 移動") {
+		t.Errorf("key hints for the list: %q", u.footer())
 	}
+
+	// Act / Assert: l moves focus to the detail; the list cursor becomes › and bold.
 	u.press("l")
-	if !u.has("● 詳細") || u.has("● 一覧") {
-		t.Errorf("l moves focus to the detail panel:\n%s", u.text())
+	row := cursorRow()
+	if a := attrsAt(row, first); a["7"] || !a["1"] {
+		t.Errorf("an unfocused list's cursor row is bold, not reverse: %v", a)
 	}
-	if c := borderColours(u.frame()); len(c) != 2 || !strings.Contains(c[0], blur) || !strings.Contains(c[1], accent) {
-		t.Errorf("after l, border colours = %q, want dim then accent", c)
+	if !strings.HasPrefix(ansi.Strip(row), "›") {
+		t.Errorf("an unfocused list's cursor row starts with ›: %q", ansi.Strip(row))
+	}
+	if f := u.footer(); !strings.Contains(f, "j/k スクロール") || !strings.Contains(f, "esc 戻る") {
+		t.Errorf("key hints for the detail: %q", f)
+	}
+
+	// Act / Assert: h returns.
+	u.press("h")
+	if a := attrsAt(cursorRow(), first); !a["7"] {
+		t.Errorf("h focuses the list again: %v", a)
 	}
 }
 
 func TestTUIDetailSectionsAndPathWrapping(t *testing.T) {
 	t.Parallel()
-	// Arrange: a source path far wider than the detail panel, made of
+	// Arrange: a source path far wider than the detail pane, made of
 	// hyphenated directory names.
 	dir := filepath.Join(t.TempDir(), "team-shared-config", "sandbox-environment-definitions", "per-project-overrides", "web-application-frontend")
 	doc := "schemaVersion: \"1\"\nagent: claude\nenv:\n  NODE_ENV: test\n"
@@ -273,18 +449,14 @@ func TestTUIDetailSectionsAndPathWrapping(t *testing.T) {
 	u.press("3", "/", "N", "O", "D", "E", "enter")
 
 	// Assert
-	u.want("▍公式の見解（Docker Sandboxes / sandbox-kit-spec）", "▍このツールの判定（独自基準）", "▍解説", "要は:", "▍複数ファイルでの上書き規則", "規則: マップ結合", "▍上書きの履歴", "▍どこで設定されたか")
+	u.wantRe(`\|  公式の見解（Docker Sandboxes / sandbox-kit-spec）`, `\|  このツールの判定（独自基準）`, `\|  解説（`,
+		`\|  要は: `, `\|  複数ファイルでの上書き規則`, `\|  規則: マップ結合`, `\|  上書きの履歴`, `\|  どこで設定されたか`)
 	wrapped := 0
-	for _, l := range u.lines() {
-		i := strings.LastIndex(l, "││")
-		if i < 0 {
-			continue
+	for _, l := range strings.Split(u.detailText(), "\n") {
+		if strings.HasSuffix(l, "-") {
+			t.Errorf("path broken inside a hyphenated name: %q", l)
 		}
-		right := strings.TrimRight(strings.TrimRight(l[i+len("││"):], "│"), " ")
-		if strings.HasSuffix(right, "-") {
-			t.Errorf("path broken inside a hyphenated name: %q", right)
-		}
-		if strings.HasSuffix(right, "/") {
+		if strings.HasSuffix(l, "/") {
 			wrapped++
 		}
 	}
@@ -295,26 +467,64 @@ func TestTUIDetailSectionsAndPathWrapping(t *testing.T) {
 
 func TestTUIColourAndNoColor(t *testing.T) {
 	t.Parallel()
-	// Arrange / Act
-	plain := newUI(t, 130, 30, true).frame()
-	coloured := newUI(t, 130, 30, false).frame()
+	screens := [][]string{nil, {"2"}, {"2", "l"}, {"3"}, {"4"}, {"?"}}
+	for _, keys := range screens {
+		t.Run(strings.Join(keys, ""), func(t *testing.T) {
+			t.Parallel()
+			// Arrange / Act
+			plain := newUI(t, 130, 40, true).press(keys...).frame()
+			coloured := newUI(t, 130, 40, false).press(keys...).frame()
 
-	// Assert
-	if colorRe.MatchString(plain) {
-		t.Error("NO_COLOR output must not contain colour escapes")
-	}
-	if !strings.Contains(ansi.Strip(plain), "╭") || !strings.Contains(ansi.Strip(plain), "╰") {
-		t.Error("NO_COLOR keeps the panel borders")
-	}
-	if !colorRe.MatchString(coloured) {
-		t.Error("colours expected when NO_COLOR is not set")
-	}
-	for _, green := range []string{"38;2;0;255;0", "38;2;158;206;106", "38;5;2m", "32m"} {
-		if strings.Contains(coloured, green) {
-			t.Errorf("green (%s) must not be used", green)
-		}
+			// Assert: NO_COLOR has no colour at all.
+			for _, n := range sgrParams(plain) {
+				if (n >= 30 && n <= 49) || (n >= 90 && n <= 107) {
+					t.Errorf("NO_COLOR output uses colour parameter %d", n)
+				}
+			}
+			// Colour mode uses the 16 ANSI foregrounds only: no 256-colour,
+			// no truecolor, no background except reverse video, no green.
+			colours := 0
+			for _, n := range sgrParams(coloured) {
+				switch {
+				case n == 32 || n == 92:
+					t.Errorf("green (%d) must not be used", n)
+				case (n >= 30 && n <= 37) || (n >= 90 && n <= 97):
+					colours++
+				case n == 0 || n == 1 || n == 2 || n == 3 || n == 4 || n == 7 || n == 22 || n == 23 || n == 24 || n == 27 || n == 39:
+				default:
+					t.Errorf("colour mode uses SGR parameter %d (only ANSI-16 foregrounds and text attributes are allowed)", n)
+				}
+			}
+			if colours == 0 {
+				t.Error("colours expected when NO_COLOR is not set")
+			}
+		})
 	}
 }
+
+func TestTUINoColorKeepsStructureWithAttributes(t *testing.T) {
+	t.Parallel()
+	// Arrange / Act
+	u := newUI(t, 130, 40, true)
+
+	// Assert: the selection is reverse video and column headers are underlined.
+	if a := attrsAt(u.rawLine("エージェント"), "エージェント"); !a["7"] {
+		t.Errorf("the selected Overview row is reverse video: %v", a)
+	}
+	if a := attrsAt(u.rawLine("宣言（sbxenv.yaml）"), "項目"); !a["4"] {
+		t.Errorf("the Overview's column header is underlined: %v", a)
+	}
+	u.press("3")
+	if a := attrsAt(u.rawLine("層 L1"), "層 L1"); !a["1"] {
+		t.Errorf("a group heading is bold: %v", a)
+	}
+	if a := attrsAt(u.lines2raw(u.rowY(`^ {4}設定 +値`)), "設定"); !a["4"] {
+		t.Errorf("the list's column header is underlined: %v", a)
+	}
+}
+
+// lines2raw returns the styled screen line y.
+func (u *ui) lines2raw(y int) string { return strings.Split(u.frame(), "\n")[y] }
 
 func TestTUIEscapesControlCharactersInValues(t *testing.T) {
 	t.Parallel()
@@ -339,34 +549,70 @@ func TestTUIEscapesControlCharactersInValues(t *testing.T) {
 	u.want(`x\x1b[31mred\nnext`)
 }
 
+func TestTUIKeepsWideCharactersInsideTheirColumns(t *testing.T) {
+	t.Parallel()
+	// Arrange: a Japanese value wider than the value column.
+	home := t.TempDir()
+	doc := "schemaVersion: \"1\"\nagent: claude\nenv:\n  GREETING: " + strings.Repeat("日本語の値", 20) + "\n"
+	p, err := sbxenv.Resolve([]sbxenv.LayerInput{{Path: filepath.Join(home, "e.yaml"), Content: []byte(doc), Kind: sbxenv.LayerEnv}}, sbxenv.ResolveOptions{HomeDir: home, Redaction: sbxenv.RedactHome})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, width := range []int{80, 121, 130} {
+		m := tui.New(p, true)
+		m.Update(tea.WindowSizeMsg{Width: width, Height: 40})
+		u := &ui{t: t, m: m}
+
+		// Act
+		u.press("3", "/", "G", "R", "E", "E", "T", "enter")
+
+		// Assert
+		cols := map[int]bool{}
+		for i, l := range u.lines() {
+			if w := ansi.StringWidth(l); w > width {
+				t.Errorf("width %d: row %d is %d cells wide", width, i, w)
+			}
+			if left, _, ok := splitPanes(l); ok {
+				cols[ansi.StringWidth(left)] = true
+			}
+		}
+		if len(cols) > 1 {
+			t.Errorf("width %d: a wide value pushed the pane rule: %v\n%s", width, cols, u.text())
+		}
+		u.wantRe(`GREETING +日本語の値`)
+	}
+}
+
 // --- keyboard ----------------------------------------------------------------
 
 func TestTUIKeyboardViewsGroupingFilterSearchAndHelp(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name string
-		keys []string
-		want []string
-		not  []string
+		name  string
+		keys  []string
+		view  string
+		want  []string
+		lines []string
+		not   []string
 	}{
-		{"overview is the default", nil, []string{"▍基本構成", "▍適用される Kits", "▍ワークスペース・マウント", "▍MCP & Network", "▍資格情報・SSH・ポート・ホスト実行"}, []string{"一覧 · ", "解析範囲外", "未展開", "[COVERAGE]"}},
-		{"risk lists no analysis gaps", []string{"2"}, []string{"一覧 · Risk"}, []string{"未展開", "[COVERAGE]"}},
-		{"sources lists the gaps the files name, quietly", []string{"4"}, []string{"[未展開] ghcr.io/example/x:dev", "[未展開] docker.io/sbx/playwright:1.61.1", "[展開済み] ~/proj/sbxenv.yaml"}, []string{"[COVERAGE]", "組み込みエージェントの中身", "PC 全体の sbx 設定"}},
-		{"risk view", []string{"2"}, []string{"一覧 · Risk"}, nil},
-		{"items grouped by layer", []string{"3"}, []string{"一覧 · Items", "▸ 層 L1"}, nil},
-		{"g groups by boundary", []string{"3", "g"}, []string{"▸ 境界: PC 上でのコマンド実行"}, []string{"▸ 層 L1"}},
-		{"g groups by kit", []string{"3", "g", "g"}, []string{"▸ kit: net"}, nil},
-		{"g cycles back to layer", []string{"3", "g", "g", "g"}, []string{"▸ 層 L1"}, nil},
-		{"tab moves to the next view", []string{"tab"}, []string{"一覧 · Risk"}, nil},
-		{"] moves to the next view", []string{"]", "]"}, []string{"一覧 · Items"}, nil},
-		{"[ wraps to the last view", []string{"["}, []string{"一覧 · Sources"}, nil},
-		{"1 returns to the overview", []string{"3", "1"}, []string{"▍基本構成"}, []string{"一覧 · "}},
-		{"sources view", []string{"4"}, []string{"一覧 · Sources", "~/proj/sbxenv.yaml"}, nil},
-		{"f filters by the first layer", []string{"2", "f"}, []string{"絞り込み（非表示の警告・エラー", ": L1 ~/proj/sbxenv.yaml"}, nil},
-		{"search narrows the list", []string{"3", "/", "a", "g", "e", "n", "t", "enter"}, []string{"agent = claude", "検索: agent（Esc で解除）"}, []string{"ports["}},
-		{"esc clears the search", []string{"3", "/", "a", "g", "enter", "esc"}, []string{"ports["}, []string{"検索:"}},
-		{"help", []string{"?"}, []string{"キー操作", "▍マウス", "[HOST]", "あなたの PC で実行", "静的解析の前提"}, nil},
-		{"any key closes help", []string{"2", "?", "x"}, []string{"一覧 · Risk"}, []string{"キー操作"}},
+		{"overview is the default", nil, "概要", nil, []string{"基本", "Kit", "フォルダの共有", "ポート公開", "通信", "コマンドの実行"}, []string{"解析範囲外", "未展開", "[COVERAGE]", "[HOST]", "実体（sbx）"}},
+		{"risk lists no analysis gaps", []string{"2"}, "リスク", []string{`^ ✗  高 +lif\S*\[0\]  echo hi`}, nil, []string{"未展開", "[COVERAGE]", "[HOST]"}},
+		{"sources lists the gaps the files name, quietly", []string{"4"}, "ファイル", []string{`^ +- +未展開 +ghcr\.io/example/x:dev`, `^ +- +未展開 +docker\.io/sbx/playwright:1\.61\.1`, `^ +L1 +展開済み +~/proj/sbxenv\.yaml`}, nil, []string{"[COVERAGE]", "組み込みエージェントの中身", "PC 全体の sbx 設定"}},
+		{"items grouped by layer", []string{"3"}, "設定", []string{`^ 層 L1 ~/proj/sbxenv\.yaml`, `^ {4}agent +claude`}, nil, []string{"▸", " = "}},
+		{"g groups by boundary", []string{"3", "g"}, "設定", []string{`^ 境界: PC 上でのコマンド実行`}, nil, []string{"層 L1"}},
+		{"g groups by kit", []string{"3", "g", "g"}, "設定", []string{`^ kit: net`}, nil, nil},
+		{"g cycles back to layer", []string{"3", "g", "g", "g"}, "設定", []string{`^ 層 L1`}, nil, nil},
+		{"tab moves to the next view", []string{"tab"}, "リスク", nil, nil, nil},
+		{"] moves to the next view", []string{"]", "]"}, "設定", nil, nil, nil},
+		{"[ wraps to the last view", []string{"["}, "ファイル", nil, nil, nil},
+		{"1 returns to the overview", []string{"3", "1"}, "概要", nil, []string{"基本"}, nil},
+		{"sources view", []string{"4"}, "ファイル", []string{`~/proj/sbxenv\.yaml`}, nil, nil},
+		{"f filters by the first layer", []string{"2", "f"}, "リスク", []string{`^ 絞り込み（非表示の警告・エラー \d+ 件）: L1 ~/proj/sbxenv\.yaml`}, nil, nil},
+		{"search narrows the list", []string{"3", "/", "a", "g", "e", "n", "t", "enter"}, "設定", []string{`^ {4}agent +claude`, `^ 検索: agent（Esc で解除）`}, nil, []string{"ports["}},
+		{"esc clears the search", []string{"3", "/", "a", "g", "enter", "esc"}, "設定", []string{`ports\[`}, nil, []string{"検索:"}},
+		{"search shows its cursor while typing", []string{"3", "/", "a"}, "設定", []string{`^ 検索: a_ *$`}, nil, nil},
+		{"help", []string{"?"}, "", []string{"あなたの PC で実行", "静的解析の前提", "✗  このツールの基準で危険度が最重要・高", "!  危険度が中", "太字・下線の値は、宣言と違う"}, []string{"キー操作", "マウス", "一覧の印", "詳細に出る目印"}, []string{"[HOST]"}},
+		{"any key closes help", []string{"2", "?", "x"}, "リスク", nil, nil, []string{"キー操作"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -375,13 +621,74 @@ func TestTUIKeyboardViewsGroupingFilterSearchAndHelp(t *testing.T) {
 			u := newUI(t, 130, 40, true).press(tc.keys...)
 
 			// Assert
-			u.want(tc.want...)
+			u.wantView(tc.view)
+			u.wantRe(tc.want...)
+			for _, l := range tc.lines {
+				if !u.hasLine(l) {
+					t.Errorf("no line reads %q\n%s", l, u.text())
+				}
+			}
 			for _, n := range tc.not {
 				if u.has(n) {
 					t.Errorf("screen should not contain %q\n%s", n, u.text())
 				}
 			}
 		})
+	}
+}
+
+func TestTUIKitGroupingDropsTheKitPrefixFromRows(t *testing.T) {
+	t.Parallel()
+	for _, keys := range [][]string{{"3"}, {"3", "g", "g"}} {
+		// Act
+		u := newUI(t, 80, 30, true).press(keys...)
+
+		// Assert: the group heading names the kit, so the rows do not; a long
+		// key is cut in the middle so its last segment stays readable.
+		u.wantRe(`^ {4}network-poli\S*\.\.\S*/api\.example\.com +runtime allow api\.example\.com`)
+		if u.has("kit:net/") {
+			t.Errorf("keys %v: a row repeats the kit its heading names:\n%s", keys, u.text())
+		}
+	}
+	// Grouped by boundary, rows of different kits mix, so the prefix stays.
+	newUI(t, 80, 30, true).press("3", "g").wantRe(`^ {4}kit:net/\S*\.\.\S*/api\.example\.com +runtime allow`)
+}
+
+func TestTUIHelpScrollsWithJKAndClosesOnOtherKeys(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	u := newUI(t, 130, 20, true).press("2", "?")
+
+	// Assert: a clipped help says how much follows.
+	u.wantRe(`^ +ほか \d+ 行（j でスクロール） *$`)
+	if f := u.footer(); !strings.Contains(f, "j/k スクロール") || !strings.Contains(f, "ほかのキー 閉じる") {
+		t.Errorf("key hints in help = %q", f)
+	}
+
+	// Act / Assert: j scrolls, and stops at the end.
+	for i := 0; i < 200; i++ {
+		u.press("j")
+	}
+	if u.hasLine("このツールについて") || !u.has("詳細に出る目印") || u.has("ほか ") {
+		t.Errorf("j scrolls the help to its end:\n%s", u.text())
+	}
+	// k scrolls back at once, since the scroll stopped at the end.
+	u.press("k")
+	if !u.has("詳細に出る目印") {
+		t.Errorf("k scrolls back by one line:\n%s", u.text())
+	}
+	for i := 0; i < 200; i++ {
+		u.press("k")
+	}
+	if !u.hasLine("このツールについて") {
+		t.Errorf("k scrolls the help back to its top:\n%s", u.text())
+	}
+
+	// Act / Assert: any other key closes it.
+	u.press("x")
+	u.wantView("リスク")
+	if u.has("キー操作") {
+		t.Error("a key other than j/k closes the help")
 	}
 }
 
@@ -399,7 +706,7 @@ func TestTUIFilterHeaderKeepsTheHiddenCountOnLongPaths(t *testing.T) {
 	u := &ui{t: t, m: m}
 
 	// Act
-	u.press("f")
+	u.press("2", "f")
 
 	// Assert
 	if !regexp.MustCompile(`絞り込み（非表示の警告・エラー \d+ 件）`).MatchString(u.text()) {
@@ -414,12 +721,20 @@ func TestTUINarrowScreenEnterAndEscape(t *testing.T) {
 
 	// Act / Assert
 	u.press("enter")
-	u.want("● 詳細", "← 戻る")
+	u.want(backLink)
+	if got := u.detailFirstLine(); got != "Kit が書き換え可能な場所にある" {
+		t.Errorf("detail = %q", got)
+	}
+	u.wantRe(`^ Kit が書き換え可能な場所にある *\n 危険度: 高（HIGH） *\n 種類: 警告（危険・要確認）`,
+		`^ 対象の設定 *\n   kits\[\./kits/net\] *\n   値: \./kits/net`)
+	if !strings.Contains(u.footer(), "esc 戻る") {
+		t.Errorf("key hints = %q", u.footer())
+	}
 	u.press("esc")
-	if u.has("← 戻る") {
+	if u.has(backLink) {
 		t.Error("esc returns to the list")
 	}
-	u.want("一覧 · Risk")
+	u.wantView("リスク")
 }
 
 func TestTUIDetailScrollStopsAtTheEnd(t *testing.T) {
@@ -434,13 +749,16 @@ func TestTUIDetailScrollStopsAtTheEnd(t *testing.T) {
 
 	// Assert
 	filled := 0
-	for _, l := range u.lines() {
-		if i := strings.LastIndex(l, "││"); i >= 0 && strings.TrimSpace(strings.Trim(l[i:], "│")) != "" {
+	for _, l := range strings.Split(u.detailText(), "\n") {
+		if strings.TrimSpace(l) != "" {
 			filled++
 		}
 	}
 	if filled < 5 {
 		t.Errorf("detail pane scrolled past its end:\n%s", u.text())
+	}
+	if strings.Contains(u.detailText(), "ほか ") {
+		t.Errorf("at its end the detail says nothing follows:\n%s", u.text())
 	}
 }
 
@@ -484,29 +802,25 @@ func TestTUIMouseClickOnTabsSwitchesViews(t *testing.T) {
 	u := newUI(t, 130, 30, true)
 
 	// Act / Assert
-	for _, tab := range []struct{ label, view string }{{"3:Items", "Items"}, {"4:Sources", "Sources"}, {"2:Risk", "Risk"}} {
+	for _, tab := range []struct{ label, view string }{{"3 設定", "設定"}, {"4 ファイル", "ファイル"}, {"2 リスク", "リスク"}, {"1 概要", "概要"}} {
 		u.clickOn(tab.label, 0)
-		if got := u.listTitle(); !strings.Contains(got, tab.view) {
-			t.Errorf("click %s: list title = %q", tab.label, got)
-		}
+		u.wantView(tab.view)
 	}
-	u.clickOn("1:Overview", 0)
-	u.want("▍基本構成")
 }
 
-func TestTUIMouseClickOnGroupAndFilterChips(t *testing.T) {
+func TestTUIMouseClickOnGroupAndFilterSwitches(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	u := newUI(t, 130, 40, true).press("3")
 
 	// Act / Assert
-	u.clickOn("境界別", 3)
-	u.want("▸ 境界: ")
-	u.clickOn("kit別", 3)
-	u.want("▸ kit: net")
-	u.clickOn("L2", 3)
-	u.want("絞り込み（非表示の警告・エラー", ": L2 ~/proj/local.yaml")
-	u.clickOn("全て", 3)
+	u.clickOn("境界別", 1)
+	u.wantRe(`^ 境界: `)
+	u.clickOn("kit別", 1)
+	u.wantRe(`^ kit: net`)
+	u.clickOn("L2", 1)
+	u.wantRe(`^ 絞り込み（非表示の警告・エラー \d+ 件）: L2 ~/proj/local\.yaml`)
+	u.clickOn("全て", 1)
 	if u.has("絞り込み（") {
 		t.Error("全て clears the filter")
 	}
@@ -518,14 +832,14 @@ func TestTUIMouseClickOnARowSelectsIt(t *testing.T) {
 	u := newUI(t, 130, 40, true).press("3")
 
 	// Act
-	u.clickOn("agent = claude", 5)
+	u.clickRow(`^ {4}agent +claude`)
 
 	// Assert
 	if got := u.detailFirstLine(); got != "agent" {
 		t.Errorf("detail shows %q, want the clicked item", got)
 	}
-	if !u.has("● 一覧") {
-		t.Error("clicking a row focuses the list")
+	if a := attrsAt(u.lines2raw(u.rowY(`^ {4}agent +claude`)), "agent"); !a["7"] {
+		t.Errorf("clicking a row focuses the list (reverse-video cursor): %v", a)
 	}
 }
 
@@ -535,94 +849,93 @@ func TestTUIMouseOnANarrowScreenOpensAndClosesTheDetail(t *testing.T) {
 	u := newUI(t, 80, 30, true).press("3")
 
 	// Act
-	u.clickOn("agent = claude", 5)
+	u.clickRow(`^ {4}agent +claude`)
 
 	// Assert
-	u.want("● 詳細", "← 戻る")
+	u.want(backLink)
 	if got := u.detailFirstLine(); got != "agent" {
 		t.Errorf("detail shows %q", got)
 	}
-	u.clickOn("← 戻る", 4)
-	u.want("一覧 · Items")
+	u.clickOn(backLink, 1)
+	if u.has(backLink) {
+		t.Error("the back link closes the detail")
+	}
+	u.wantView("設定")
 }
 
-func TestTUIMouseClickOnAPanelMovesFocus(t *testing.T) {
+func TestTUIMouseClickOnAPaneMovesFocus(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	u := newUI(t, 130, 30, true).press("2")
+	_, top := u.find("危険度  内容", 1)
+	rule, _ := u.find(paneRule, top)
 
 	// Act / Assert
-	x, y := u.find("詳細", 4)
-	u.click(x+10, y+3)
-	if !u.has("● 詳細") {
-		t.Errorf("clicking the detail panel focuses it:\n%s", u.text())
+	u.click(rule+10, top+3)
+	if !strings.Contains(u.footer(), "j/k スクロール") {
+		t.Errorf("clicking the detail pane focuses it: %q", u.footer())
 	}
-	x, y = u.find("一覧", 4)
-	u.click(x, y)
-	if !u.has("● 一覧") {
-		t.Error("clicking the list panel focuses it")
+	u.click(5, len(u.lines())-3)
+	if !strings.Contains(u.footer(), "j/k 移動") {
+		t.Errorf("clicking the list pane focuses it: %q", u.footer())
 	}
 }
 
-func TestTUIMouseWheelScrollsThePanelUnderThePointer(t *testing.T) {
+func TestTUIMouseWheelScrollsThePaneUnderThePointer(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	u := newUI(t, 130, 30, true).press("3")
 	before := u.detailFirstLine()
-	lx, ly := u.find("一覧", 4)
+	_, top := u.find("設定  ", 1)
+	rule, _ := u.find(paneRule, top)
 
 	// Act: the wheel over the list moves the selection.
-	u.wheel(lx+2, ly+4, true).wheel(lx+2, ly+4, true)
+	u.wheel(4, top+4, true).wheel(4, top+4, true)
 
 	// Assert
 	if after := u.detailFirstLine(); after == before {
 		t.Errorf("wheel over the list should move the selection (still %q)", after)
 	}
-	if !u.has("● 一覧") {
+	if !strings.Contains(u.footer(), "j/k 移動") {
 		t.Error("the wheel does not move focus")
 	}
 
 	// Act: the wheel over the detail scrolls it.
-	dx, dy := u.find("詳細", 4)
-	top := u.detailFirstLine()
-	u.wheel(dx+5, dy+6, true)
+	topLine := u.detailFirstLine()
+	u.wheel(rule+5, top+6, true)
 
 	// Assert
-	if got := u.detailFirstLine(); got == top {
+	if got := u.detailFirstLine(); got == topLine {
 		t.Errorf("wheel over the detail should scroll it (still %q)", got)
 	}
-	u.wheel(dx+5, dy+6, false)
-	if got := u.detailFirstLine(); got != top {
-		t.Errorf("wheel up returns to the top: %q, want %q", got, top)
+	u.wheel(rule+5, top+6, false)
+	if got := u.detailFirstLine(); got != topLine {
+		t.Errorf("wheel up returns to the top: %q, want %q", got, topLine)
 	}
 }
 
 // --- overview ----------------------------------------------------------------
 
-func TestTUIOverviewCardsAreRoundedPanelsInTwoColumns(t *testing.T) {
+func TestTUIOverviewIsAManifestTable(t *testing.T) {
 	t.Parallel()
 	// Arrange / Act
 	u := newUI(t, 130, 60, true)
 
-	// Assert
-	corners, sideBySide := 0, false
-	for _, l := range u.lines() {
-		corners += strings.Count(l, "╭")
-		if strings.Count(l, "│") >= 4 {
-			sideBySide = true
-		}
+	// Assert: one row per declared setting, marked in the margin.
+	u.wantRe(`^ {4}エージェント +claude`, `^ !  ワークスペース +~/proj（読み書き）`, `^ ✗  ポート +0\.0\.0\.0:ephemeral -> sandbox:3000/tcp4`,
+		`^ {4}許可（実行中） +1 件  api\.example\.com`, `^ ✗  PC 上で実行 +echo hi`, `^ {4}playwright +リモート（中身は「4 ファイル」で確認）`)
+	// The declared values line up in one column.
+	cols := map[int]bool{}
+	for _, v := range []string{"claude", "~/proj（読み書き）", "echo hi", "リモート（中身は"} {
+		x, _ := u.find(v, 4)
+		cols[x] = true
 	}
-	if corners != 5 {
-		t.Errorf("%d cards, want 5\n%s", corners, u.text())
+	if len(cols) != 1 {
+		t.Errorf("declared values are not in one column: %v\n%s", cols, u.text())
 	}
-	if !sideBySide {
-		t.Errorf("cards should sit in two columns at 130 columns\n%s", u.text())
-	}
-	u.want("エージェント: claude", "ワークスペース（読み書き）: ~/proj", "通信の許可（実行中）: api.example.com",
-		"PC 上で実行: echo hi", "playwright: リモートの Kit（中身は 4: Sources）")
-	for _, noise := range []string{"組み込み", "PC 全体の sbx 設定", "[COVERAGE]", "解析範囲外"} {
+	for _, noise := range []string{"組み込み", "PC 全体の sbx 設定", "[COVERAGE]", "解析範囲外", "[HOST]", "[OPAQUE]"} {
 		if u.has(noise) {
-			t.Errorf("overview shows the analysis premise %q", noise)
+			t.Errorf("overview shows %q", noise)
 		}
 	}
 }
@@ -636,26 +949,22 @@ func TestTUIOverviewEnterOpensTheItemInItems(t *testing.T) {
 	u.press("enter")
 
 	// Assert
-	if got := u.listTitle(); !strings.Contains(got, "Items") {
-		t.Errorf("list title = %q, want Items", got)
-	}
+	u.wantView("設定")
 	if got := u.detailFirstLine(); got != "agent" {
 		t.Errorf("detail = %q, want the selected entry's item", got)
 	}
 }
 
-func TestTUIOverviewClickOnAFindingOpensItInItems(t *testing.T) {
+func TestTUIOverviewClickOnAnEntryOpensItInItems(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	u := newUI(t, 130, 60, true)
 
 	// Act
-	u.clickOn("PC 上で実行: echo hi", 4)
+	u.clickRow(`PC 上で実行 +echo hi`)
 
 	// Assert
-	if got := u.listTitle(); !strings.Contains(got, "Items") {
-		t.Errorf("list title = %q, want Items", got)
-	}
+	u.wantView("設定")
 	if got := u.detailFirstLine(); got != "lifecycle.initialize[0]" {
 		t.Errorf("detail = %q", got)
 	}
@@ -672,12 +981,20 @@ func TestTUIOverviewScrollsToKeepTheSelectionOnANarrowScreen(t *testing.T) {
 	}
 
 	// Assert
-	u.want("▶ [HOST][OPAQUE] PC 上で実行: echo hi", "▍資格情報・SSH・ポート・ホスト実行")
-	if u.has("▍基本構成") {
-		t.Error("the first card should have scrolled away")
+	if a := attrsAt(u.rawLine("PC 上で実行"), "PC 上で実行"); !a["7"] {
+		t.Errorf("the last entry is selected and on screen: %v\n%s", a, u.text())
+	}
+	if !u.hasLine("コマンドの実行") {
+		t.Errorf("its section heading is on screen:\n%s", u.text())
+	}
+	if u.hasLine("基本") {
+		t.Error("the first section should have scrolled away")
 	}
 	u.press("enter")
-	u.want("● 詳細", "← 戻る", "lifecycle.initialize[0]")
+	u.want(backLink)
+	if got := u.detailFirstLine(); got != "lifecycle.initialize[0]" {
+		t.Errorf("detail = %q", got)
+	}
 }
 
 func TestTUISourcesExplainAGapAsAPremise(t *testing.T) {
@@ -686,28 +1003,16 @@ func TestTUISourcesExplainAGapAsAPremise(t *testing.T) {
 	u := newUI(t, 130, 50, true).press("4")
 
 	// Act
-	u.clickOn("[未展開] docker.io/sbx/playwright", 4)
+	u.clickRow(`^ +- +未展開 +docker\.io/sbx/playwright`)
 
 	// Assert
 	if got := u.detailFirstLine(); got != "未展開: インターネット上の Kit" {
 		t.Errorf("detail = %q", got)
 	}
-	u.want("▍なぜ中身を確認していないか", "静的解析の前提で、問題が見つかったという意味ではありません")
+	u.want("なぜ中身を確認していないか", "これは静的解析の前提で、問題が見つかったという意味では")
 	if u.has("危険度") {
 		t.Error("a premise of the analysis gets no risk level")
 	}
-}
-
-// detailText is the detail panel of a two-pane frame.
-func (u *ui) detailText() string {
-	var b strings.Builder
-	for _, l := range u.lines() {
-		if i := strings.LastIndex(l, "││"); i >= 0 {
-			b.WriteString(strings.TrimRight(strings.TrimSuffix(l[i+len("││"):], "│"), " "))
-			b.WriteString("\n")
-		}
-	}
-	return b.String()
 }
 
 func TestTUIDetailPaneSpeaksPlainJapaneseOnly(t *testing.T) {
@@ -730,11 +1035,11 @@ func TestTUIDetailPaneSpeaksPlainJapaneseOnly(t *testing.T) {
 	}
 	machine := regexp.MustCompile(`実行/所在=|寿命=|proxyManaged|host-exec|host-persistent|network-egress|not expanded|\[(WARNING|ERROR)\]`)
 
-	for _, view := range []string{"2", "3", "4"} {
-		u := newUI(t, 250, 200, true).press(view)
+	for _, view := range []struct{ key, name string }{{"2", "リスク"}, {"3", "設定"}, {"4", "ファイル"}} {
+		u := newUI(t, 250, 200, true).press(view.key)
 		var n int
-		if _, err := fmt.Sscanf(u.listTitle()[strings.Index(u.listTitle(), "（")+len("（"):], "%d", &n); err != nil || n == 0 {
-			t.Fatalf("view %s: list title %q", view, u.listTitle())
+		if _, err := fmt.Sscanf(u.lines()[0][strings.Index(u.lines()[0], view.name)+len(view.name):], "%d", &n); err != nil || n == 0 {
+			t.Fatalf("view %s: tab count in %q", view.name, u.lines()[0])
 		}
 		for i := 0; i < n; i++ {
 			// Act
@@ -744,14 +1049,14 @@ func TestTUIDetailPaneSpeaksPlainJapaneseOnly(t *testing.T) {
 			for _, e := range english {
 				// A run of four plain English words is prose, not a value.
 				if w := prose.FindString(e); w != "" && strings.Contains(d, w) {
-					t.Errorf("view %s row %d shows English %q:\n%s", view, i, w, d)
+					t.Errorf("view %s row %d shows English %q:\n%s", view.name, i, w, d)
 				}
 			}
 			if m := machine.FindString(d); m != "" {
-				t.Errorf("view %s row %d shows %q:\n%s", view, i, m, d)
+				t.Errorf("view %s row %d shows %q:\n%s", view.name, i, m, d)
 			}
-			if view != "4" && !strings.Contains(d, "危険度") && !strings.Contains(d, "重要度") {
-				t.Errorf("view %s row %d does not state a risk level:\n%s", view, i, d)
+			if view.key != "4" && !strings.Contains(d, "危険度: ") {
+				t.Errorf("view %s row %d does not state a risk level:\n%s", view.name, i, d)
 			}
 			u.press("j")
 		}
@@ -764,9 +1069,12 @@ func TestTUIItemDetailExplainsItsRisk(t *testing.T) {
 	u := newUI(t, 130, 110, true).press("3", "/", "i", "n", "i", "t", "enter")
 
 	// Assert
-	u.want("▍公式の見解（Docker Sandboxes / sandbox-kit-spec）", "lifecycle のコマンドはホスト上であなたのユーザー権限で動きます",
-		"--skip-host-commands", "#approve-or-skip-host-commands", "▍このツールの判定（独自基準）", "危険度: 高（HIGH）", "理由: ", "公式の評価ではありません",
-		"[HOST] あなたの PC で実行", "▍sandbox の外との関わり", "PC 上でのコマンド実行")
+	u.want("公式の見解（Docker Sandboxes / sandbox-kit-spec）", "lifecycle のコマンドはホスト上であなたのユーザー権限で動きます",
+		"--skip-host-commands", "#approve-or-skip-host-commands", "このツールの判定（独自基準）", "危険度: 高（HIGH）", "理由: ", "公式の評価ではありません",
+		"・あなたの PC で実行", "・中身を確認していないコマンド", "sandbox の外との関わり", "PC 上でのコマンド実行")
+	if u.has("[HOST]") {
+		t.Error("the detail names badges in words, not codes")
+	}
 }
 
 func TestTUIDetailSaysWhenTheDocsGiveNoWarning(t *testing.T) {
@@ -775,18 +1083,34 @@ func TestTUIDetailSaysWhenTheDocsGiveNoWarning(t *testing.T) {
 	u := newUI(t, 130, 60, true).press("3", "/", "N", "O", "D", "E", "enter")
 
 	// Assert
-	u.want("▍公式の見解（Docker Sandboxes / sandbox-kit-spec）", "公式ドキュメントに特段の警告記載なし", "▍このツールの判定（独自基準）", "危険度: 情報（INFO）")
+	u.want("公式の見解（Docker Sandboxes / sandbox-kit-spec）", "公式ドキュメントに特段の警告記載なし", "このツールの判定（独自基準）", "危険度: 情報（INFO）")
+}
+
+func TestTUIDetailShowsExternalStandardsSeparately(t *testing.T) {
+	t.Parallel()
+	// Arrange / Act
+	u := newUI(t, 160, 110, true).press("3", "/", "i", "n", "i", "t", "enter")
+
+	// Assert
+	u.want("外部セキュリティ基準の観点（OWASP 等）", "ASI05 Unexpected Code Execution",
+		"OWASP AI Agent Security Cheat Sheet Do's and Don'ts", "出典: https://genai.owasp.org/resource/")
+	d := u.detailText()
+	official, external, judgement := strings.Index(d, "公式の見解"), strings.Index(d, "外部セキュリティ基準の観点"), strings.Index(d, "このツールの判定")
+	if official < 0 || official > external || external > judgement {
+		t.Errorf("order should be official view, external standards, this tool's judgement:\n%s", d)
+	}
 }
 
 // --- discovered sandboxes ------------------------------------------------------
 
 // newTargetsUI shows three discovered targets: a declaration paired with a
-// running sandbox whose agent differs, a sandbox without files, and a
-// declaration not yet created.
+// running sandbox whose agent differs and which publishes a port nothing
+// declares, a sandbox without files, and a declaration not yet created.
 func newTargetsUI(t *testing.T, width, height int) *ui {
 	t.Helper()
 	p, _ := newPlan(t, sbxenv.RedactHome)
-	running := &live.Sandbox{Name: "web", Agent: "codex", Status: "running", RulesKnown: true, SecretsKnown: true}
+	running := &live.Sandbox{Name: "web", Agent: "codex", Status: "running", RulesKnown: true, SecretsKnown: true,
+		Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 9000, SandboxPort: 9000, Protocol: "tcp"}}}
 	cmp := live.Compare(p, running, &live.Snapshot{Available: true}, nil)
 	orphan := &live.Sandbox{Name: "orphan", Agent: "claude", Status: "stopped",
 		Workspaces: []live.Mount{{Path: "/srv/orphan"}}, Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 8080, SandboxPort: 80, Protocol: "tcp"}}}
@@ -808,16 +1132,19 @@ func TestTUITargetBarNamesEverySandboxWithItsState(t *testing.T) {
 	u := newTargetsUI(t, 160, 50)
 
 	// Assert
-	bar := u.lines()[1]
-	for _, want := range []string{"対象 ", "[web 稼働中 ズレ ", "[orphan 停止中・宣言ファイル未検出]", "[api 宣言のみ（未作成）]"} {
-		if !strings.Contains(bar, want) {
-			t.Errorf("target bar missing %q: %q", want, bar)
+	lines := u.lines()
+	if !strings.HasPrefix(lines[0], " sbxray  web  稼働中 ") {
+		t.Errorf("title bar names the target and its state: %q", lines[0])
+	}
+	for _, want := range []string{" 対象  ", "web（稼働中・ズレ ", "orphan（停止中・宣言ファイル未検出）", "api（宣言のみ（未作成））"} {
+		if !strings.Contains(lines[1], want) {
+			t.Errorf("target bar missing %q: %q", want, lines[1])
 		}
 	}
-	if !strings.Contains(u.lines()[2], "[ズレ ") {
-		t.Errorf("summary should count drift: %q", u.lines()[2])
+	if !strings.Contains(lines[2], "宣言 2 ファイルと稼働中の sandbox（sbx の読み取り専用コマンド）を照合") {
+		t.Errorf("context line = %q", lines[2])
 	}
-	u.want("宣言（設定ファイル）と稼働中の実体（sbx）を比較")
+	u.wantRe(`^ ✗ 最重要・高 \d+    ! 中 \d+    ズレ \d+ `, `^ {4}項目 +宣言（sbxenv\.yaml） +実体（sbx）`)
 }
 
 func TestTUISinglePlanHasNoTargetBar(t *testing.T) {
@@ -826,22 +1153,46 @@ func TestTUISinglePlanHasNoTargetBar(t *testing.T) {
 	u := newUI(t, 130, 40, true)
 
 	// Assert
-	if strings.HasPrefix(u.lines()[1], "対象 ") || u.has("[ズレ") {
-		t.Errorf("a plan from the command line has no target bar:\n%s", u.text())
+	if strings.HasPrefix(u.lines()[1], " 対象 ") || u.has("ズレ") || u.has("実体（sbx）") {
+		t.Errorf("a plan from the command line has no target bar or live column:\n%s", u.text())
+	}
+}
+
+func TestTUIOverviewComparesEachEntryWithTheSandbox(t *testing.T) {
+	t.Parallel()
+	// Arrange / Act
+	u := newTargetsUI(t, 160, 60)
+
+	// Assert: drift, and areas sbx cannot report, are told apart per row.
+	u.wantRe(`^ !  エージェント +claude +codex *$`, `^ ✗  ポート +0\.0\.0\.0:ephemeral -> sandbox:3000/tcp4 +（公開されていない） *$`,
+		`^ {4}テンプレート +ghcr\.io/example/x:dev +照合なし *$`, `^ ✗  PC 上で実行 +echo hi +照合なし *$`)
+	u.want("lifecycle の実行履歴などは sbx の一覧から取得できないため比較していません")
+	// Regression: Kit network rules sbx policy ls cannot show were not
+	// compared, so the row must not claim a match.
+	u.wantRe(`^ {4}許可（実行中） +1 件  api\.example\.com +照合なし *$`)
+	if u.has("一致") {
+		t.Errorf("nothing in this fixture was confirmed equal:\n%s", u.text())
+	}
+	// A drifted value is bold and underlined; uncompared areas are not.
+	if a := attrsAt(u.rawLine("（公開されていない）"), "（公開されていない）"); !a["1"] || !a["4"] {
+		t.Errorf("a drifted value is bold and underlined: %v", a)
+	}
+	if a := attrsAt(u.rawLine("ghcr.io/example/x:dev"), "照合なし"); a["4"] || a["1"] {
+		t.Errorf("an uncompared area is not marked as drift: %v", a)
 	}
 }
 
 func TestTUIKeysSwitchTargets(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		keys []string
-		want string
+		keys       []string
+		name, want string
 	}{
-		{nil, "▍宣言と実体のズレ"},
-		{[]string{">"}, "▍稼働中の実体（宣言ファイル未検出）"},
-		{[]string{">", ">"}, "▍稼働中の実体"},
-		{[]string{"<"}, "まだ作成されていません"},
-		{[]string{">", ">", ">"}, "▍宣言と実体のズレ"},
+		{nil, "web", "実体（sbx）"},
+		{[]string{">"}, "orphan", "稼働中の実体（宣言ファイル未検出）"},
+		{[]string{">", ">"}, "api", "まだ作成されていません"},
+		{[]string{"<"}, "api", "まだ作成されていません"},
+		{[]string{">", ">", ">"}, "web", "実体（sbx）"},
 	}
 	for _, tc := range cases {
 		t.Run(strings.Join(tc.keys, ""), func(t *testing.T) {
@@ -850,21 +1201,24 @@ func TestTUIKeysSwitchTargets(t *testing.T) {
 			u := newTargetsUI(t, 160, 50).press(tc.keys...)
 
 			// Assert
+			if !strings.HasPrefix(u.lines()[0], " sbxray  "+tc.name+"  ") {
+				t.Errorf("title bar = %q, want target %s", u.lines()[0], tc.name)
+			}
 			u.want(tc.want)
 		})
 	}
 }
 
-func TestTUIClickOnATargetChipSwitchesToIt(t *testing.T) {
+func TestTUIClickOnATargetSwitchesToIt(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	u := newTargetsUI(t, 160, 50)
 
 	// Act
-	u.clickOn("orphan 停止中", 1)
+	u.clickOn("orphan", 1)
 
 	// Assert
-	u.want("▍稼働中の実体（宣言ファイル未検出）", "ワークスペース: /srv/orphan", "ポート公開: 127.0.0.1:8080 -> sandbox:80/tcp", "稼働中の実体のみ（宣言ファイル未検出）")
+	u.want("稼働中の実体（宣言ファイル未検出）", "ワークスペース: /srv/orphan", "ポート公開: 127.0.0.1:8080 -> sandbox:80/tcp", "稼働中の実体のみ（宣言ファイル未検出）")
 }
 
 func TestTUIPickerListsTargetsAndSwitchesByKeyOrClick(t *testing.T) {
@@ -874,17 +1228,22 @@ func TestTUIPickerListsTargetsAndSwitchesByKeyOrClick(t *testing.T) {
 
 	// Act / Assert: s opens the list, j and Enter pick the third target.
 	u.press("s")
-	u.want("対象の切替", "▶ web  [稼働中]", "~/api/sbxenv.yaml", "（設定ファイルなし）")
+	u.want("対象の sandbox を選ぶ")
+	u.wantRe(`^ {4}名前 +状態 +ズレ +ファイル`, `^ {4}web +稼働中 +\d+ +~/proj/sbxenv\.yaml`,
+		`^ {4}orphan +停止中.* +- +（設定ファイルなし）`, `^ {4}api +宣言のみ（未作成） +- +~/api/sbxenv\.yaml`)
+	if a := attrsAt(u.lines2raw(u.rowY(`^ {4}web +稼働中`)), "web"); !a["7"] {
+		t.Errorf("the current target is selected: %v", a)
+	}
 	u.press("j", "j", "enter")
 	u.want("まだ作成されていません")
-	if u.has("対象の切替") {
+	if u.has("対象の sandbox を選ぶ") {
 		t.Error("Enter closes the list")
 	}
 
 	// Act / Assert: a click on a row picks it too.
 	u.press("s")
-	u.clickOn("orphan  [停止中", 5)
-	u.want("▍稼働中の実体（宣言ファイル未検出）")
+	u.clickRow(`^ {4}orphan +停止中`)
+	u.want("稼働中の実体（宣言ファイル未検出）")
 }
 
 func TestTUIDriftOpensSideBySideInRisk(t *testing.T) {
@@ -892,28 +1251,140 @@ func TestTUIDriftOpensSideBySideInRisk(t *testing.T) {
 	// Arrange
 	u := newTargetsUI(t, 160, 60)
 
-	// Act: the first Overview entry is the agent drift.
-	u.clickOn("エージェント: 宣言と違うエージェントで動いている", 4)
+	// Act: a drift no declared line stands for has its own section.
+	u.clickRow(`^ [✗! ]  ポート公開 +（宣言なし） +127\.0\.0\.1:9000`)
 
 	// Assert
-	if got := u.listTitle(); !strings.Contains(got, "Risk") {
-		t.Errorf("list title = %q", got)
+	u.wantView("リスク")
+	if got := u.detailFirstLine(); got != "ズレ: 宣言にないポートが公開されている" {
+		t.Errorf("detail = %q", got)
 	}
-	u.want("[DRIFT] ズレ: 宣言と違うエージェントで動いている", "▍宣言（sbxenv.yaml）", "▍現在の実体（sbx）", "codex",
-		"▍どうすればよいか", "sbx env rm", "▍比較の根拠", "sbx ls --json")
+	u.want("宣言（sbxenv.yaml）", "現在の実体（sbx）", "（宣言なし）", "どうすればよいか", "sbx ports --unpublish", "比較の根拠", "sbx ls --json")
 }
 
-func TestTUIDetailShowsExternalStandardsSeparately(t *testing.T) {
+func TestTUIOverviewEnterOnADriftedEntryOpensTheDrift(t *testing.T) {
 	t.Parallel()
-	// Arrange / Act
-	u := newUI(t, 160, 110, true).press("3", "/", "i", "n", "i", "t", "enter")
+	// Arrange: the first Overview entry is エージェント, whose sandbox runs codex.
+	u := newTargetsUI(t, 160, 60)
+
+	// Act
+	u.press("enter")
+
+	// Assert: regression; the drift opens in リスク, not the setting in 設定.
+	u.wantView("リスク")
+	if got := u.detailFirstLine(); got != "ズレ: 宣言と違うエージェントで動いている" {
+		t.Errorf("detail = %q", got)
+	}
+	d := u.detailText()
+	for _, want := range []string{"宣言（sbxenv.yaml）", "claude", "現在の実体（sbx）", "codex"} {
+		if !strings.Contains(d, want) {
+			t.Errorf("drift detail missing %q:\n%s", want, d)
+		}
+	}
+
+	// Act / Assert: a click on another drifted entry does the same.
+	u.press("1").clickRow(`^ [✗! ]  ポート +0\.0\.0\.0:ephemeral`)
+	u.wantView("リスク")
+	if got := u.detailFirstLine(); got != "ズレ: 宣言したポートが公開されていない" {
+		t.Errorf("detail = %q", got)
+	}
+}
+
+func TestTUIRiskListsDriftsFirst(t *testing.T) {
+	t.Parallel()
+	// Act
+	u := newTargetsUI(t, 160, 60).press("2")
 
 	// Assert
-	u.want("▍外部セキュリティ基準の観点（OWASP 等）", "ASI05 Unexpected Code Execution (RCE)",
-		"OWASP AI Agent Security Cheat Sheet Do's and Don'ts", "出典: https://genai.owasp.org/resource/")
-	text := u.text()
-	if strings.Index(text, "▍公式の見解") > strings.Index(text, "▍外部セキュリティ基準") || strings.Index(text, "▍外部セキュリティ基準") > strings.Index(text, "▍このツールの判定") {
-		t.Errorf("order should be official view, external standards, this tool's judgement:\n%s", text)
+	if got := u.detailFirstLine(); got != "ズレ: 宣言と違うエージェントで動いている" {
+		t.Errorf("detail = %q", got)
+	}
+	u.want("宣言（sbxenv.yaml）", "claude", "現在の実体（sbx）", "codex", "sbx env rm")
+	u.wantRe(`^ {4}危険度  内容 +\| *.*\n 稼働中とのズレ（4 件） `, `^ !  中 +エージェント: 宣言と違うエージェントで動いている `)
+}
+
+func TestTUIRiskIsSectionedAndSortedByRisk(t *testing.T) {
+	t.Parallel()
+	// Act
+	u := newUI(t, 80, 40, true).press("2")
+
+	// Assert: each section counts its rows, which run from the highest risk down.
+	rank := map[string]int{"最重要": 4, "高": 3, "中": 2, "低": 1, "情報": 0}
+	headRe := regexp.MustCompile(`^ (\S+)（(\d+) 件） *$`)
+	rowRe := regexp.MustCompile(`^ [✗! ]  (最重要|高|中|低|情報) `)
+	var names []string
+	counts := map[string]int{}
+	want := map[string]int{}
+	last := 99
+	for _, l := range u.lines() {
+		if m := headRe.FindStringSubmatch(l); m != nil {
+			names = append(names, m[1])
+			want[m[1]], _ = strconv.Atoi(m[2])
+			last = 99
+			continue
+		}
+		if m := rowRe.FindStringSubmatch(l); m != nil && len(names) > 0 {
+			counts[names[len(names)-1]]++
+			if r := rank[m[1]]; r > last {
+				t.Errorf("section %s is not sorted by risk: %q", names[len(names)-1], l)
+			} else {
+				last = r
+			}
+		}
+	}
+	if strings.Join(names, ",") != "このツールの指摘,設定ごとの危険度" {
+		t.Errorf("sections = %v (no live data, so no drift section)", names)
+	}
+	for _, n := range names {
+		if counts[n] != want[n] {
+			t.Errorf("section %s says %d, lists %d", n, want[n], counts[n])
+		}
+	}
+
+	// Act / Assert: the cursor never rests on a section heading.
+	u.press("k", "enter")
+	if got := u.detailFirstLine(); got != "Kit が書き換え可能な場所にある" {
+		t.Errorf("k at the top stays on the first row: %q", got)
+	}
+	u.press("esc", "j", "j", "j", "enter")
+	if got := u.detailFirstLine(); got != "ports[3000/tcp4]" {
+		t.Errorf("j steps over the next section heading: %q", got)
+	}
+}
+
+func TestTUIClippedPanesSayHowMuchFollows(t *testing.T) {
+	t.Parallel()
+	// Overview and lists end with a count of the rows below.
+	newUI(t, 80, 24, true).wantRe(`^ +ほか \d+ 行（j で下へ） *$`)
+	newUI(t, 80, 12, true).press("2").wantRe(`^ +ほか \d+ 行（j で下へ） *$`)
+	// The detail says how far it scrolls.
+	newUI(t, 130, 30, true).press("3").wantRe(`\|  ほか \d+ 行（j でスクロール） *$`)
+	// Nothing is promised when everything fits.
+	if u := newUI(t, 250, 200, true).press("2"); u.has("ほか ") {
+		t.Errorf("a list that fits has no clip note:\n%s", u.text())
+	}
+}
+
+func TestTUITargetPositionReplacesATargetLineThatDoesNotFit(t *testing.T) {
+	t.Parallel()
+	// Arrange / Act
+	u := newTargetsUI(t, 80, 30)
+
+	// Assert
+	if !strings.HasPrefix(u.lines()[0], " sbxray  web  稼働中 1/3 ") {
+		t.Errorf("title bar names the position: %q", u.lines()[0])
+	}
+	for _, l := range u.lines() {
+		if strings.HasPrefix(l, " 対象  ") {
+			t.Errorf("a target line that does not fit is not drawn: %q", l)
+		}
+	}
+	u.press(">")
+	if !strings.HasPrefix(u.lines()[0], " sbxray  orphan  停止中・宣言ファイル未検出 2/3") {
+		t.Errorf("title bar after > = %q", u.lines()[0])
+	}
+	if newTargetsUI(t, 160, 30).has(" 1/3") {
+		t.Error("the position is shown only when the target line is not")
 	}
 }
 
@@ -931,7 +1402,11 @@ func TestTUIShowsLiveErrorWithoutHidingPlanAndKeepsTargetErrorVisible(t *testing
 	u := &ui{t: t, m: m}
 
 	// Assert: live error appears in state line while Overview still renders the plan.
-	u.want(liveErr, "▍基本構成")
+	u.want(liveErr)
+	u.wantRe(`PC 上で実行 +echo hi`)
+	if !u.hasLine("基本") {
+		t.Errorf("the plan's Overview is shown:\n%s", u.text())
+	}
 	if u.has("設定ファイルを解析できません") {
 		t.Error("live sbx error must not replace a valid plan's Overview")
 	}

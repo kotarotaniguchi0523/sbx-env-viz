@@ -215,7 +215,19 @@ func (s *screen) settle(before string) {
 // fails on linux/amd64 with "null native string with nonzero length".
 func (s *screen) click(text string) {
 	s.t.Helper()
-	loc := s.locations(text)
+	s.clickAt(text, s.locations(text))
+}
+
+// clickMatch clicks the first match of a regular expression, for rows whose
+// columns are separated by padding of no fixed width.
+func (s *screen) clickMatch(pattern string) {
+	s.t.Helper()
+	s.clickAt(pattern, s.matches(pattern))
+}
+
+//declscope:private // click and clickMatch locate the text, then call it
+func (s *screen) clickAt(text string, loc []tuitest.TextMatch) {
+	s.t.Helper()
 	if len(loc) == 0 {
 		s.t.Fatalf("click %q: not on screen\n%s", text, s.text())
 	}
@@ -230,7 +242,19 @@ func (s *screen) click(text string) {
 // expect waits until text is visible.
 func (s *screen) expect(text string) {
 	s.t.Helper()
-	err := s.term.GetByText(text, tuitest.TextSelectorOptions{}).First().
+	s.expectText(text, false)
+}
+
+// expectMatch waits until a regular expression matches within one row.
+func (s *screen) expectMatch(pattern string) {
+	s.t.Helper()
+	s.expectText(pattern, true)
+}
+
+//declscope:private // expect and expectMatch wait through it
+func (s *screen) expectText(text string, regex bool) {
+	s.t.Helper()
+	err := s.term.GetByText(text, tuitest.TextSelectorOptions{Regex: regex}).First().
 		Expect(tuitest.LocatorExpectOptions{Timeout: tuitest.Ptr(10 * time.Second)})
 	if err != nil {
 		s.t.Fatalf("expected %q on screen: %v\n%s", text, err, s.text())
@@ -261,11 +285,62 @@ func (s *screen) lines() []string { return strings.Split(s.text(), "\n") }
 // locations returns where text is drawn (row and column of each match).
 func (s *screen) locations(text string) []tuitest.TextMatch {
 	s.t.Helper()
-	locs, err := s.term.GetByText(text, tuitest.TextSelectorOptions{}).Locations()
+	return s.find(text, false)
+}
+
+// matches returns where a regular expression matches within one row.
+func (s *screen) matches(pattern string) []tuitest.TextMatch {
+	s.t.Helper()
+	return s.find(pattern, true)
+}
+
+//declscope:private // locations and matches query through it
+func (s *screen) find(text string, regex bool) []tuitest.TextMatch {
+	s.t.Helper()
+	locs, err := s.term.GetByText(text, tuitest.TextSelectorOptions{Regex: regex}).Locations()
 	if err != nil {
 		s.t.Fatalf("locate %q: %v", text, err)
 	}
 	return locs
+}
+
+// styled returns the runs of text drawn with style.
+func (s *screen) styled(style tuitest.TextStyle) []tuitest.TextMatch {
+	s.t.Helper()
+	locs, err := s.term.GetByStyle(style, tuitest.StyleSelectorOptions{}).Locations()
+	if err != nil {
+		s.t.Fatalf("locate style: %v", err)
+	}
+	return locs
+}
+
+// activeView returns the tab label underlined on the first row; the other
+// tabs are only muted.
+func activeView(t *testing.T, s *screen) string {
+	t.Helper()
+	var active []string
+	for _, l := range s.styled(tuitest.TextStyle{UnderlineStyle: tuitest.Ptr(tuitest.UnderlineSingle)}) {
+		if l.Start.Row == 0 {
+			active = append(active, strings.TrimSpace(l.Text))
+		}
+	}
+	if len(active) != 1 {
+		t.Errorf("underlined tabs %q, want exactly one", active)
+		return ""
+	}
+	return active[0]
+}
+
+// separators returns the rows that draw the column between two panes, and
+// the columns it was found in.
+func (s *screen) separators() (rows int, columns map[uint32]bool) {
+	s.t.Helper()
+	columns = map[uint32]bool{}
+	for _, l := range s.locations(" | ") {
+		rows++
+		columns[l.Start.Column+1] = true
+	}
+	return rows, columns
 }
 
 // styleChange is one entry of a style snapshot: the attributes that change
