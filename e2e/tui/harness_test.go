@@ -106,7 +106,7 @@ func start(t *testing.T, l launch) *screen {
 	}
 	env := map[string]string{
 		"HOME": home, "PATH": path, "LANG": "C.UTF-8",
-		"TERM": "xterm-256color", "COLORTERM": "truecolor",
+		"NO_COLOR": "", "TERM": "xterm-256color", "COLORTERM": "truecolor",
 	}
 	if !l.color {
 		env["NO_COLOR"] = "1"
