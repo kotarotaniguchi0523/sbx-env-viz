@@ -60,7 +60,9 @@ func closeSpelling(a, b string) bool {
 //declscope:shared // All command handlers use the same stderr contract.
 func report(w io.Writer, jsonMode bool, e *cliError) int {
 	if jsonMode {
-		_ = json.NewEncoder(w).Encode(map[string]*cliError{"error": e})
+		enc := json.NewEncoder(w)
+		enc.SetEscapeHTML(false)
+		_ = enc.Encode(map[string]*cliError{"error": e})
 	} else {
 		fmt.Fprintln(w, "sbxray:", e.Message)
 		if len(e.Candidates) > 0 {
@@ -73,7 +75,10 @@ func report(w io.Writer, jsonMode bool, e *cliError) int {
 
 //declscope:shared // Discovery commands write one JSON document on stdout.
 func writeJSON(stdout, stderr io.Writer, jsonMode bool, data any) int {
-	if err := json.NewEncoder(stdout).Encode(data); err != nil {
+	enc := json.NewEncoder(stdout)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(data); err != nil {
 		return report(stderr, jsonMode, problem("output", err.Error(), "sbxray describe", "", nil))
 	}
 	return exitOK

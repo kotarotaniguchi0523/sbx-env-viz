@@ -706,6 +706,9 @@ func TestDiscovery(t *testing.T) {
 	if schema.code != 0 || schema.stderr != "" {
 		t.Fatal(schema)
 	}
+	if strings.Contains(schema.stdout, `\u003c`) || !strings.Contains(schema.stdout, "skills get <name>") {
+		t.Errorf("describe JSON should not HTML-escape angle brackets:\n%s", schema.stdout)
+	}
 	doc := schema.json(t)
 	for _, key := range []string{"version", "schemaVersion", "targetSbxVersion", "exitCodes", "commands", "flags", "jsonOutputFields"} {
 		if doc[key] == nil {

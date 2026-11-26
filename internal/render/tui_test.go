@@ -916,3 +916,29 @@ func TestTUIDetailShowsExternalStandardsSeparately(t *testing.T) {
 		t.Errorf("order should be official view, external standards, this tool's judgement:\n%s", text)
 	}
 }
+
+func TestTUIShowsLiveErrorWithoutHidingPlanAndKeepsTargetErrorVisible(t *testing.T) {
+	t.Parallel()
+	// Arrange: target 0 has a valid plan plus a live sbx error; target 1 failed to parse.
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	const liveErr = "sbx コマンドが見つかりません"
+	const parseErr = "設定ファイルを解析できませんでした: line 3: invalid YAML"
+	m := tui.NewTargets([]live.Target{
+		{Name: "web", State: "宣言", Plan: p, Err: liveErr},
+		{Name: "broken", State: "エラー", Files: []string{"~/broken/sbxenv.yaml"}, Err: parseErr},
+	}, liveErr, true)
+	m.Update(tea.WindowSizeMsg{Width: 130, Height: 40})
+	u := &ui{t: t, m: m}
+
+	// Assert: live error appears in state line while Overview still renders the plan.
+	u.want(liveErr, "▍基本構成")
+	if u.has("設定ファイルを解析できません") {
+		t.Error("live sbx error must not replace a valid plan's Overview")
+	}
+
+	// Act: switch to broken target and move to Risk view.
+	u.press(">")
+	u.want("設定ファイルを解析できません", parseErr)
+	u.press("2")
+	u.want(parseErr)
+}

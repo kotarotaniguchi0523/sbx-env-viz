@@ -262,6 +262,9 @@ func (m *Model) stateLine() string {
 	if m.liveNote != "" {
 		state = append(state, m.liveNote)
 	}
+	if t := m.target(); t != nil && t.Err != "" && t.Err != m.liveNote {
+		state = append(state, model.EscapeControl(t.Err))
+	}
 	if m.searching {
 		state = append(state, "検索: "+m.query+"▏")
 	} else if m.query != "" {
