@@ -587,3 +587,23 @@ func TestLiveAndOfflineCannotBeCombined(t *testing.T) {
 		t.Errorf("exit %d: %s", r.code, r.stderr)
 	}
 }
+
+func TestLiveJSONRedactsArgumentDerivedNameAndHostPort(t *testing.T) {
+	t.Parallel()
+	s := newSandbox(t)
+	s.write(t, "sbxenv.yaml", strings.Replace(liveEnv, "name: web-app", "name: ${{ env.args.n }}", 1)+"args:\n  n:\n    default: web-app\n  port:\n    default: '42319'\nports:\n  - sandbox: 8080\n    host: ${{ env.args.port }}\n")
+	path, _ := s.fakeSbx(t)
+	script := filepath.Join(filepath.SplitList(path)[0], "sbx")
+	b, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(script, []byte(strings.Replace(string(b), `"ports":[]`, `"ports":[{"sandbox_port":8080,"host_port":8081,"protocol":"tcp"}]`, 1)), 0755); err != nil {
+		t.Fatal(err)
+	}
+	r := s.runPath(t, path, "--json", "--live")
+	l := r.json(t)["live"].(map[string]any)
+	if l["sandbox"] == nil || !strings.Contains(r.stdout, "PC 側のポート番号が異なる") || strings.Contains(r.stdout, "web-app") || strings.Contains(r.stdout, "42319") {
+		t.Fatalf("unexpected live output: %v", l)
+	}
+}

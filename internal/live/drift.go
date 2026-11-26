@@ -152,11 +152,19 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			lp := sb.Ports[found]
 			var diffs []string
 			if dp.HostPort != 0 && lp.HostPort != 0 && lp.HostPort != dp.HostPort {
-				diffs = append(diffs, fmt.Sprintf("PC 側のポート番号が %d ではなく %d", dp.HostPort, lp.HostPort))
+				if dp.Redacted {
+					diffs = append(diffs, "PC 側のポート番号が異なる")
+				} else {
+					diffs = append(diffs, fmt.Sprintf("PC 側のポート番号が %d ではなく %d", dp.HostPort, lp.HostPort))
+				}
 			}
 			wider := false
 			if !sameIP(dp.HostIP, lp.HostIP) {
-				diffs = append(diffs, "公開先のアドレスが "+ipLabel(dp.HostIP)+" ではなく "+ipLabel(lp.HostIP))
+				if dp.Redacted {
+					diffs = append(diffs, "公開先のアドレスが異なる")
+				} else {
+					diffs = append(diffs, "公開先のアドレスが "+ipLabel(dp.HostIP)+" ではなく "+ipLabel(lp.HostIP))
+				}
 				wider = isAll(lp.HostIP) && !isAll(dp.HostIP)
 			}
 			if len(diffs) > 0 {
@@ -164,8 +172,12 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				if wider {
 					sev = sbxenv.SeverityHigh
 				}
+				actual := portLabel(lp)
+				if dp.Redacted {
+					actual = "<redacted>"
+				}
 				add(Drift{Kind: "ポート公開", Title: "ポートの公開のしかたが宣言と違う（" + strings.Join(diffs, "、") + "）", Declared: decl,
-					Actual: portLabel(lp), Fix: fixRecreate, Severity: sev, ItemID: dp.ItemID, Source: srcLs})
+					Actual: actual, Fix: fixRecreate, Severity: sev, ItemID: dp.ItemID, Source: srcLs})
 			}
 		}
 		for i, lp := range sb.Ports {
@@ -189,7 +201,9 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		c.Checked = append(c.Checked, "通信の許可・拒否")
 		declared := map[string]bool{}
 		for _, r := range d.Network {
-			declared[r.Decision+" "+r.Host] = true
+			if r.Phase == "runtime" {
+				declared[r.Decision+" "+r.Host] = true
+			}
 		}
 		kitVisible := false
 		live := map[string]bool{}

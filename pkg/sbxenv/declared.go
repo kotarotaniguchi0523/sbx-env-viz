@@ -39,7 +39,9 @@ type DeclaredPort struct {
 	HostIP      string
 	HostPort    int
 	SandboxPort int
-	Protocol    string
+	// Redacted marks ports whose resolved fields are hidden in display output.
+	Redacted bool
+	Protocol string
 }
 
 // DeclaredName is a named entry such as a secret service.
@@ -97,9 +99,16 @@ func (rs *resolver) declared() *Declared {
 			Path: resolveHostPath(p.fileDir, p.val), Target: e.str("target"), ReadOnly: e.str("readOnly") == "true"})
 	}
 	for _, e := range rs.root.get("ports").list() {
+		redacted := false
+		for _, key := range []string{"host", "hostIP", "sandbox", "protocol"} {
+			if e.dstr(key) != e.str(key) {
+				redacted = true
+				break
+			}
+		}
 		host, _ := strconv.Atoi(e.str("host"))
 		sb, _ := strconv.Atoi(e.str("sandbox"))
-		d.Ports = append(d.Ports, DeclaredPort{ItemID: "ports[" + rs.portKey(e) + "]", HostIP: e.str("hostIP"),
+		d.Ports = append(d.Ports, DeclaredPort{Redacted: redacted, ItemID: "ports[" + rs.portKey(e) + "]", HostIP: e.str("hostIP"),
 			HostPort: host, SandboxPort: sb, Protocol: effectiveProtocol(e)})
 	}
 	for _, k := range rs.root.get("secrets").mapKeys() {

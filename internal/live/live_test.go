@@ -508,7 +508,7 @@ func TestDriftManualNetworkAllowAndUnappliedKitRule(t *testing.T) {
 	// Arrange: a local kit allows two hosts; sbx reports only one of them
 	// plus a host allowed by hand.
 	env := matching + "kits:\n  - ./kits/net\n"
-	kit := "schemaVersion: \"3\"\nkind: mixin\nname: net\ncapabilities:\n  - type: com.docker.sandbox/network-policy@1\n    config:\n      runtime:\n        allow: [api.example.com, cdn.example.com]\n"
+	kit := "schemaVersion: \"3\"\nkind: mixin\nname: net\ncapabilities:\n  - type: com.docker.sandbox/network-policy@1\n    config:\n      install:\n        allow: [manual.example.com]\n      runtime:\n        allow: [api.example.com, cdn.example.com]\n"
 
 	// Act
 	c := compare(t, env, func(w *world) {

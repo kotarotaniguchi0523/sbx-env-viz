@@ -395,7 +395,12 @@ func liveTarget(plan *sbxenv.Plan, r live.Runner, show live.Paths) *live.Target 
 	snap := live.Collect(context.Background(), r)
 	t := &live.Target{Name: "（宣言）", State: "宣言", Plan: plan, Err: snap.Problem}
 	if plan.Declared != nil && plan.Declared.Name != "" {
-		t.Name = plan.Declared.Name
+		for _, it := range plan.Items {
+			if it.ID == "name" {
+				t.Name = it.Value
+				break
+			}
+		}
 	}
 	if !snap.Available {
 		return t
@@ -404,7 +409,10 @@ func liveTarget(plan *sbxenv.Plan, r live.Runner, show live.Paths) *live.Target 
 	if i := live.Match(plan.Declared, snap.Sandboxes); i >= 0 {
 		sb := snap.Sandboxes[i]
 		cmp := live.Compare(plan, &sb, &snap, show)
-		t.Name, t.State, t.Sandbox, t.Comparison = sb.Name, live.StateLabel(sb.Status), &sb, &cmp
+		if plan.Declared == nil || sb.Name != plan.Declared.Name {
+			t.Name = sb.Name
+		}
+		t.State, t.Sandbox, t.Comparison = live.StateLabel(sb.Status), &sb, &cmp
 	}
 	return t
 }
@@ -423,7 +431,7 @@ func writeJSONWithLive(w io.Writer, plan *sbxenv.Plan, t *live.Target) error {
 		l["problem"] = t.Err
 	}
 	if t.Sandbox != nil {
-		l["sandbox"] = t.Sandbox.Name
+		l["sandbox"] = t.Name
 	}
 	if c := t.Comparison; c != nil {
 		drifts := []map[string]any{}
