@@ -55,13 +55,19 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 	if show == nil {
 		show = func(s string) string { return s }
 	}
+	// Build the lookup on demand: a comparison may need no item labels.
+	var labels map[string]string
 	item := func(id string) string {
-		for i := range p.Items {
-			if p.Items[i].ID == id {
-				return p.Items[i].Value
+		if labels == nil {
+			labels = make(map[string]string, len(p.Items))
+			for i := range p.Items {
+				it := &p.Items[i]
+				if _, exists := labels[it.ID]; !exists {
+					labels[it.ID] = it.Value
+				}
 			}
 		}
-		return ""
+		return labels[id]
 	}
 	add := func(x Drift) { c.Drifts = append(c.Drifts, x) }
 

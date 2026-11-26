@@ -62,7 +62,7 @@ type launch struct {
 	args       []string
 	color      bool
 	files      map[string]string
-	// auto starts the binary with no arguments, so it discovers sandboxes.
+	// auto starts the binary without positional arguments, so it discovers sandboxes.
 	auto bool
 	// sbx maps "ARGS" of an sbx command to the JSON it prints; {{PROJ}} is
 	// replaced by the project directory. Nil means sbx is not installed.
@@ -95,7 +95,6 @@ func start(t *testing.T, l launch) *screen {
 	path := os.Getenv("PATH")
 	switch {
 	case l.auto:
-		l.args = []string{}
 		// Only the fake sbx (or none) and the tools its script needs.
 		path = "/usr/bin:/bin"
 		if l.sbx != nil {

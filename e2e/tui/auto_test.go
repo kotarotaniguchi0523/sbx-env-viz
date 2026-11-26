@@ -1,8 +1,10 @@
 package tui
 
 import (
+	tuitest "github.com/microsoft/tui-test/bindings/go"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The project declares web-app (running, but with another agent and a
@@ -112,5 +114,24 @@ func TestExplicitPathsStayOffline(t *testing.T) {
 	s.expect("▍基本構成")
 	if strings.HasPrefix(s.lines()[1], "対象 ") {
 		t.Errorf("named files are analysed offline, without a target bar:\n%s", s.text())
+	}
+}
+
+func TestAutoRedactsMatchedNameThroughExit(t *testing.T) {
+	files := map[string]string{"sbxenv.yaml": "schemaVersion: \"1\"\nname: ${{ env.args.n }}\nagent: claude\nargs:\n  n:\n    default: web-app\n"}
+	s := start(t, launch{cols: 160, rows: 50, auto: true, args: []string{"--redact"}, files: files, sbx: autoSbx})
+	s.expect("稼働中")
+	s.gone("web-app")
+	s.press("s")
+	s.expect("対象の切替")
+	s.gone("web-app")
+	s.press("Escape")
+	s.press("q")
+	if err := s.term.WaitExit(tuitest.WaitOptions{Timeout: tuitest.Ptr(10 * time.Second)}); err != nil {
+		t.Fatal(err)
+	}
+	full, err := s.term.Text(tuitest.TextOptions{Full: true})
+	if err != nil || !strings.Contains(full, "sbxray: ") || strings.Contains(full, "web-app") {
+		t.Fatalf("unexpected summary: %v %q", err, full)
 	}
 }

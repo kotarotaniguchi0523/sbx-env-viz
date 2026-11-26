@@ -422,7 +422,7 @@ func TestDirectoryWithoutEnvFileNamesTheFileItLookedFor(t *testing.T) {
 // fakeSbx puts an "sbx" on PATH that records every call in calls.log and
 // answers the read-only listings with a sandbox named web-app running
 // codex. It returns the PATH to use and the log path.
-func (s sandbox) fakeSbx(t *testing.T) (path, log string) {
+func (s sandbox) fakeSbx(t *testing.T, replacements ...string) (path, log string) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake sbx is a shell script")
@@ -439,7 +439,7 @@ case "$*" in
   *) echo "unexpected: $*" >&2; exit 1 ;;
 esac
 `
-	if err := os.WriteFile(filepath.Join(dir, "sbx"), []byte(script), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "sbx"), []byte(strings.NewReplacer(replacements...).Replace(script)), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return dir + string(os.PathListSeparator) + "/usr/bin:/bin", log
@@ -592,18 +592,32 @@ func TestLiveJSONRedactsArgumentDerivedNameAndHostPort(t *testing.T) {
 	t.Parallel()
 	s := newSandbox(t)
 	s.write(t, "sbxenv.yaml", strings.Replace(liveEnv, "name: web-app", "name: ${{ env.args.n }}", 1)+"args:\n  n:\n    default: web-app\n  port:\n    default: '42319'\nports:\n  - sandbox: 8080\n    host: ${{ env.args.port }}\n")
-	path, _ := s.fakeSbx(t)
-	script := filepath.Join(filepath.SplitList(path)[0], "sbx")
-	b, err := os.ReadFile(script)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(script, []byte(strings.Replace(string(b), `"ports":[]`, `"ports":[{"sandbox_port":8080,"host_port":8081,"protocol":"tcp"}]`, 1)), 0755); err != nil {
-		t.Fatal(err)
-	}
+	path, _ := s.fakeSbx(t, `"ports":[]`, `"ports":[{"sandbox_port":8080,"host_port":8081,"protocol":"tcp"}]`)
 	r := s.runPath(t, path, "--json", "--live")
 	l := r.json(t)["live"].(map[string]any)
 	if l["sandbox"] == nil || !strings.Contains(r.stdout, "PC 側のポート番号が異なる") || strings.Contains(r.stdout, "web-app") || strings.Contains(r.stdout, "42319") {
 		t.Fatalf("unexpected live output: %v", l)
+	}
+}
+
+func TestLivePartialFailureKeepsSandboxNamePrivate(t *testing.T) {
+	for _, tc := range []struct{ command, area string }{{"policy ls web-app", "通信ルール"}, {"secret ls --sandbox web-app", "シークレット一覧"}} {
+		t.Run(tc.area, func(t *testing.T) {
+			s := newSandbox(t)
+			s.write(t, "sbxenv.yaml", strings.Replace(liveEnv, "name: web-app", "name: ${{ env.args.n }}", 1)+"args:\n  n:\n    default: web-app\n")
+			path, log := s.fakeSbx(t, tc.command+" --json --no-input", "unused", `[{"name":"web-app"`, `[{"name":"other"},{"name":"web-app"`)
+			r := s.runPath(t, path, "--json", "--live")
+			l := r.json(t)["live"].(map[string]any)
+			if r.code != 0 || strings.Contains(r.stdout+r.stderr, "web-app") || !strings.Contains(fmt.Sprint(l["problem"]), tc.area) {
+				t.Fatalf("unexpected result: %+v", r)
+			}
+			calls, err := os.ReadFile(log)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(calls), "other") || strings.Count(string(calls), "\n") != 4 {
+				t.Errorf("unexpected calls: %s", calls)
+			}
+		})
 	}
 }
