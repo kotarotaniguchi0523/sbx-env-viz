@@ -1,10 +1,8 @@
 package tui
 
 import (
-	tuitest "github.com/microsoft/tui-test/bindings/go"
 	"strings"
 	"testing"
-	"time"
 )
 
 // The project declares web-app (running, but with another agent and a
@@ -126,12 +124,8 @@ func TestAutoRedactsMatchedNameThroughExit(t *testing.T) {
 	s.expect("対象の切替")
 	s.gone("web-app")
 	s.press("Escape")
-	s.press("q")
-	if err := s.term.WaitExit(tuitest.WaitOptions{Timeout: tuitest.Ptr(10 * time.Second)}); err != nil {
-		t.Fatal(err)
-	}
-	full, err := s.term.Text(tuitest.TextOptions{Full: true})
-	if err != nil || !strings.Contains(full, "sbxray: ") || strings.Contains(full, "web-app") {
-		t.Fatalf("unexpected summary: %v %q", err, full)
+	full := s.quit()
+	if !strings.Contains(full, "sbxray: ") || strings.Contains(full, "web-app") {
+		t.Fatalf("unexpected summary: %q", full)
 	}
 }

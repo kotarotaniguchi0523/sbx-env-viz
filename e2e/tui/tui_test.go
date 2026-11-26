@@ -5,7 +5,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 
 	tuitest "github.com/microsoft/tui-test/bindings/go"
 )
@@ -88,23 +87,9 @@ func TestQuitPrintsOneSummaryLine(t *testing.T) {
 	s := start(t, launch{cols: 100})
 
 	// Act
-	s.press("q")
-	if err := s.term.WaitExit(tuitest.WaitOptions{Timeout: tuitest.Ptr(10 * time.Second)}); err != nil {
-		t.Fatalf("wait exit: %v", err)
-	}
+	full := s.quit()
 
 	// Assert
-	state, err := s.term.State()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if state.Exited == nil || *state.Exited != 0 {
-		t.Errorf("exit code = %v, want 0", state.Exited)
-	}
-	full, err := s.term.Text(tuitest.TextOptions{Full: true})
-	if err != nil {
-		t.Fatal(err)
-	}
 	var summaries []string
 	for _, l := range strings.Split(full, "\n") {
 		if strings.HasPrefix(l, "sbxray: Host実行") {

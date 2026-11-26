@@ -174,6 +174,29 @@ func (s *screen) press(keys ...string) {
 	}
 }
 
+// quit waits for process exit before reading the final terminal output.
+func (s *screen) quit() string {
+	s.t.Helper()
+	if err := s.term.Press("q"); err != nil {
+		s.t.Fatal(err)
+	}
+	if err := s.term.WaitExit(tuitest.WaitOptions{Timeout: tuitest.Ptr(10 * time.Second)}); err != nil {
+		s.t.Fatal(err)
+	}
+	state, err := s.term.State()
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	if state.Exited == nil || *state.Exited != 0 {
+		s.t.Fatalf("unexpected exit status: %v", state.Exited)
+	}
+	full, err := s.term.Text(tuitest.TextOptions{Full: true})
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	return full
+}
+
 // settle waits for the screen to differ from before (or a short grace
 // period for input that changes nothing), then for it to stop changing.
 func (s *screen) settle(before string) {
