@@ -53,6 +53,8 @@ func fixture(t *testing.T, name string, vars map[string]string) string {
 type world struct {
 	dir, ws, other string
 	sbx            *fakeSbx
+	// strict resolves the plans with strict redaction (--redact, --json).
+	strict bool
 }
 
 func newWorld(t *testing.T, env string) *world {
@@ -89,7 +91,11 @@ func (w *world) resolve(g live.Group) (*sbxenv.Plan, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sbxenv.Resolve(res.Layers, sbxenv.ResolveOptions{ProjectDir: res.ProjectDir, HomeDir: filepath.Join(w.dir, "no-home"), Kits: loader.FSKits{}, Redaction: sbxenv.RedactHome})
+	redaction := sbxenv.RedactHome
+	if w.strict {
+		redaction = sbxenv.RedactStrict
+	}
+	return sbxenv.Resolve(res.Layers, sbxenv.ResolveOptions{ProjectDir: res.ProjectDir, HomeDir: filepath.Join(w.dir, "no-home"), Kits: loader.FSKits{}, Redaction: redaction})
 }
 
 func (w *world) discover(t *testing.T, r live.Runner) []live.Target {
@@ -461,6 +467,22 @@ func TestDriftWorkspaceMissingAndExtra(t *testing.T) {
 	}
 	if d, ok := drift(c, "宣言にないフォルダ"); !ok || !strings.Contains(d.Actual, "/srv/extra") || !strings.Contains(d.Actual, "読み書きの区別は sbx から取得できません") {
 		t.Errorf("extra mount: %+v", d)
+	}
+}
+
+func TestStrictRedactionHidesAnUndeclaredWorkspacePath(t *testing.T) {
+	t.Parallel()
+	// Arrange: under --redact, sbx mounts a directory the files do not
+	// declare; its path can carry values the plan redacts.
+	env := strings.Replace(matching, "workspace: ./web-app\n", "", 1)
+
+	// Act
+	c := compare(t, env, func(w *world) { w.strict = true })
+
+	// Assert
+	d, ok := drift(c, "宣言にないフォルダ")
+	if !ok || !strings.HasPrefix(d.Actual, "<redacted>") || strings.Contains(d.Actual, "web-app") {
+		t.Errorf("undeclared workspace under strict redaction: %+v (%v)", d, c.Drifts)
 	}
 }
 
