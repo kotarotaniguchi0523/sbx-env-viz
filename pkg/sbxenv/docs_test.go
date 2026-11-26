@@ -108,12 +108,3 @@ func TestSummaryLineReportsEveryCount(t *testing.T) {
 		}
 	}
 }
-
-func containsJapanese(s string) bool {
-	for _, r := range s {
-		if r >= 0x3040 && r <= 0x30ff || r >= 0x4e00 && r <= 0x9fff {
-			return true
-		}
-	}
-	return false
-}

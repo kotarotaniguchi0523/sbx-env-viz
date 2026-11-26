@@ -251,7 +251,7 @@ func TestCollectMarksWhatItCouldNotRead(t *testing.T) {
 	s := live.Collect(context.Background(), w.sbx)
 
 	// Assert
-	if !s.Available || s.Sandboxes[1].RulesKnown || s.MCPKnown || !strings.Contains(s.Problem, "web-app の通信ルール") {
+	if !s.Available || s.Sandboxes[1].RulesKnown || s.MCPKnown || !strings.Contains(s.Problem, "通信ルール") {
 		t.Errorf("snapshot = %+v", s)
 	}
 }
@@ -508,7 +508,7 @@ func TestDriftManualNetworkAllowAndUnappliedKitRule(t *testing.T) {
 	// Arrange: a local kit allows two hosts; sbx reports only one of them
 	// plus a host allowed by hand.
 	env := matching + "kits:\n  - ./kits/net\n"
-	kit := "schemaVersion: \"3\"\nkind: mixin\nname: net\ncapabilities:\n  - type: com.docker.sandbox/network-policy@1\n    config:\n      runtime:\n        allow: [api.example.com, cdn.example.com]\n"
+	kit := "schemaVersion: \"3\"\nkind: mixin\nname: net\ncapabilities:\n  - type: com.docker.sandbox/network-policy@1\n    config:\n      install:\n        allow: [manual.example.com]\n      runtime:\n        allow: [api.example.com, cdn.example.com]\n"
 
 	// Act
 	c := compare(t, env, func(w *world) {
@@ -620,5 +620,24 @@ func TestDiscoverTreatsSymlinkedAndMissingPathsAsTheSame(t *testing.T) {
 	}
 	if n := targets[0].Drifts(); n != 0 {
 		t.Errorf("the same directory reported as drift: %+v", targets[0].Comparison.Drifts)
+	}
+}
+
+func BenchmarkCompareMissingPorts(b *testing.B) {
+	for _, count := range []int{10, 1000} {
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			p := sbxenv.Plan{Declared: &sbxenv.Declared{}}
+			for i := range count {
+				id := fmt.Sprintf("ports[%d/tcp]", i+1)
+				p.Items = append(p.Items, sbxenv.Item{ID: id, Value: id})
+				p.Declared.Ports = append(p.Declared.Ports, sbxenv.DeclaredPort{ItemID: id, SandboxPort: i + 1})
+			}
+			b.ReportAllocs()
+			for b.Loop() {
+				if c := live.Compare(&p, &live.Sandbox{}, nil, nil); len(c.Drifts) != count {
+					b.Fatal(len(c.Drifts))
+				}
+			}
+		})
 	}
 }

@@ -114,3 +114,18 @@ func TestExplicitPathsStayOffline(t *testing.T) {
 		t.Errorf("named files are analysed offline, without a target bar:\n%s", s.text())
 	}
 }
+
+func TestAutoRedactsMatchedNameThroughExit(t *testing.T) {
+	files := map[string]string{"sbxenv.yaml": "schemaVersion: \"1\"\nname: ${{ env.args.n }}\nagent: claude\nargs:\n  n:\n    default: web-app\n"}
+	s := start(t, launch{cols: 160, rows: 50, auto: true, args: []string{"--redact"}, files: files, sbx: autoSbx})
+	s.expect("稼働中")
+	s.gone("web-app")
+	s.press("s")
+	s.expect("対象の切替")
+	s.gone("web-app")
+	s.press("Escape")
+	full := s.quit()
+	if !strings.Contains(full, "sbxray: ") || strings.Contains(full, "web-app") {
+		t.Fatalf("unexpected summary: %q", full)
+	}
+}

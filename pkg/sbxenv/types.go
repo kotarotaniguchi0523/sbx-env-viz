@@ -230,6 +230,11 @@ type ArgValue struct {
 	Origin Origin `json:"origin"`
 }
 
+// fromCLI reports whether the argument came from --env-arg or --env-args-file.
+//
+//declscope:shared // analyze.go and resolve.go track only the arguments a person passed
+func (a ArgValue) fromCLI() bool { return a.From == "flag" || a.From == "env-args-file" }
+
 // Origin points at the place that set a value.
 type Origin struct {
 	SourceID string `json:"source"`

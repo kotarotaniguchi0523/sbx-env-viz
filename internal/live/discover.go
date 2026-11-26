@@ -81,10 +81,10 @@ func Discover(ctx context.Context, req DiscoverRequest) ([]Target, Snapshot) {
 	var groups []Group
 	seenDir := map[string]bool{}
 	for _, d := range dirs {
-		if d == "" || seenDir[Canonical(d)] {
+		if d == "" || seenDir[canonical(d)] {
 			continue
 		}
-		seenDir[Canonical(d)] = true
+		seenDir[canonical(d)] = true
 		groups = append(groups, FileGroups(d)...)
 	}
 
@@ -106,7 +106,9 @@ func Discover(ctx context.Context, req DiscoverRequest) ([]Target, Snapshot) {
 			paired[i] = true
 			sb := snap.Sandboxes[i]
 			t.Sandbox = &sb
-			t.Name = sb.Name
+			if p.Declared.Name == "" {
+				t.Name = sb.Name
+			}
 			t.State = StateLabel(sb.Status)
 			cmp := Compare(p, &sb, &snap, show)
 			t.Comparison = &cmp
@@ -145,6 +147,8 @@ func Discover(ctx context.Context, req DiscoverRequest) ([]Target, Snapshot) {
 // FileGroups lists the environment files of one directory. sbxenv.yaml
 // alone is the no-path default; sbxenv.X.yaml is resolved with its
 // sbxenv.X.local.yaml companion when one exists.
+//
+//declscope:ignore overexported // live_test.go tests the file pairing through it directly, apart from Discover
 func FileGroups(dir string) []Group {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -213,11 +217,10 @@ func targetName(p *sbxenv.Plan, g Group) string {
 	return filepath.Base(g.Dir) + "/" + file
 }
 
-// Match returns the index of the sandbox a declaration created, or -1.
-func Match(d *sbxenv.Declared, sbs []Sandbox) int { return match(d, sbs, map[int]bool{}) }
-
 // match finds the sandbox a declaration created: same name first, then the
 // same primary workspace directory.
+//
+//declscope:shared // CollectMatched and Discover use the same pairing rules
 func match(d *sbxenv.Declared, sbs []Sandbox, taken map[int]bool) int {
 	if d == nil {
 		return -1

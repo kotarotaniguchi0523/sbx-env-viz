@@ -41,6 +41,7 @@ func TestColoursByDefault(t *testing.T) {
 	// Arrange / Act
 	s := start(t, launch{cols: 130, color: true})
 	s.press("2")
+	s.expect("一覧 · Risk")
 	s.snapshot("risk-130x40-color", true)
 
 	// Assert
@@ -60,6 +61,7 @@ func TestNoColorLeavesDefaultColours(t *testing.T) {
 	// Arrange / Act
 	s := start(t, launch{cols: 130})
 	s.press("2")
+	s.expect("一覧 · Risk")
 	s.snapshot("risk-130x40-nocolor", true)
 
 	// Assert

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/kotarotaniguchi0523/sbxray/internal/parser"
@@ -26,6 +27,8 @@ func (e *ParseError) Error() string { return e.Path + ": " + e.Err.Error() }
 func (e *ParseError) Unwrap() error { return e.Err }
 
 // resolver carries state for one Resolve call.
+//
+//declscope:shared // the state of one Resolve call; every phase file (analyze, build, caprules, declared, kits) works on it
 type resolver struct {
 	opts    ResolveOptions
 	r       *redactor
@@ -56,25 +59,13 @@ type resolver struct {
 }
 
 type layerState struct {
-	in   LayerInput
-	id   string
+	//declscope:shared // analyze.go reports environment files inside writable mounts
+	in LayerInput
+	//declscope:shared // analyze.go reports environment files inside writable mounts
+	id string
+	//declscope:shared // analyze.go reports environment files inside writable mounts
 	dir  string
 	tree *parser.Node
-}
-
-type argDecl struct {
-	name        string
-	def         *string
-	defOrigin   Origin
-	required    bool
-	enum        []string
-	pattern     string
-	description string
-	origin      Origin
-	// defNode carries the default's merge history across layers.
-	defNode *vnode
-	// export, buildArg, and buildSecret are kit-arg delivery mechanisms.
-	export, buildArg, buildSecret string
 }
 
 // Resolve merges layers in order and analyses the result.
@@ -103,6 +94,7 @@ func Resolve(layers []LayerInput, opts ResolveOptions) (*Plan, error) {
 	return rs.finish(), nil
 }
 
+//declscope:shared // kits.go and analyze.go record the files they read
 func (rs *resolver) addSource(s Source) string {
 	if s.ID == "" {
 		prefix := map[SourceKind]string{SourceKit: "K", SourceEnvArgsFile: "A", SourceKitArgsFile: "B"}[s.Kind]
@@ -118,17 +110,20 @@ func (rs *resolver) addSource(s Source) string {
 	return s.ID
 }
 
+//declscope:shared // kits.go fingerprints the kit files it records with addSource
 func digest(b []byte) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }
 
+//declscope:shared // every phase file reports diagnostics through it
 func (rs *resolver) diag(code string, level DiagLevel, cat, msg, itemID string, origins ...Origin) {
 	rs.diags = append(rs.diags, Diagnostic{
 		Code: code, Level: level, Message: rs.r.text(msg), ItemID: itemID, Origins: origins, Category: cat,
 	})
 }
 
+//declscope:shared // every phase file reports what it could not see through it
 func (rs *resolver) coverage(kind CoverageKind, ref, reason string, o Origin) {
 	for _, c := range rs.cover {
 		if c.Kind == kind && c.Ref == rs.r.text(ref) {
@@ -301,31 +296,7 @@ func (rs *resolver) collectArgDecls() {
 	}
 }
 
-// argLine is one NAME=VALUE pair with its origin.
-type argLine struct {
-	name, value string
-	origin      Origin
-	from        string
-}
-
-func parseArgFile(content []byte, src string, from string) ([]argLine, []Origin) {
-	var out []argLine
-	var bad []Origin
-	for i, line := range strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n") {
-		t := strings.TrimSpace(line)
-		if t == "" || strings.HasPrefix(t, "#") {
-			continue
-		}
-		name, value, ok := strings.Cut(t, "=")
-		if !ok || strings.TrimSpace(name) == "" {
-			bad = append(bad, Origin{SourceID: src, Line: i + 1})
-			continue
-		}
-		out = append(out, argLine{name: strings.TrimSpace(name), value: value, origin: Origin{SourceID: src, Line: i + 1}, from: from})
-	}
-	return out, bad
-}
-
+//declscope:shared // kits.go places --kit-arg flags the way --env-arg flags are placed
 func (rs *resolver) cliOrigin(flag string, i int) Origin {
 	return Origin{SourceID: "cli", Via: []string{fmt.Sprintf("%s #%d", flag, i+1)}}
 }
@@ -378,7 +349,7 @@ func (rs *resolver) resolveEnvArgs() {
 			rs.envArgs = append(rs.envArgs, ArgValue{Name: name, From: "unset", Origin: d.origin})
 			continue
 		}
-		if len(d.enum) > 0 && !contains(d.enum, v.Value) {
+		if len(d.enum) > 0 && !slices.Contains(d.enum, v.Value) {
 			rs.diag("ENV_ARG_INVALID", LevelError, "args", fmt.Sprintf("argument %q is not one of its enum values", name), "args."+name, v.Origin, d.origin)
 		}
 		if d.pattern != "" {
@@ -393,15 +364,6 @@ func (rs *resolver) resolveEnvArgs() {
 		av.Value = rs.r.value(v.Value)
 		rs.envArgs = append(rs.envArgs, av)
 	}
-}
-
-func contains(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 // convert turns one parsed layer into a vnode tree, expanding expressions.
@@ -504,6 +466,3 @@ func (rs *resolver) mergeLayers() {
 	rs.root = root
 	rs.lostByArg = m.lostByArg
 }
-
-// fromCLI reports whether the argument came from --env-arg or --env-args-file.
-func (a ArgValue) fromCLI() bool { return a.From == "flag" || a.From == "env-args-file" }

@@ -5,6 +5,8 @@ import (
 	"path"
 	"regexp"
 	"strings"
+
+	"github.com/kotarotaniguchi0523/sbxray/internal/parser"
 )
 
 // capShape is a well-known capability type's arity (SPEC-v3 §7.2).
@@ -46,6 +48,8 @@ func (c *capState) known() bool {
 
 // checkCapGrammar validates type names, singletons, and @1/@2 exclusivity
 // per declaration block (top-level entries, or one group's members).
+//
+//declscope:shared // analyze.go applies the capability rules to each expanded kit
 func (rs *resolver) checkCapGrammar(k *kitState) {
 	type blockKey struct {
 		block int
@@ -81,6 +85,8 @@ func (rs *resolver) checkCapGrammar(k *kitState) {
 // whole or not at all, so one member the host cannot satisfy (an unbound
 // credential) skips every member. A standalone optional credential with no
 // binding is skipped on its own.
+//
+//declscope:shared // kits.go marks skipped groups once a kit's capabilities are read
 func (rs *resolver) markSkippedGroups(k *kitState) {
 	bindings := rs.root.get("bindings")
 	unbound := func(c *capState) string {
@@ -121,6 +127,8 @@ func (rs *resolver) markSkippedGroups(k *kitState) {
 }
 
 // checkHostMounts validates host-mount@1 paths and storage-key conflicts.
+//
+//declscope:shared // analyze.go applies the capability rules
 func (rs *resolver) checkHostMountRules() {
 	type claim struct {
 		c    *capState
@@ -170,6 +178,8 @@ func (rs *resolver) checkHostMountRules() {
 
 // checkSSHAgent validates ssh-agent@1 config (phase, bounded/unbounded
 // lists, server names) and overlapping phases within a block.
+//
+//declscope:shared // analyze.go applies the capability rules to each expanded kit
 func (rs *resolver) checkSSHAgent(k *kitState) {
 	type blockPhase struct {
 		block int
@@ -231,6 +241,8 @@ func (rs *resolver) checkSSHAgent(k *kitState) {
 }
 
 // credentialProblems validates credential@1 service and phase.
+//
+//declscope:shared // analyze.go validates credential@1 configs before pairing them with network rules
 func credentialProblems(cfg *vnode) []string {
 	var out []string
 	svc := cfg.str("service")
@@ -255,6 +267,19 @@ func credentialProblems(cfg *vnode) []string {
 		dup[p] = true
 	}
 	return out
+}
+
+// phases reads a capability config's phase field, a scalar or a list.
+//
+//declscope:shared // analyze.go and build.go read credential and network phases with it
+func phases(v *vnode) []string {
+	if v == nil {
+		return nil
+	}
+	if v.kind == parser.Scalar {
+		return []string{v.val}
+	}
+	return v.scalars()
 }
 
 func dedupe(s []string) []string {

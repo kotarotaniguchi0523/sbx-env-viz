@@ -5,7 +5,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 
 	tuitest "github.com/microsoft/tui-test/bindings/go"
 )
@@ -88,23 +87,9 @@ func TestQuitPrintsOneSummaryLine(t *testing.T) {
 	s := start(t, launch{cols: 100})
 
 	// Act
-	s.press("q")
-	if err := s.term.WaitExit(tuitest.WaitOptions{Timeout: tuitest.Ptr(10 * time.Second)}); err != nil {
-		t.Fatalf("wait exit: %v", err)
-	}
+	full := s.quit()
 
 	// Assert
-	state, err := s.term.State()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if state.Exited == nil || *state.Exited != 0 {
-		t.Errorf("exit code = %v, want 0", state.Exited)
-	}
-	full, err := s.term.Text(tuitest.TextOptions{Full: true})
-	if err != nil {
-		t.Fatal(err)
-	}
 	var summaries []string
 	for _, l := range strings.Split(full, "\n") {
 		if strings.HasPrefix(l, "sbxray: Host実行") {
@@ -215,24 +200,6 @@ func TestHelpOpensAndAnyKeyCloses(t *testing.T) {
 	s.expect("あなたの PC で実行")
 	s.press("x")
 	s.gone("キー操作")
-}
-
-// click presses and releases the left button on the first cell of the
-// first occurrence of text. The press is written as the SGR mouse sequence
-// a terminal sends (1-based coordinates): tui-test v0.1.1's Mouse.Click
-// fails on linux/amd64 with "null native string with nonzero length".
-func (s *screen) click(text string) {
-	s.t.Helper()
-	loc := s.locations(text)
-	if len(loc) == 0 {
-		s.t.Fatalf("click %q: not on screen\n%s", text, s.text())
-	}
-	x, y := loc[0].Start.Column+1, loc[0].Start.Row+1
-	before := s.text()
-	if err := s.term.Write(fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<0;%d;%dm", x, y, x, y)); err != nil {
-		s.t.Fatalf("click %q: %v", text, err)
-	}
-	s.settle(before)
 }
 
 // wheel scrolls at the first occurrence of text. tui-test v0.1.1's

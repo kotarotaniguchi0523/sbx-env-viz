@@ -97,6 +97,16 @@ version = "0.4.0"
 backend = "go:github.com/gh-intel/sisakulint/cmd/sisakulint"
 specifiers = ["0.4.0"]
 
+[[tools."go:github.com/go-gremlins/gremlins/cmd/gremlins"]]
+version = "0.6.0"
+backend = "go:github.com/go-gremlins/gremlins/cmd/gremlins"
+specifiers = ["0.6.0"]
+
+[[tools."go:github.com/mpyw/declscope/cmd/declscope"]]
+version = "0.25.0"
+backend = "go:github.com/mpyw/declscope/cmd/declscope"
+specifiers = ["0.25.0"]
+
 [[tools."go:golang.org/x/vuln/cmd/govulncheck"]]
 version = "1.10.0"
 backend = "go:golang.org/x/vuln/cmd/govulncheck"

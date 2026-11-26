@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/kotarotaniguchi0523/sbxray/internal/render/model"
+	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
 // Snapshot is what sbx reported about existing sandboxes.
@@ -72,7 +74,30 @@ type MCPServer struct {
 // Collect asks sbx about every sandbox. It never fails: a missing sbx, a
 // stopped daemon, or unreadable output leaves Available false and a
 // Japanese Problem, so the caller falls back to the files alone.
+//
+//declscope:ignore overexported // external tests exercise the full snapshot used by Discover
 func Collect(ctx context.Context, r Runner) Snapshot {
+	s := listSandboxes(ctx, r)
+	if s.Available {
+		s.collectDetails(ctx, r)
+	}
+	return s
+}
+
+// CollectMatched looks up details only for the sandbox paired with the declaration.
+func CollectMatched(ctx context.Context, r Runner, d *sbxenv.Declared) Snapshot {
+	s := listSandboxes(ctx, r)
+	i := match(d, s.Sandboxes, nil)
+	if i < 0 {
+		s.Sandboxes = nil
+		return s
+	}
+	s.Sandboxes = s.Sandboxes[i : i+1]
+	s.collectDetails(ctx, r)
+	return s
+}
+
+func listSandboxes(ctx context.Context, r Runner) Snapshot {
 	var s Snapshot
 	if r == nil {
 		r = missing{}
@@ -92,6 +117,10 @@ func Collect(ctx context.Context, r Runner) Snapshot {
 		return s
 	}
 	s.Available = true
+	return s
+}
+
+func (s *Snapshot) collectDetails(ctx context.Context, r Runner) {
 	var partial []string
 	for i := range s.Sandboxes {
 		sb := &s.Sandboxes[i]
@@ -104,7 +133,7 @@ func Collect(ctx context.Context, r Runner) Snapshot {
 			}
 		}
 		if !sb.RulesKnown {
-			partial = append(partial, sb.Name+" の通信ルール")
+			partial = append(partial, "通信ルール")
 		}
 		if out, err := r.Run(ctx, "secret", "ls", "--sandbox", sb.Name, "--json"); err == nil {
 			if sb.Secrets, err = parseSecrets(out); err == nil {
@@ -112,7 +141,7 @@ func Collect(ctx context.Context, r Runner) Snapshot {
 			}
 		}
 		if !sb.SecretsKnown {
-			partial = append(partial, sb.Name+" のシークレット一覧")
+			partial = append(partial, "シークレット一覧")
 		}
 	}
 	if out, err := r.Run(ctx, "mcp", "ls", "--json"); err == nil {
@@ -124,16 +153,14 @@ func Collect(ctx context.Context, r Runner) Snapshot {
 		partial = append(partial, "MCP サーバーの一覧")
 	}
 	if len(partial) > 0 {
-		s.Problem = "sbx から取得できなかった情報があります（その項目は比較していません）: " + strings.Join(partial, "、")
+		sort.Strings(partial)
+		s.Problem = "sbx から取得できなかった情報があります（その項目は比較していません）: " + strings.Join(slices.Compact(partial), "、")
 	}
-	return s
 }
 
 type missing struct{}
 
 func (missing) Run(context.Context, ...string) ([]byte, error) { return nil, ErrNoSbx }
-
-func clean(s string) string { return model.EscapeControl(firstLine(s)) }
 
 // --- reading sbx output -------------------------------------------------
 //

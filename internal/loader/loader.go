@@ -16,11 +16,11 @@ import (
 	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
-// DefaultFileName is the file sbx looks for in a directory.
-const DefaultFileName = "sbxenv.yaml"
+// defaultFileName is the file sbx looks for in a directory.
+const defaultFileName = "sbxenv.yaml"
 
-// UserDefaultsName is the user defaults file in the home directory.
-const UserDefaultsName = ".sbxenv.yaml"
+// userDefaultsName is the user defaults file in the home directory.
+const userDefaultsName = ".sbxenv.yaml"
 
 // maxFileSize bounds every file read (environment files, args files, kits).
 const maxFileSize = 4 << 20
@@ -52,21 +52,21 @@ func Load(req Request) (*Result, error) {
 	if len(req.Paths) == 0 {
 		res.ProjectDir = req.WorkDir
 		if req.HomeDir != "" {
-			p := filepath.Join(req.HomeDir, UserDefaultsName)
+			p := filepath.Join(req.HomeDir, userDefaultsName)
 			if data, err := readFile(p); err == nil {
 				res.Layers = append(res.Layers, sbxenv.LayerInput{Path: p, Content: data, Kind: sbxenv.LayerUserDefaults})
 			} else if !errors.Is(err, fs.ErrNotExist) {
 				return nil, err
 			}
 		}
-		p := filepath.Join(req.WorkDir, DefaultFileName)
+		p := filepath.Join(req.WorkDir, defaultFileName)
 		if data, err := readFile(p); err == nil {
 			res.Layers = append(res.Layers, sbxenv.LayerInput{Path: p, Content: data, Kind: sbxenv.LayerEnv})
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			return nil, err
 		}
 		if len(res.Layers) == 0 {
-			return nil, fmt.Errorf("no environment file: %s not found and no ~/%s; pass a file or directory", DefaultFileName, UserDefaultsName)
+			return nil, fmt.Errorf("no environment file: %s not found and no ~/%s; pass a file or directory", defaultFileName, userDefaultsName)
 		}
 	} else {
 		for i, raw := range req.Paths {
@@ -82,7 +82,7 @@ func Load(req Request) (*Result, error) {
 			dir := filepath.Dir(p)
 			if st.IsDir() {
 				dir = p
-				p = filepath.Join(p, DefaultFileName)
+				p = filepath.Join(p, defaultFileName)
 			}
 			if i == 0 {
 				res.ProjectDir = dir
@@ -91,7 +91,7 @@ func Load(req Request) (*Result, error) {
 			if err != nil {
 				shown := raw
 				if st.IsDir() {
-					shown = filepath.Join(raw, DefaultFileName)
+					shown = filepath.Join(raw, defaultFileName)
 				}
 				return nil, fmt.Errorf("environment file %q: %w", shown, describe(err))
 			}

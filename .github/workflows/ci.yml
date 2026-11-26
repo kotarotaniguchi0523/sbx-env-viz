@@ -32,17 +32,11 @@ jobs:
       - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
         with:
           version: 2026.11.8
-          install_args: go
+          install_args: go go:github.com/mpyw/declscope/cmd/declscope
       - uses: ./.github/actions/go-cache
         with: { mode: restore, key: test-race }
-      - name: gofmt
-        run: |
-          unformatted="$(gofmt -s -l .)"
-          if [ -n "$unformatted" ]; then
-            echo "::error::gofmt needed:"; echo "$unformatted"; exit 1
-          fi
-      - name: go vet
-        run: go vet ./...
+      - name: Lint Go modules
+        run: mise run lint
       - name: go test -race
         run: go test -race -count=1 ./...
         env:
@@ -50,6 +44,20 @@ jobs:
       - uses: ./.github/actions/go-cache
         if: always()
         with: { mode: save, key: test-race }
+
+  mutation:
+    name: Parser mutation tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
+        with:
+          version: 2026.11.8
+          install_args: go go:github.com/go-gremlins/gremlins/cmd/gremlins
+      - run: mise run mutation
 
   tui-e2e:
     name: TUI e2e, real PTY (${{ matrix.os }})

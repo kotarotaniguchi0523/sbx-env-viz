@@ -2,7 +2,6 @@ package live
 
 import (
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -56,13 +55,19 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 	if show == nil {
 		show = func(s string) string { return s }
 	}
+	// Build the lookup on demand: a comparison may need no item labels.
+	var labels map[string]string
 	item := func(id string) string {
-		for i := range p.Items {
-			if p.Items[i].ID == id {
-				return p.Items[i].Value
+		if labels == nil {
+			labels = make(map[string]string, len(p.Items))
+			for i := range p.Items {
+				it := &p.Items[i]
+				if _, exists := labels[it.ID]; !exists {
+					labels[it.ID] = it.Value
+				}
 			}
 		}
-		return ""
+		return labels[id]
 	}
 	add := func(x Drift) { c.Drifts = append(c.Drifts, x) }
 
@@ -153,11 +158,19 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			lp := sb.Ports[found]
 			var diffs []string
 			if dp.HostPort != 0 && lp.HostPort != 0 && lp.HostPort != dp.HostPort {
-				diffs = append(diffs, fmt.Sprintf("PC 側のポート番号が %d ではなく %d", dp.HostPort, lp.HostPort))
+				if dp.Redacted {
+					diffs = append(diffs, "PC 側のポート番号が異なる")
+				} else {
+					diffs = append(diffs, fmt.Sprintf("PC 側のポート番号が %d ではなく %d", dp.HostPort, lp.HostPort))
+				}
 			}
 			wider := false
 			if !sameIP(dp.HostIP, lp.HostIP) {
-				diffs = append(diffs, "公開先のアドレスが "+ipLabel(dp.HostIP)+" ではなく "+ipLabel(lp.HostIP))
+				if dp.Redacted {
+					diffs = append(diffs, "公開先のアドレスが異なる")
+				} else {
+					diffs = append(diffs, "公開先のアドレスが "+ipLabel(dp.HostIP)+" ではなく "+ipLabel(lp.HostIP))
+				}
 				wider = isAll(lp.HostIP) && !isAll(dp.HostIP)
 			}
 			if len(diffs) > 0 {
@@ -165,8 +178,12 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				if wider {
 					sev = sbxenv.SeverityHigh
 				}
+				actual := portLabel(lp)
+				if dp.Redacted {
+					actual = "<redacted>"
+				}
 				add(Drift{Kind: "ポート公開", Title: "ポートの公開のしかたが宣言と違う（" + strings.Join(diffs, "、") + "）", Declared: decl,
-					Actual: portLabel(lp), Fix: fixRecreate, Severity: sev, ItemID: dp.ItemID, Source: srcLs})
+					Actual: actual, Fix: fixRecreate, Severity: sev, ItemID: dp.ItemID, Source: srcLs})
 			}
 		}
 		for i, lp := range sb.Ports {
@@ -190,7 +207,9 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		c.Checked = append(c.Checked, "通信の許可・拒否")
 		declared := map[string]bool{}
 		for _, r := range d.Network {
-			declared[r.Decision+" "+r.Host] = true
+			if r.Phase == "runtime" {
+				declared[r.Decision+" "+r.Host] = true
+			}
 		}
 		kitVisible := false
 		live := map[string]bool{}
@@ -291,32 +310,6 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 	c.Skipped = append(c.Skipped, "メモリ・CPU・lifecycle の実行履歴などは sbx の一覧から取得できないため比較していません。")
 	sort.SliceStable(c.Drifts, func(i, j int) bool { return c.Drifts[i].Severity.Rank() > c.Drifts[j].Severity.Rank() })
 	return c
-}
-
-func samePath(a, b string) bool {
-	if a == "" || b == "" {
-		return false
-	}
-	return Canonical(a) == Canonical(b)
-}
-
-// Canonical cleans p and resolves symbolic links in its longest existing
-// prefix, so /var/x and /private/var/x (macOS) compare equal even when x
-// itself does not exist.
-func Canonical(p string) string {
-	p = filepath.Clean(p)
-	rest := ""
-	for cur := p; ; {
-		if r, err := filepath.EvalSymlinks(cur); err == nil {
-			return filepath.Join(r, rest)
-		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			return p
-		}
-		rest = filepath.Join(filepath.Base(cur), rest)
-		cur = parent
-	}
 }
 
 func baseProto(p string) string {

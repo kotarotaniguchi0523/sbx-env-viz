@@ -1,3 +1,4 @@
+//declscope:shared // the fixture and assertion helpers that the other test files of this package build on
 package sbxenv_test
 
 // Tests in this package follow the classical (Detroit) school: they drive
@@ -7,7 +8,6 @@ package sbxenv_test
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -178,27 +178,15 @@ func toJSON(t *testing.T, v any) string {
 	return string(b)
 }
 
+// containsJapanese reports whether s holds kana or kanji, so a test can
+// check that a message was written in Japanese.
+func containsJapanese(s string) bool {
+	for _, r := range s {
+		if r >= 0x3040 && r <= 0x30ff || r >= 0x4e00 && r <= 0x9fff {
+			return true
+		}
+	}
+	return false
+}
+
 const minimal = "schemaVersion: \"1\"\nagent: claude\n"
-
-// writeHome creates a file directly in the fixture's home directory.
-func writeHome(t *testing.T, f fixture, name, content string) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(f.home, name), []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// writeFile creates dir/name and returns its path.
-func writeFile(t *testing.T, dir, name, content string) string {
-	t.Helper()
-	p := filepath.Join(dir, filepath.FromSlash(name))
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	return p
-}
-
-func asParseError(err error, target **sbxenv.ParseError) bool { return errors.As(err, target) }

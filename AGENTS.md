@@ -20,7 +20,7 @@
 ## 変更の前後に確かめること
 
 ```sh
-mise run lint          # gofmt と go vet
+mise run lint          # gofmt、go vet、declscope shrink、declscope（本体と e2e）
 mise run test          # go test -race ./...
 mise run e2e           # 実際の端末（PTY）での TUI テスト（画面を変えたら UPDATE_SNAPSHOTS=1）
 mise run lint:actions  # workflow を変えたら jactionlint と sisakulint

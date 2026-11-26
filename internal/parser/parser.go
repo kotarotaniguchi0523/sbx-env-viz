@@ -100,7 +100,6 @@ func (n *Node) KeyPos(key string) (Pos, bool) {
 
 // DuplicateKey reports a key that appears twice in one mapping.
 type DuplicateKey struct {
-	Key   string
 	Path  string
 	First Pos
 	Again Pos
@@ -113,6 +112,8 @@ type Result struct {
 }
 
 // ErrMultipleDocuments is returned when the input holds more than one document.
+//
+//declscope:ignore overexported // the sentinel Parse returns for multi-document input; parser_test.go asserts on it with errors.Is
 var ErrMultipleDocuments = errors.New("multiple YAML documents are not allowed; an environment file holds exactly one")
 
 // SyntaxError is a YAML syntax error without the offending source text.
@@ -150,11 +151,10 @@ func Parse(data []byte) (*Result, error) {
 		return nil, sanitizeYAMLError(err)
 	}
 	c := &converter{}
-	var root *Node
-	if doc.Kind == yaml.DocumentNode && len(doc.Content) > 0 {
-		root = c.convert(doc.Content[0], "", 0)
-	} else {
-		root = &Node{Kind: Null, Pos: Pos{Line: 1, Col: 1}}
+	// A successful yaml.v3 document parse has exactly one root child.
+	root := c.convert(doc.Content[0], "", 0)
+	if c.err != nil {
+		return nil, c.err
 	}
 	return &Result{Root: root, Duplicates: c.dups}, nil
 }
@@ -164,8 +164,8 @@ func Parse(data []byte) (*Result, error) {
 func sanitizeYAMLError(err error) error {
 	msg := err.Error()
 	line := 0
-	if i := strings.Index(msg, "line "); i >= 0 {
-		fmt.Sscanf(msg[i:], "line %d", &line)
+	if _, tail, ok := strings.Cut(msg, "line "); ok {
+		fmt.Sscanf(tail, "%d", &line)
 	}
 	reason := "the document could not be parsed"
 	switch {
@@ -188,12 +188,23 @@ func sanitizeYAMLError(err error) error {
 }
 
 type converter struct {
-	dups []DuplicateKey
+	dups     []DuplicateKey
+	expanded int
+	err      error
 }
 
 const maxAliasDepth = 32
 
 func (c *converter) convert(y *yaml.Node, path string, depth int) *Node {
+	// Count work caused by aliases and merge keys across the whole document.
+	if depth > 0 {
+		const maxExpandedNodes = 10000
+		c.expanded++
+		if c.expanded > maxExpandedNodes {
+			c.err = &SyntaxError{Line: y.Line, Msg: "YAML alias expansion limit exceeded"}
+			return nil
+		}
+	}
 	if y.Kind == yaml.AliasNode {
 		if depth > maxAliasDepth || y.Alias == nil {
 			return &Node{Kind: Null, Pos: Pos{y.Line, y.Column}}
@@ -219,7 +230,7 @@ func (c *converter) convert(y *yaml.Node, path string, depth int) *Node {
 		n := &Node{Kind: Map, Pos: pos}
 		seen := map[string]Pos{}
 		var merged []*yaml.Node
-		for i := 0; i+1 < len(y.Content); i += 2 {
+		for i := 0; i < len(y.Content); i += 2 {
 			k, v := y.Content[i], y.Content[i+1]
 			if k.ShortTag() == "!!merge" {
 				merged = append(merged, v)
@@ -229,22 +240,32 @@ func (c *converter) convert(y *yaml.Node, path string, depth int) *Node {
 			kp := Pos{Line: k.Line, Col: k.Column}
 			childPath := joinPath(path, key)
 			if first, ok := seen[key]; ok {
-				c.dups = append(c.dups, DuplicateKey{Key: key, Path: childPath, First: first, Again: kp})
+				c.dups = append(c.dups, DuplicateKey{Path: childPath, First: first, Again: kp})
 			} else {
 				seen[key] = kp
 			}
 			n.Keys = append(n.Keys, KeyValue{Key: key, KeyPos: kp, Value: c.convert(v, childPath, depth)})
+			if c.err != nil {
+				return nil
+			}
 		}
 		// A merge key (<<) adds the keys of the referenced mapping, or of each
 		// mapping in a sequence with earlier ones first, that the mapping does
 		// not set itself. Explicit keys win wherever they appear.
 		for _, src := range merged {
 			sources := []*yaml.Node{src}
-			if deref(src).Kind == yaml.SequenceNode {
-				sources = deref(src).Content
+			// yaml.v3 resolves aliases to anchored scalars or collections.
+			if src.Kind == yaml.AliasNode {
+				src = src.Alias
+			}
+			if src.Kind == yaml.SequenceNode {
+				sources = src.Content
 			}
 			for _, m := range sources {
 				mn := c.convert(m, path, depth+1)
+				if c.err != nil {
+					return nil
+				}
 				for _, kv := range mn.Keys {
 					if _, ok := seen[kv.Key]; !ok {
 						seen[kv.Key] = kv.KeyPos
@@ -258,17 +279,13 @@ func (c *converter) convert(y *yaml.Node, path string, depth int) *Node {
 		n := &Node{Kind: Seq, Pos: pos}
 		for i, it := range y.Content {
 			n.Items = append(n.Items, c.convert(it, fmt.Sprintf("%s[%d]", path, i), depth))
+			if c.err != nil {
+				return nil
+			}
 		}
 		return n
 	}
 	return &Node{Kind: Null, Pos: pos}
-}
-
-func deref(y *yaml.Node) *yaml.Node {
-	for i := 0; y.Kind == yaml.AliasNode && y.Alias != nil && i < maxAliasDepth; i++ {
-		y = y.Alias
-	}
-	return y
 }
 
 func joinPath(parent, key string) string {

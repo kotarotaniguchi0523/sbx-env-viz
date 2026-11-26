@@ -20,8 +20,8 @@ import (
 	"github.com/kotarotaniguchi0523/sbxray/pkg/sbxenv"
 )
 
-// TwoPaneMinWidth is the narrowest width that shows list and detail together.
-const TwoPaneMinWidth = 120
+// twoPaneMinWidth is the narrowest width that shows list and detail together.
+const twoPaneMinWidth = 120
 
 type viewID int
 
@@ -59,8 +59,8 @@ type row struct {
 
 // Model is the Bubble Tea model.
 type Model struct {
-	plan    *sbxenv.Plan
-	idx     map[string]sbxenv.Source
+	plan    *sbxenv.Plan             //declscope:shared // detail.go builds the detail docs from the plan
+	idx     map[string]sbxenv.Source //declscope:shared // detail.go's origin resolves source IDs to paths with it
 	view    viewID
 	group   groupMode
 	cursor  [viewCount]int
@@ -162,7 +162,7 @@ func (m *Model) setTarget(i int) {
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd { return nil }
 
-func (m *Model) twoPane() bool { return m.width >= TwoPaneMinWidth }
+func (m *Model) twoPane() bool { return m.width >= twoPaneMinWidth }
 
 func (m *Model) filter() string { return m.filters[m.filterIdx] }
 
@@ -619,7 +619,7 @@ func run(m *Model, in io.Reader, out io.Writer) (string, error) {
 	if _, err := tea.NewProgram(m, opts...).Run(); err != nil {
 		return "", err
 	}
-	line := ExitSummary(m.plan)
+	line := exitSummary(m.plan)
 	if t := m.target(); t != nil {
 		line = "sbxray: " + model.EscapeControl(t.Name) + ": " + sbxenv.SummaryLine(m.plan.Summary)
 		if t.Comparison != nil {
@@ -629,7 +629,7 @@ func run(m *Model, in io.Reader, out io.Writer) (string, error) {
 	return line, nil
 }
 
-// ExitSummary is printed to stdout after the TUI closes.
-func ExitSummary(p *sbxenv.Plan) string {
+// exitSummary is printed to stdout after the TUI closes.
+func exitSummary(p *sbxenv.Plan) string {
 	return "sbxray: " + sbxenv.SummaryLine(p.Summary)
 }

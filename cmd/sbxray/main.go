@@ -392,19 +392,27 @@ func threshold(failOn string, p *sbxenv.Plan, cmp *live.Comparison) int {
 // liveTarget pairs one resolved plan with the sandbox it created. Err
 // carries the reason when sbx gave no answer or no sandbox matches.
 func liveTarget(plan *sbxenv.Plan, r live.Runner, show live.Paths) *live.Target {
-	snap := live.Collect(context.Background(), r)
+	snap := live.CollectMatched(context.Background(), r, plan.Declared)
 	t := &live.Target{Name: "（宣言）", State: "宣言", Plan: plan, Err: snap.Problem}
 	if plan.Declared != nil && plan.Declared.Name != "" {
-		t.Name = plan.Declared.Name
+		for _, it := range plan.Items {
+			if it.ID == "name" {
+				t.Name = it.Value
+				break
+			}
+		}
 	}
 	if !snap.Available {
 		return t
 	}
 	t.State = "宣言のみ（未作成）"
-	if i := live.Match(plan.Declared, snap.Sandboxes); i >= 0 {
-		sb := snap.Sandboxes[i]
+	if len(snap.Sandboxes) > 0 {
+		sb := snap.Sandboxes[0]
 		cmp := live.Compare(plan, &sb, &snap, show)
-		t.Name, t.State, t.Sandbox, t.Comparison = sb.Name, live.StateLabel(sb.Status), &sb, &cmp
+		if plan.Declared == nil || sb.Name != plan.Declared.Name {
+			t.Name = sb.Name
+		}
+		t.State, t.Sandbox, t.Comparison = live.StateLabel(sb.Status), &sb, &cmp
 	}
 	return t
 }
@@ -423,7 +431,7 @@ func writeJSONWithLive(w io.Writer, plan *sbxenv.Plan, t *live.Target) error {
 		l["problem"] = t.Err
 	}
 	if t.Sandbox != nil {
-		l["sandbox"] = t.Sandbox.Name
+		l["sandbox"] = t.Name
 	}
 	if c := t.Comparison; c != nil {
 		drifts := []map[string]any{}
