@@ -220,6 +220,8 @@ TUI のテスト（`e2e/tui`）はビルドしたバイナリを実際の端末�
 
 ## 自動チェックと監査
 
+PR では変更ファイルに応じて各検査を実行し、betterleaks は毎回実行します。CI の定義・判定処理・ツールチェーンを変更した場合、未分類のファイルや差分取得エラーがある場合、main への push と手動実行では全検査を実行します。
+
 | いつ | 何をするか | どこで |
 |---|---|---|
 | commit / push | betterleaks（差分と push する履歴）、gofmt、go vet、go test -race、workflow を変えたときは jactionlint と sisakulint | [`hk.pkl`](hk.pkl) |
