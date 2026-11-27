@@ -96,6 +96,7 @@ type Model struct {
 	// compared holds the ItemIDs the comparison held against sbx, escaped
 	// like the plan's so they match its items.
 	compared map[string]bool
+	tally    riskTally
 	// oScroll is the first visible canvas line of the Overview; hScroll
 	// is the first visible line of the help.
 	oScroll, hScroll int
@@ -111,7 +112,7 @@ type Model struct {
 // borders, bold, and reverse video remain.
 func New(p *sbxenv.Plan, noColor bool) *Model {
 	p = model.ForTerminal(p)
-	m := &Model{plan: p, idx: model.SourceIndex(p), width: 100, height: 30, pal: newPalette(noColor)}
+	m := &Model{plan: p, idx: model.SourceIndex(p), tally: tallyRisks(p), width: 100, height: 30, pal: newPalette(noColor)}
 	m.resetFilters()
 	m.rebuild()
 	return m
@@ -154,6 +155,7 @@ func (m *Model) setTarget(i int) {
 	}
 	m.plan = model.ForTerminal(p)
 	m.idx = model.SourceIndex(m.plan)
+	m.tally = tallyRisks(m.plan)
 	m.drifts, m.compared = nil, map[string]bool{}
 	if t.Comparison != nil {
 		// ItemIDs too: ForTerminal escaped the plan's, and a drift must

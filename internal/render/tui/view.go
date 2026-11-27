@@ -108,13 +108,7 @@ func (m *Model) Render() string {
 func (m *Model) viewTotal(v viewID) int {
 	switch v {
 	case viewRisk:
-		n := len(m.drifts)
-		for _, r := range model.RiskList(m.plan) {
-			if r.Cover == nil {
-				n++
-			}
-		}
-		return n
+		return len(m.drifts) + m.tally.findings
 	case viewItems:
 		return len(m.plan.Items)
 	case viewSources:

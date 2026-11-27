@@ -418,20 +418,26 @@ func (m *Model) jump() {
 	}
 }
 
-// riskCounts counts the findings this tool rates high or above, and medium.
-func riskCounts(p *sbxenv.Plan) (high, medium int) {
+// riskTally is what the summary line and the リスク tab count: the
+// findings (coverage notes aside), and those rated high or above, and
+// medium. It is counted once per plan, not on every frame.
+type riskTally struct{ findings, high, medium int }
+
+func tallyRisks(p *sbxenv.Plan) riskTally {
+	var t riskTally
 	for _, r := range model.RiskList(p) {
 		if r.Cover != nil {
 			continue
 		}
+		t.findings++
 		switch {
 		case r.Severity.Rank() >= sbxenv.SeverityHigh.Rank():
-			high++
+			t.high++
 		case r.Severity == sbxenv.SeverityMedium:
-			medium++
+			t.medium++
 		}
 	}
-	return high, medium
+	return t
 }
 
 // overviewPanes draws the summary line and the manifest table, scrolled so
@@ -439,9 +445,8 @@ func riskCounts(p *sbxenv.Plan) (high, medium int) {
 func (m *Model) overviewPanes(w, top, ph int) string {
 	p := m.pal
 	var head []string
-	high, medium := riskCounts(m.plan)
-	summary := p.stamp.Render("✗") + " 最重要・高 " + p.strong.Render(fmt.Sprint(high)) + "    " +
-		p.caution.Render("!") + " 中 " + p.strong.Render(fmt.Sprint(medium))
+	summary := p.stamp.Render("✗") + " 最重要・高 " + p.strong.Render(fmt.Sprint(m.tally.high)) + "    " +
+		p.caution.Render("!") + " 中 " + p.strong.Render(fmt.Sprint(m.tally.medium))
 	if t := m.target(); t != nil && t.Comparison != nil {
 		n := p.strong.Render(fmt.Sprint(len(m.drifts)))
 		if len(m.drifts) > 0 {
