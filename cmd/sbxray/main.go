@@ -362,7 +362,7 @@ func run(args []string, e env) int {
 			},
 		})
 		if len(targets) > 0 {
-			line, err := tui.RunTargets(targets, snap.Reason(redaction), e.stdin, e.stdout)
+			line, err := tui.RunTargets(targets, sbxenv.ShortenHome(snap.Reason(redaction), home, homeAliases...), e.stdin, e.stdout)
 			if err != nil {
 				fmt.Fprintf(e.stderr, "sbxray: %s\n", shorten(err.Error()))
 				return exitUsage
@@ -386,6 +386,8 @@ func run(args []string, e env) int {
 	var target *live.Target
 	if o.live {
 		target = liveTarget(plan, e.sbx, show)
+		// sbx's own error text can name paths under $HOME.
+		target.Err = sbxenv.ShortenHome(target.Err, home, homeAliases...)
 	}
 	switch {
 	case mode == "tui" && target != nil:

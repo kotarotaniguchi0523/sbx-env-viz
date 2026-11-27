@@ -828,3 +828,19 @@ func TestLiveJSONDoesNotEscapeAngleBrackets(t *testing.T) {
 		t.Errorf("exit %d, stdout escapes < and >:\n%s%s", r.code, r.stdout, r.stderr)
 	}
 }
+
+func TestLiveErrorShortensHome(t *testing.T) {
+	t.Parallel()
+	// Arrange: sbx ls fails naming a socket under $HOME.
+	s := newSandbox(t)
+	s.write(t, "sbxenv.yaml", liveEnv)
+	path, _ := s.fakeSbx(t, `"ls --json --no-input") echo '[`, `"ls --json --no-input") echo "dial unix `+s.home+`/.sbx/daemon.sock: connection refused" >&2; exit 1; echo '[`)
+
+	// Act: without --redact, sbx's error text is shown.
+	r := s.runPath(t, path, "--text", "--live")
+
+	// Assert: regression; the home directory appeared in full.
+	if strings.Contains(r.stdout, s.home) || !strings.Contains(r.stdout, "~/.sbx/daemon.sock") {
+		t.Errorf("stdout:\n%s", r.stdout)
+	}
+}
