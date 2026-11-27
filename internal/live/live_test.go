@@ -537,6 +537,9 @@ func TestCompareConfirmsOnlyTheItemsItHeldAgainstSbx(t *testing.T) {
 			t.Errorf("%s was compared: %v", want, c.Compared)
 		}
 	}
+	if !slices.Contains(c.Compared, "name") {
+		t.Errorf("the name the sandbox was found by was compared: %v", c.Compared)
+	}
 	for _, not := range []string{"workspace", "build.example.com"} {
 		if strings.Contains(got, not) {
 			t.Errorf("%s was not held against sbx's output: %v", not, c.Compared)

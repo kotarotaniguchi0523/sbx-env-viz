@@ -7,7 +7,7 @@
 │                                                                                                                                                                │
 │    項目              宣言（sbxenv.yaml）                                                                                              実体（sbx）              │
 │ 基本                                                                                                                                                           │
-│    名前              web-app                                                                                                          照合なし                 │
+│    名前              web-app                                                                                                          一致                     │
 │ !  エージェント      claude                                                                                                           codex                    │
 │                                                                                                                                                                │
 │ フォルダの共有                                                                                                                                                 │

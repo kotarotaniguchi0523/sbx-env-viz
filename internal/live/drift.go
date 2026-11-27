@@ -92,6 +92,12 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 	add := func(x Drift) { c.Drifts = append(c.Drifts, x) }
 	strict := p.Meta.Redaction == "" || p.Meta.Redaction == sbxenv.RedactStrict
 
+	// Name: a declared name is how the sandbox was found, so it is
+	// confirmed when sbx has the same one.
+	if d.Name != "" && d.Name == sb.Name {
+		c.Compared = append(c.Compared, "name")
+	}
+
 	// Agent.
 	if d.Agent != "" && sb.Agent != "" {
 		c.Checked = append(c.Checked, "エージェント")
