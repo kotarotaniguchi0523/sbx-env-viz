@@ -676,6 +676,9 @@ func (m *Model) inDetail() bool {
 }
 
 func (m *Model) setView(v viewID) {
+	// Typing a search ends with the view it was typed in (a tab clicked
+	// mid-search), so keys go back to moving the cursor.
+	m.searching = false
 	m.view = v
 	m.detail = false
 	m.focus = 0

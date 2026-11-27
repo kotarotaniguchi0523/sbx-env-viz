@@ -2067,3 +2067,19 @@ func TestTUIPickerKeepsTheEndOfALongName(t *testing.T) {
 	// Assert: regression; both rows were cut to the same prefix.
 	u.want("staging  ", "prod  ")
 }
+
+func TestTUITabClickEndsTypingASearch(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	u := newUI(t, 120, 40, true)
+	u.press("3", "/", "x")
+
+	// Act
+	u.clickOn("1 概要", 0)
+	u.press("j")
+
+	// Assert: regression; j was typed into an invisible search.
+	if u.has("検索: xj") {
+		t.Errorf("keys still edit the search:\n%s", u.text())
+	}
+}
