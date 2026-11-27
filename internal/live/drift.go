@@ -103,7 +103,13 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		c.Checked = append(c.Checked, "エージェント")
 		c.Compared = append(c.Compared, "agent")
 		if !strings.EqualFold(d.Agent, sb.Agent) {
-			add(Drift{Kind: "エージェント", Title: "宣言と違うエージェントで動いている", Declared: item("agent"), Actual: sb.Agent,
+			// An agent named by an argument is hidden, and sbx's may carry
+			// the same value (canary-v1 beside <redacted>-v2).
+			actual := sb.Agent
+			if strict && strings.Contains(item("agent"), "<redacted>") {
+				actual = "<redacted>"
+			}
+			add(Drift{Kind: "エージェント", Title: "宣言と違うエージェントで動いている", Declared: item("agent"), Actual: actual,
 				Fix: "agent を変えた場合は、作り直し（sbx env rm → sbx env create）で反映されます。", Severity: sbxenv.SeverityMedium, ItemID: "agent", Source: srcLs})
 		}
 	}

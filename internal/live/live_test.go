@@ -1148,3 +1148,17 @@ func TestPortsPairByAddressBeforeOrder(t *testing.T) {
 		t.Errorf("drifts %v", c.Drifts)
 	}
 }
+
+func TestStrictRedactionHidesAnAgentNamedByAnArgument(t *testing.T) {
+	t.Parallel()
+	// Arrange: agent ${{ env.args.tenant }}-v2 (tenant=canary); sbx runs canary-v1.
+	p := strictPlan(&sbxenv.Declared{Agent: "canary-v2"}, sbxenv.Item{ID: "agent", Path: "agent", Value: "<redacted>-v2"})
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Agent: "canary-v1"}, &live.Snapshot{}, nil)
+
+	// Assert: regression; 実体 printed canary-v1.
+	if d, ok := drift(&c, "違うエージェント"); !ok || d.Actual != "<redacted>" {
+		t.Errorf("drift = %+v (%v)", d, c.Drifts)
+	}
+}
