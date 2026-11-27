@@ -1206,3 +1206,27 @@ func TestWorkspacesMatchByThePathSbxReported(t *testing.T) {
 		t.Errorf("drifts %v", c.Drifts)
 	}
 }
+
+func TestPortPairingDoesNotTakeAListenerAnotherDeclarationNeeds(t *testing.T) {
+	t.Parallel()
+	// Arrange: 4000 -> 80/tcp on loopback and an ephemeral 80/tcp4; sbx
+	// lists 127.0.0.1:4000 before [::1]:4000.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "any", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+		{ItemID: "v4", SandboxPort: 80, Protocol: "tcp4"},
+	}}}
+	listeners := []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+		{HostIP: "::1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+	}
+	for _, order := range [][]live.Port{listeners, {listeners[1], listeners[0]}} {
+		// Act
+		c := live.Compare(p, &live.Sandbox{Ports: order}, &live.Snapshot{}, nil)
+
+		// Assert: regression; tcp took the only IPv4 listener, so tcp4 read
+		// as missing and the IPv6 one as undeclared.
+		if len(c.Drifts) > 0 {
+			t.Errorf("order %v: drifts %v", order, c.Drifts)
+		}
+	}
+}

@@ -178,65 +178,82 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		// any live port may carry the same number, so every live value is
 		// hidden then: a listener paired with another declaration too.
 		hidePorts := strict && slices.ContainsFunc(d.Ports, func(dp sbxenv.DeclaredPort) bool { return dp.Redacted })
-		// Pair each declaration with a listener, the most constrained
-		// first: every one with its declared host port, then the ones that
-		// fix a family (tcp4, ::1), then the rest with any compatible one.
-		// Neither sbx's order nor a missing listener can then swap two
-		// declarations of one sandbox port.
-		used := map[int]bool{}
-		pair := make([]int, len(d.Ports))
-		for j := range pair {
-			pair[j] = -1
-		}
+		// Pair declarations with listeners so that as many as possible
+		// pair (a declaration never takes the listener another one needs,
+		// so sbx's order cannot swap two of one sandbox port), each trying
+		// the closest listener first: its exact host port, then its
+		// address and a row showing its family, its address, its family,
+		// then any. Declarations that can claim an exact host port go
+		// first, then those that fix a family, then the rest.
 		compatible := func(dp sbxenv.DeclaredPort, lp Port) bool {
 			return lp.SandboxPort == dp.SandboxPort && baseProto(lp.Protocol) == baseProto(dp.Protocol) &&
 				sameFamily(portFamily(lp.Protocol, lp.HostIP), portFamily(dp.Protocol, dp.HostIP))
 		}
-		passes := []func(sbxenv.DeclaredPort, Port) bool{
-			func(dp sbxenv.DeclaredPort, lp Port) bool { return dp.HostPort != 0 && lp.HostPort == dp.HostPort },
-			func(dp sbxenv.DeclaredPort, _ Port) bool { return portFamily(dp.Protocol, dp.HostIP) != "" },
-			func(sbxenv.DeclaredPort, Port) bool { return true },
-		}
-		// Within each pass too, a declaration that fixes a family goes
-		// first, so a neutral one cannot take the listener it needs.
-		order := make([]int, 0, len(d.Ports))
-		for _, fixed := range []bool{true, false} {
-			for j, dp := range d.Ports {
-				if (portFamily(dp.Protocol, dp.HostIP) != "") == fixed {
-					order = append(order, j)
-				}
+		distance := func(dp sbxenv.DeclaredPort, lp Port) int {
+			n := 0
+			if dp.HostPort == 0 || lp.HostPort != dp.HostPort {
+				n += 4
 			}
-		}
-		// And in each pass the closest listener is taken first: one on the
-		// declared address whose row shows the declared family, then one on
-		// the address, then one showing the family, then any. A loopback
-		// declaration then cannot take its neighbour's 0.0.0.0 listener and
-		// read as exposed, nor tcp4 a row of unknown family that tcp6 needs.
-		shows := func(dp sbxenv.DeclaredPort, lp Port) bool {
 			f := portFamily(dp.Protocol, dp.HostIP)
-			return f == "" || portFamily(lp.Protocol, lp.HostIP) == f
+			shows := f == "" || portFamily(lp.Protocol, lp.HostIP) == f
+			switch same := sameIP(dp.HostIP, lp.HostIP); {
+			case same && shows:
+			case same:
+				n++
+			case shows:
+				n += 2
+			default:
+				n += 3
+			}
+			return n
 		}
-		near := []func(sbxenv.DeclaredPort, Port) bool{
-			func(dp sbxenv.DeclaredPort, lp Port) bool { return sameIP(dp.HostIP, lp.HostIP) && shows(dp, lp) },
-			func(dp sbxenv.DeclaredPort, lp Port) bool { return sameIP(dp.HostIP, lp.HostIP) },
-			shows,
-			func(sbxenv.DeclaredPort, Port) bool { return true },
+		rank := func(dp sbxenv.DeclaredPort) int {
+			if dp.HostPort != 0 && slices.ContainsFunc(sb.Ports, func(lp Port) bool { return compatible(dp, lp) && lp.HostPort == dp.HostPort }) {
+				return 0
+			}
+			if portFamily(dp.Protocol, dp.HostIP) != "" {
+				return 1
+			}
+			return 2
 		}
-		for _, pass := range passes {
-			for _, fit := range near {
-				for _, j := range order {
-					dp := d.Ports[j]
-					if pair[j] >= 0 {
-						continue
-					}
-					for i, lp := range sb.Ports {
-						if !used[i] && compatible(dp, lp) && pass(dp, lp) && fit(dp, lp) {
-							pair[j], used[i] = i, true
-							break
-						}
-					}
+		pair := make([]int, len(d.Ports))   // declaration -> listener, or -1
+		owner := make([]int, len(sb.Ports)) // listener -> declaration, or -1
+		for j := range pair {
+			pair[j] = -1
+		}
+		for i := range owner {
+			owner[i] = -1
+		}
+		var claim func(j int, seen []bool) bool
+		claim = func(j int, seen []bool) bool {
+			dp := d.Ports[j]
+			var cands []int
+			for i, lp := range sb.Ports {
+				if !seen[i] && compatible(dp, lp) {
+					cands = append(cands, i)
 				}
 			}
+			slices.SortStableFunc(cands, func(a, b int) int { return distance(dp, sb.Ports[a]) - distance(dp, sb.Ports[b]) })
+			for _, i := range cands {
+				seen[i] = true
+				if owner[i] < 0 || claim(owner[i], seen) {
+					owner[i], pair[j] = j, i
+					return true
+				}
+			}
+			return false
+		}
+		order := make([]int, len(d.Ports))
+		for j := range order {
+			order[j] = j
+		}
+		slices.SortStableFunc(order, func(a, b int) int { return rank(d.Ports[a]) - rank(d.Ports[b]) })
+		for _, j := range order {
+			claim(j, make([]bool, len(sb.Ports)))
+		}
+		used := map[int]bool{}
+		for i, j := range owner {
+			used[i] = j >= 0
 		}
 		for j, dp := range d.Ports {
 			decl := item(dp.ItemID)
