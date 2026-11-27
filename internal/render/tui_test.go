@@ -3338,14 +3338,20 @@ func TestTUITitleBarDropsTheCountsBeforeTheState(t *testing.T) {
 	t.Parallel()
 	// Arrange: one stopped target with a name of usual length.
 	p, _ := newPlan(t, sbxenv.RedactHome)
-	for _, width := range []int{40, 44, 48, 60, 70} {
-		// Act
-		u := targetUI(t, width, 24, live.Target{Name: "project-backend", State: "停止中", Plan: p, Sandbox: &live.Sandbox{Name: "project-backend", Status: "stopped"}, Comparison: &live.Comparison{}})
+	for _, state := range []string{"停止中", "停止中・宣言ファイル未検出"} {
+		for _, width := range []int{40, 44, 48, 60, 70} {
+			for _, view := range []string{"1", "4"} {
+				// Act
+				u := targetUI(t, width, 24, live.Target{Name: "project-backend", State: state, Plan: p, Sandbox: &live.Sandbox{Name: "project-backend", Status: "stopped"}, Comparison: &live.Comparison{}})
+				u.press(view)
 
-		// Assert: regression; the tab counts stayed and 停止中 went, and
-		// at 40-48 columns the name kept 8 cells and 停止中 went.
-		if l := u.lines()[0]; !strings.Contains(l, "停止中") || !strings.Contains(l, " 4 ") {
-			t.Errorf("%d columns: title bar = %q", width, l)
+				// Assert: regression; the tab counts stayed and 停止中 went;
+				// at 40-48 columns the name kept 8 cells and 停止中 went, or
+				// a cut state lost 中 to the marker.
+				if l := u.lines()[0]; !strings.Contains(l, "停止中") || !strings.Contains(l, " 4") {
+					t.Errorf("%s, %d columns, view %s: title bar = %q", state, width, view, l)
+				}
+			}
 		}
 	}
 }

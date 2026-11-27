@@ -151,8 +151,15 @@ func (m *Model) titleBar(w int) string {
 	if n := m.subject(); n != "" {
 		name = "  " + model.EscapeControl(n)
 	}
+	var word string
 	if t := m.target(); t != nil {
 		state = "  " + t.State
+		// Its first word: 停止中 of 停止中・宣言ファイル未検出, 宣言のみ of
+		// 宣言のみ（未作成）.
+		word = state
+		if i := strings.IndexAny(state, "・（"); i >= 0 {
+			word = state[:i]
+		}
 		if m.switchable() {
 			if _, ok := m.targetBar(w, 1); !ok {
 				pos = fmt.Sprintf(" %d/%d", m.tIdx+1, len(m.targets))
@@ -181,24 +188,29 @@ func (m *Model) titleBar(w int) string {
 		// and so do the first word of the state (稼働中, 停止中: shown
 		// nowhere else for a single target) and the name at its shortest:
 		// they outrank the counts.
-		keep := lipgloss.Width(pos) + min(lipgloss.Width(state), 2+6) + min(lipgloss.Width(name), 2+8)
+		keep := lipgloss.Width(pos) + lipgloss.Width(word) + min(lipgloss.Width(name), 2+8)
 		if tabW+3+lipgloss.Width(" sbxray")+keep <= w {
 			break
 		}
 	}
 	// The tabs keep their place. When the rest does not fit beside them,
 	// the name gives way first, shortened in the middle down to 8 cells,
-	// since a single target's state (稼働中, 停止中) is shown nowhere else;
-	// then the state down to its first word; then the name to nothing;
-	// the position stays.
-	room := w - tabW - 3 - lipgloss.Width(" sbxray") - lipgloss.Width(pos)
+	// since a single target's state is shown nowhere else; then the state
+	// down to its first word, whole; then the name to nothing; then the
+	// brand; the position stays.
+	brand := " " + m.pal.strong.Render("sbxray")
+	room := w - tabW - 3 - lipgloss.Width(brand) - lipgloss.Width(pos)
 	over := func() int { return lipgloss.Width(name) + lipgloss.Width(state) - room }
 	n := model.EscapeControl(m.subject())
 	if over() > 0 && n != "" {
 		name = "  " + truncMiddle(n, max(lipgloss.Width(n)-over(), min(lipgloss.Width(n), 8)))
 	}
 	if o := over(); o > 0 {
-		state = trunc(state, max(lipgloss.Width(state)-o, min(lipgloss.Width(state), 2+6)))
+		if sw := lipgloss.Width(state) - o; sw >= lipgloss.Width(word)+2 {
+			state = trunc(state, sw)
+		} else {
+			state = word
+		}
 	}
 	if o := over(); o > 0 && n != "" {
 		// Below two cells of its own the name says nothing; drop it.
@@ -209,9 +221,14 @@ func (m *Model) titleBar(w int) string {
 		}
 	}
 	if over() > 0 {
+		room += lipgloss.Width(brand) - 1
+		brand = ""
+		state = strings.TrimPrefix(state, " ")
+	}
+	if over() > 0 {
 		state = trunc(state, max(room, 0))
 	}
-	left := " " + m.pal.strong.Render("sbxray") + name + m.pal.muted.Render(state+pos)
+	left := brand + name + m.pal.muted.Render(state+pos)
 	gap := w - lipgloss.Width(left) - tabW
 	s := &strip{m: m, y: 0}
 	s.text(left, lipgloss.NewStyle())
