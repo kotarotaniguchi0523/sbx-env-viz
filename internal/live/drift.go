@@ -514,7 +514,11 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 	case snap == nil || !snap.MCPKnown:
 		c.Skipped = append(c.Skipped, "sbx mcp ls の結果を取得できなかったため、MCP サーバーは比較していません。")
 	default:
-		c.Checked = append(c.Checked, "MCP サーバー")
+		// MCP is listed as checked only when a server is compared, not
+		// when --skip-host-commands left out every one.
+		if slices.ContainsFunc(d.MCP, func(m sbxenv.DeclaredMCP) bool { return !m.Skipped }) {
+			c.Checked = append(c.Checked, "MCP サーバー")
+		}
 		skipped := false
 		for _, m := range d.MCP {
 			if m.Skipped {

@@ -1659,3 +1659,17 @@ func TestADualStackPortTakesItsRowForEachFamily(t *testing.T) {
 		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
 	}
 }
+
+func TestMCPIsNotCheckedWhenEveryServerIsSkipped(t *testing.T) {
+	t.Parallel()
+	// Arrange: the only server is a command one --skip-host-commands skips.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{MCP: []sbxenv.DeclaredMCP{{ItemID: "m", Name: "local", Shown: "local", Skipped: true}}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{}, &live.Snapshot{MCPKnown: true}, nil)
+
+	// Assert: regression; live.checked listed MCP with nothing compared.
+	if slices.Contains(c.Checked, "MCP サーバー") {
+		t.Errorf("checked %v", c.Checked)
+	}
+}
