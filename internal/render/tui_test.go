@@ -3127,3 +3127,78 @@ func TestTUIDetailOnATinyPaneDoesNotPanic(t *testing.T) {
 		t.Errorf("%d lines", n)
 	}
 }
+
+func TestTUISearchFilterAndGroupFromADetailShowTheList(t *testing.T) {
+	t.Parallel()
+	for _, keys := range [][]string{{"/", "a"}, {"f"}, {"g"}} {
+		// Arrange: a scrolled single-pane detail.
+		u := newUI(t, 80, 20, true).press("3", "enter", "j", "j", "j")
+		u.want(backLink)
+
+		// Act
+		u.press(keys...)
+
+		// Assert: regression; the detail stayed, swapping its item and
+		// keeping the old scroll.
+		if u.has(backLink) {
+			t.Errorf("%v: still in the detail:\n%s", keys, u.text())
+		}
+	}
+
+	// Two panes: a search started from the focused detail returns focus
+	// to the list, so j moves the cursor through the matches.
+	u := newUI(t, 130, 30, true).press("3", "l", "/", "a", "enter")
+	if f := u.footer(); !strings.Contains(f, "j/k 移動") {
+		t.Errorf("footer = %q", f)
+	}
+}
+
+func TestTUIADetailOpensAtItsTopAfterTheListChanges(t *testing.T) {
+	t.Parallel()
+	// Arrange: scroll the detail pane, then hand focus back to the list.
+	u := newUI(t, 130, 20, true).press("3", "l")
+	for range 8 {
+		u.press("j")
+	}
+	u.press("h")
+
+	// Act: the search changes the rows under the cursor.
+	u.press("/", "a", "enter")
+
+	// Assert: regression; the new item's detail opened 8 lines down. It
+	// reads as it does for the same search with nothing scrolled.
+	fresh := newUI(t, 130, 20, true).press("3", "/", "a", "enter")
+	if got, want := u.detailText(), fresh.detailText(); got != want {
+		t.Errorf("detail after the list changed:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestTUIEscOnTheOverviewKeepsAnUnseenSearch(t *testing.T) {
+	t.Parallel()
+	// Arrange: a confirmed search on 設定, then the Overview.
+	u := newUI(t, 130, 40, true).press("3", "/", "a", "enter", "1")
+
+	// Act
+	u.press("esc", "3")
+
+	// Assert: regression; Esc cleared a search the Overview does not show.
+	u.want("検索: a")
+}
+
+func TestTUITruncMiddleKeepsAWideTailWithinItsWidth(t *testing.T) {
+	t.Parallel()
+	// Arrange: a long CJK key, cut in the middle in a narrow key column.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: "env.abc日本語のとても長いプロジェクト名", Path: "env.abc日本語のとても長いプロジェクト名", Value: "val"}}}
+	m := tui.New(p, true)
+	m.Update(tea.WindowSizeMsg{Width: 46, Height: 20})
+	u := &ui{t: t, m: m}
+
+	// Act
+	u.press("3")
+
+	// Assert: regression; a straddling wide character pushed the cut key
+	// one cell over, and pad cut it again with a second "..".
+	if l := u.lines()[u.rowY(`env\.ab`)]; strings.Count(l, "..") != 1 || !strings.Contains(l, "ト名") {
+		t.Errorf("row = %q", l)
+	}
+}

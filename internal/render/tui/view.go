@@ -337,7 +337,7 @@ func (m *Model) stateLine() []string {
 	// push this target's error off the line.
 	query, qw := m.query, min(24, max(m.width/4, 8))
 	if lipgloss.Width(query) > qw {
-		query = ".." + ansi.TruncateLeft(query, lipgloss.Width(query)-(qw-2), "")
+		query = ".." + lastCells(query, qw-2)
 	}
 	if m.searching {
 		state = append(state, "検索: "+query+"_")
@@ -672,8 +672,20 @@ func truncMiddle(s string, w int) string {
 	}
 	tail := w * 2 / 3
 	head := w - tail - 2
-	back := ansi.TruncateLeft(s, lipgloss.Width(s)-tail, "")
-	return ansi.Truncate(s, head, "") + ".." + back
+	return ansi.Truncate(s, head, "") + ".." + lastCells(s, tail)
+}
+
+// lastCells is the end of s that fits in w cells. ansi.TruncateLeft keeps
+// a wide character the cut falls inside, one cell over, so the cut moves
+// left until the rest fits.
+func lastCells(s string, w int) string {
+	total := lipgloss.Width(s)
+	for n := total - w; n <= total; n++ {
+		if back := ansi.TruncateLeft(s, max(n, 0), ""); lipgloss.Width(back) <= w {
+			return back
+		}
+	}
+	return ""
 }
 
 func trunc(s string, w int) string {

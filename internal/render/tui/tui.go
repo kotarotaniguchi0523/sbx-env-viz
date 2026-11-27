@@ -227,7 +227,16 @@ func (m *Model) itemVisible(it *sbxenv.Item) bool {
 	return m.matches(it.ID + " " + it.Value + " " + strings.Join(it.Badges, ""))
 }
 
+// relist rebuilds the list after its search, filter or grouping changed,
+// and shows the list: the detail on screen belonged to the old one.
+func (m *Model) relist() {
+	m.detail, m.focus = false, 0
+	m.rebuild()
+}
+
 func (m *Model) rebuild() {
+	// The rows may change under the cursor, so a detail starts at its top.
+	m.dScroll = 0
 	var rows []row
 	switch m.view {
 	case viewOverview:
@@ -479,12 +488,12 @@ func (m *Model) click(x, y int) {
 		if m.group != groupMode(z.value) {
 			m.group = groupMode(z.value)
 			m.cursor[viewItems] = 0
-			m.rebuild()
+			m.relist()
 		}
 	case zoneFilter:
 		if m.filterIdx != z.value {
 			m.filterIdx = z.value
-			m.rebuild()
+			m.relist()
 		}
 	case zoneRow:
 		if m.view == viewOverview {
@@ -637,14 +646,14 @@ func (m *Model) key(k string) (tea.Model, tea.Cmd) {
 		if m.view == viewItems {
 			m.group = (m.group + 1) % 3
 			m.cursor[viewItems] = 0
-			m.rebuild()
+			m.relist()
 		}
 	case "f":
 		// The Overview applies no filter and shows no switch, so f there
 		// would change the next view's filter unseen.
 		if m.view != viewOverview {
 			m.filterIdx = (m.filterIdx + 1) % len(m.filters)
-			m.rebuild()
+			m.relist()
 		}
 	case "/":
 		// The Overview is a fixed manifest; its search is the settings'.
@@ -653,7 +662,7 @@ func (m *Model) key(k string) (tea.Model, tea.Cmd) {
 		}
 		m.searching = true
 		m.query = ""
-		m.rebuild()
+		m.relist()
 	case "l", "right", "enter":
 		if m.view == viewOverview {
 			m.jump()
@@ -676,7 +685,7 @@ func (m *Model) key(k string) (tea.Model, tea.Cmd) {
 			m.focus = 0
 		case m.inDetail():
 			m.detail = false
-		case m.query != "":
+		case m.query != "" && m.view != viewOverview:
 			m.query = ""
 			m.rebuild()
 		}

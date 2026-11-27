@@ -674,7 +674,7 @@ func (m *Model) overviewPanes(w, top, ph int) string {
 			case checkDrift:
 				actual = p.drift.Render(trunc(actual, actualW))
 			case checkMatch, checkSkip:
-				actual = p.muted.Render(actual)
+				actual = p.muted.Render(trunc(actual, actualW))
 			}
 			s := " " + p.mark(l.sev) + "  " + pad(l.label, labelW) + "  "
 			if live {
