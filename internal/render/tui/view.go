@@ -292,10 +292,20 @@ func (m *Model) contextBar(w, y int) string {
 // stateLine reports an active filter or search; empty when neither is on.
 func (m *Model) stateLine() string {
 	p := m.plan
+	// What the user is doing comes first and the standing notice last, so
+	// on a narrow line the search and this target's error stay in view.
 	var state []string
 	// The Overview's manifest applies neither the layer filter nor the
 	// search, so it does not report them either.
 	overview := m.view == viewOverview
+	if m.searching {
+		state = append(state, "検索: "+m.query+"_")
+	} else if m.query != "" && !overview {
+		state = append(state, "検索: "+m.query+"（Esc で解除）")
+	}
+	if t := m.target(); t != nil && t.Err != "" && t.Err != m.liveNote {
+		state = append(state, model.EscapeControl(t.Err))
+	}
 	if f := m.filter(); f != "" && !overview {
 		hidden := 0
 		for i := range p.Diagnostics {
@@ -312,14 +322,6 @@ func (m *Model) stateLine() string {
 	}
 	if m.liveNote != "" {
 		state = append(state, m.liveNote)
-	}
-	if t := m.target(); t != nil && t.Err != "" && t.Err != m.liveNote {
-		state = append(state, model.EscapeControl(t.Err))
-	}
-	if m.searching {
-		state = append(state, "検索: "+m.query+"_")
-	} else if m.query != "" && !overview {
-		state = append(state, "検索: "+m.query+"（Esc で解除）")
 	}
 	return strings.Join(state, "  ")
 }

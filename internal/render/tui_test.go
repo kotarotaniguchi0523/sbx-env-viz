@@ -2113,3 +2113,32 @@ func TestTUIFOnTheOverviewChangesNoFilter(t *testing.T) {
 		t.Errorf("f on the Overview set a filter:\n%s", u.text())
 	}
 }
+
+func TestTUIStateLinePutsTheSearchAndTheTargetErrorFirst(t *testing.T) {
+	t.Parallel()
+	// Arrange: a long standing notice and a target whose files failed to parse.
+	note := "sbx コマンドが見つかりません。Docker Sandboxes をインストールすると、稼働中の sandbox と照合できます（今は設定ファイルだけを解析しています）"
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	m := tui.NewTargets([]live.Target{{Name: "web", State: "宣言", Plan: p, Err: "設定ファイルを解析できませんでした: line 3"}}, note, true)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	u := &ui{t: t, m: m}
+
+	// Act
+	u.press("2", "/", "x")
+
+	// Assert: regression; the notice filled the line and cut both.
+	u.want("検索: x_", "line 3")
+}
+
+func TestTUIOverviewDoesNotCallALocalZipKitRemote(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: "kits[0]", Path: "kits[]", Value: "./dist/bundle.zip",
+		Fields: []sbxenv.Field{{Key: "kind", Value: "zip"}, {Key: "handle", Value: "bundle"}, {Key: "status", Value: "remote"}}}}}
+	m := tui.New(p, true)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	u := &ui{t: t, m: m}
+
+	// Assert: regression; a local archive read as remote.
+	u.wantRe(`^ {4}bundle +ZIP（展開していない。「4 ファイル」で確認） *$`)
+}
