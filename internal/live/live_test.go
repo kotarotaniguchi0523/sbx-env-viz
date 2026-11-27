@@ -1991,3 +1991,23 @@ func TestATargetInHomeIsNotNamedAfterTheUser(t *testing.T) {
 		}
 	}
 }
+
+func TestRowsWithoutAHostPortAreNotOnePublication(t *testing.T) {
+	t.Parallel()
+	// Arrange: 80/tcp for both families, any host port; sbx lists an IPv4
+	// and an IPv6 row that both leave the host port out.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", SandboxPort: 80, Protocol: "tcp"}}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", SandboxPort: 80, Protocol: "tcp"},
+		{HostIP: "::1", SandboxPort: 80, Protocol: "tcp6"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the two zeros passed for a shared host port and
+	// confirmed the port for both families.
+	if slices.Contains(c.Compared, "dual") {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
