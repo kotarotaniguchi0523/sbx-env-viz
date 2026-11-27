@@ -170,22 +170,27 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		c.Checked = append(c.Checked, "ポート公開")
 		used := map[int]bool{}
 		for _, dp := range d.Ports {
-			c.Compared = append(c.Compared, dp.ItemID)
 			decl := item(dp.ItemID)
 			found := -1
 			for i, lp := range sb.Ports {
-				if !used[i] && lp.SandboxPort == dp.SandboxPort && baseProto(lp.Protocol) == baseProto(dp.Protocol) && sameFamily(protoFamily(lp.Protocol), protoFamily(dp.Protocol)) {
+				if !used[i] && lp.SandboxPort == dp.SandboxPort && baseProto(lp.Protocol) == baseProto(dp.Protocol) &&
+					sameFamily(portFamily(lp.Protocol, lp.HostIP), portFamily(dp.Protocol, dp.HostIP)) {
 					found = i
 					break
 				}
 			}
 			if found < 0 {
+				c.Compared = append(c.Compared, dp.ItemID)
 				add(Drift{Kind: "ポート公開", Title: "宣言したポートが公開されていない", Declared: decl, Actual: "（公開されていない）",
 					Fix: fixRecreate, Severity: sbxenv.SeverityMedium, ItemID: dp.ItemID, Source: srcLs})
 				continue
 			}
 			used[found] = true
 			lp := sb.Ports[found]
+			// A fixed host port is confirmed only when sbx reports one.
+			if dp.HostPort == 0 || lp.HostPort != 0 {
+				c.Compared = append(c.Compared, dp.ItemID)
+			}
 			var diffs []string
 			if dp.HostPort != 0 && lp.HostPort != 0 && lp.HostPort != dp.HostPort {
 				if dp.Redacted {
@@ -242,9 +247,11 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		c.Skipped = append(c.Skipped, "sbx policy ls の結果を取得できなかったため、通信ルールは比較していません。")
 	} else {
 		c.Checked = append(c.Checked, "通信の許可・拒否")
+		// A bounded rule does not declare its whole host, so a manual
+		// rule for that host is still reported.
 		declared := map[string]bool{}
 		for _, r := range d.Network {
-			if r.Phase == "runtime" {
+			if r.Phase == "runtime" && !r.Bounded {
 				declared[r.Decision+" "+r.Host] = true
 			}
 		}
@@ -430,6 +437,15 @@ func protoFamily(p string) string {
 		return p[len(p)-1:]
 	}
 	return ""
+}
+
+// portFamily is the address family a port is bound to: its protocol's
+// (tcp4, udp6), else its address literal's, else "" for both.
+func portFamily(proto, ip string) string {
+	if f := protoFamily(proto); f != "" {
+		return f
+	}
+	return ipFamily(ip)
 }
 
 // stripRulePort drops a :port suffix from a rule's resource

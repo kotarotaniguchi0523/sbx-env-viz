@@ -900,3 +900,66 @@ func TestStrictRedactionHidesAHiddenHostWithAPort(t *testing.T) {
 		t.Errorf("drift = %+v (%v)", d, c.Drifts)
 	}
 }
+
+func TestPortsPairByTheFamilyOfTheirAddress(t *testing.T) {
+	t.Parallel()
+	// Arrange: sbx reports both listeners as tcp; the address tells them
+	// apart. The IPv6 one comes first.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "v4", HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp4"},
+		{ItemID: "v6", HostIP: "::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"},
+		{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; each declaration took the other's listener.
+	if len(c.Drifts) > 0 || !slices.Contains(c.Compared, "v4") || !slices.Contains(c.Compared, "v6") {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+
+	// Act / Assert: a default tcp4 port is not confirmed by an IPv6-only listener.
+	p.Declared.Ports = []sbxenv.DeclaredPort{{ItemID: "v4", SandboxPort: 3000, Protocol: "tcp4"}}
+	c = live.Compare(p, &live.Sandbox{Ports: sb.Ports[:1]}, &live.Snapshot{}, nil)
+	if _, ok := drift(&c, "宣言したポートが公開されていない"); !ok {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestAFixedHostPortIsNotConfirmedWithoutOne(t *testing.T) {
+	t.Parallel()
+	// Arrange: sbx gives no host port for the sandbox port.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "p", HostPort: 8080, SandboxPort: 3000, Protocol: "tcp4"}}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Ports: []live.Port{{SandboxPort: 3000, Protocol: "tcp"}}}, &live.Snapshot{}, nil)
+
+	// Assert: regression; the missing number read as a match.
+	if slices.Contains(c.Compared, "p") || len(c.Drifts) > 0 {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
+func TestABoundedRuleDoesNotHideAManualRuleForItsHost(t *testing.T) {
+	t.Parallel()
+	// Arrange: the Kit allows GET /health only; someone allowed the whole host.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Network: []sbxenv.DeclaredRule{
+		{ItemID: "bounded", Phase: "runtime", Decision: "allow", Host: "api.example.com", Bounded: true},
+	}}}
+	sb := &live.Sandbox{RulesKnown: true, Rules: []live.Rule{
+		{Decision: "allow", Resource: "api.example.com", Origin: "kit"},
+		{Decision: "allow", Resource: "api.example.com", CreatedVia: "added"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the bounded declaration covered the manual rule.
+	if d, ok := drift(&c, "宣言にない通信許可"); !ok || d.Actual != "許可: api.example.com" {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
