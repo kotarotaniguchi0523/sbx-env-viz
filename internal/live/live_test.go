@@ -1125,3 +1125,26 @@ func TestPortsSharingAHostPortPairByFamily(t *testing.T) {
 		t.Errorf("drifts %v", c.Drifts)
 	}
 }
+
+func TestPortsPairByAddressBeforeOrder(t *testing.T) {
+	t.Parallel()
+	// Arrange: 3000 on 127.0.0.1 (tcp4) and on 0.0.0.0 (tcp), both with
+	// ephemeral host ports; sbx lists the wildcard listener first.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "lo", HostIP: "127.0.0.1", SandboxPort: 3000, Protocol: "tcp4"},
+		{ItemID: "all", HostIP: "0.0.0.0", SandboxPort: 3000, Protocol: "tcp"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "0.0.0.0", HostPort: 50001, SandboxPort: 3000, Protocol: "tcp"},
+		{HostIP: "127.0.0.1", HostPort: 50002, SandboxPort: 3000, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the loopback port took the wildcard listener
+	// and read as exposed to every network.
+	if len(c.Drifts) > 0 {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}

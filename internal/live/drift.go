@@ -201,16 +201,21 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				}
 			}
 		}
+		// And in each pass a listener on the declared address is taken
+		// before any other, so a loopback declaration cannot take the
+		// 0.0.0.0 listener of its neighbour and read as exposed.
 		for _, pass := range passes {
-			for _, j := range order {
-				dp := d.Ports[j]
-				if pair[j] >= 0 {
-					continue
-				}
-				for i, lp := range sb.Ports {
-					if !used[i] && compatible(dp, lp) && pass(dp, lp) {
-						pair[j], used[i] = i, true
-						break
+			for _, sameAddr := range []bool{true, false} {
+				for _, j := range order {
+					dp := d.Ports[j]
+					if pair[j] >= 0 {
+						continue
+					}
+					for i, lp := range sb.Ports {
+						if !used[i] && compatible(dp, lp) && pass(dp, lp) && (!sameAddr || sameIP(dp.HostIP, lp.HostIP)) {
+							pair[j], used[i] = i, true
+							break
+						}
 					}
 				}
 			}
