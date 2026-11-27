@@ -509,5 +509,7 @@ func writeJSONWithLive(w io.Writer, plan *sbxenv.Plan, t *live.Target) error {
 	doc["live"] = l
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
+	// As jsonout does: <redacted> and -> stay as written, not \u003c...
+	enc.SetEscapeHTML(false)
 	return enc.Encode(doc)
 }

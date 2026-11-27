@@ -812,3 +812,19 @@ func TestLiveJSONHidesASandboxNamePairedByWorkspace(t *testing.T) {
 		t.Errorf("live = %v", l)
 	}
 }
+
+func TestLiveJSONDoesNotEscapeAngleBrackets(t *testing.T) {
+	t.Parallel()
+	// Arrange: a strict --json --live run with a drift whose value is hidden.
+	s := newSandbox(t)
+	s.write(t, "sbxenv.yaml", liveEnv)
+	path, _ := s.fakeSbx(t)
+
+	// Act
+	r := s.runPath(t, path, "--json", "--live")
+
+	// Assert: regression; the live section's encoder escaped HTML.
+	if strings.Contains(r.stdout, `\u003c`) || !strings.Contains(r.stdout, "<redacted>") {
+		t.Errorf("exit %d, stdout escapes < and >:\n%s%s", r.code, r.stdout, r.stderr)
+	}
+}
