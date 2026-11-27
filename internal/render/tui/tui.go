@@ -93,6 +93,9 @@ type Model struct {
 	picker   bool
 	pCursor  int
 	drifts   []live.Drift
+	// compared holds the ItemIDs the comparison held against sbx, escaped
+	// like the plan's so they match its items.
+	compared map[string]bool
 	// oScroll is the first visible canvas line of the Overview; hScroll
 	// is the first visible line of the help.
 	oScroll, hScroll int
@@ -151,13 +154,18 @@ func (m *Model) setTarget(i int) {
 	}
 	m.plan = model.ForTerminal(p)
 	m.idx = model.SourceIndex(m.plan)
-	m.drifts = nil
+	m.drifts, m.compared = nil, map[string]bool{}
 	if t.Comparison != nil {
+		// ItemIDs too: ForTerminal escaped the plan's, and a drift must
+		// find the item it is about (a secret named with a tab).
 		for _, d := range t.Comparison.Drifts {
-			for _, f := range []*string{&d.Kind, &d.Title, &d.Declared, &d.Actual, &d.Fix, &d.Source} {
+			for _, f := range []*string{&d.Kind, &d.Title, &d.Declared, &d.Actual, &d.Fix, &d.Source, &d.ItemID} {
 				*f = model.EscapeControl(*f)
 			}
 			m.drifts = append(m.drifts, d)
+		}
+		for _, id := range t.Comparison.Compared {
+			m.compared[model.EscapeControl(id)] = true
 		}
 	}
 	m.resetFilters()

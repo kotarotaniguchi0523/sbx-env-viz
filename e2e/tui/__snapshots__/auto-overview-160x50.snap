@@ -5,19 +5,19 @@
 │                                                                                                                                                                │
 │ ✗ 最重要・高 0    ! 中 1    ズレ 2    印なしでも問題がないとは限りません                                                                                       │
 │                                                                                                                                                                │
-│    項目              宣言（sbxenv.yaml）                                                                                               実体（sbx）             │
+│    項目              宣言（sbxenv.yaml）                                                                                              実体（sbx）              │
 │ 基本                                                                                                                                                           │
-│    名前              web-app                                                                                                           照合なし                │
-│ !  エージェント      claude                                                                                                            codex                   │
+│    名前              web-app                                                                                                          照合なし                 │
+│ !  エージェント      claude                                                                                                           codex                    │
 │                                                                                                                                                                │
 │ フォルダの共有                                                                                                                                                 │
-│ !  ワークスペース    ~/proj/web-app（読み書き）                                                                                        一致                    │
+│ !  ワークスペース    ~/proj/web-app（読み書き）                                                                                       一致                     │
 │                                                                                                                                                                │
 │ ポート公開                                                                                                                                                     │
-│    ポート            loopback:4000 -> sandbox:3000/tcp4                                                                                一致                    │
+│    ポート            loopback:4000 -> sandbox:3000/tcp4                                                                               一致                     │
 │                                                                                                                                                                │
 │ 宣言にない実体・その他のズレ                                                                                                                                   │
-│ !  通信の許可・拒否  （宣言なし）                                                                                                      許可: manual.example.com│
+│ !  通信の許可・拒否  （宣言なし）                                                                                                     許可: manual.example.com │
 │    メモリ・CPU・lifecycle の実行履歴などは sbx の一覧から取得できないため比較していません。                                                                    │
 │                                                                                                                                                                │
 │                                                                                                                                                                │

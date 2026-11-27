@@ -1514,3 +1514,52 @@ func TestTUIOverviewClickOnTheOverflowHintOpensNothing(t *testing.T) {
 		t.Errorf("a click on the hint opened a detail:\n%s", u.text())
 	}
 }
+
+func TestTUIOverviewGivesEachDriftedRuleItsOwnRow(t *testing.T) {
+	t.Parallel()
+	// Arrange: three runtime allow rules; sbx lacks two of them.
+	rule := func(host string) sbxenv.Item {
+		return sbxenv.Item{ID: "kit:net/network-policy@1/runtime.allow/" + host, Path: "cap:network-policy@1", Value: host, Risk: sbxenv.SeverityLow}
+	}
+	p := &sbxenv.Plan{Items: []sbxenv.Item{rule("one.test"), rule("two.test"), rule("three.test")}}
+	missing := func(host string) live.Drift {
+		return live.Drift{Kind: "通信の許可・拒否", Title: "宣言した通信の許可が反映されていない（" + host + "）", Declared: host,
+			Actual: "（該当するルールなし）", Severity: sbxenv.SeverityMedium, ItemID: "kit:net/network-policy@1/runtime.allow/" + host}
+	}
+	cmp := &live.Comparison{Checked: []string{"通信の許可・拒否"}, Drifts: []live.Drift{missing("two.test"), missing("three.test")},
+		Compared: []string{"kit:net/network-policy@1/runtime.allow/one.test", "kit:net/network-policy@1/runtime.allow/two.test", "kit:net/network-policy@1/runtime.allow/three.test"}}
+
+	// Act
+	u := targetUI(t, 120, 40, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: &live.Sandbox{Name: "web"}, Comparison: cmp})
+
+	// Assert: regression; one grouped row hid which host was missing,
+	// and its second drift could not be opened from the Overview.
+	u.wantRe(`^ {4}許可（実行中） +1 件  one\.test +一致 *$`,
+		`^ !  許可（実行中） +two\.test +（該当するルールなし） *$`, `^ !  許可（実行中） +three\.test +（該当するルールなし） *$`)
+	if u.has("宣言にない実体・その他のズレ") {
+		t.Errorf("every drift belongs to a declared row:\n%s", u.text())
+	}
+	u.clickRow(`^ !  許可（実行中） +three\.test`)
+	if got := u.detailFirstLine(); got != "ズレ: 宣言した通信の許可が反映されていない（three.test）" {
+		t.Errorf("detail = %q", got)
+	}
+}
+
+func TestTUIOverviewFindsTheDriftOfAnEscapedID(t *testing.T) {
+	t.Parallel()
+	// Arrange: a secret named with a tab; the plan's IDs are escaped for
+	// the terminal, the comparison's are not.
+	id := "secrets.a\tb"
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: id, Path: id, Value: "ref: op://x", Risk: sbxenv.SeverityMedium}}}
+	cmp := &live.Comparison{Checked: []string{"シークレット（名前のみ）"}, Compared: []string{id},
+		Drifts: []live.Drift{{Kind: "シークレット", Title: "宣言したシークレットが登録されていない", Declared: "a\tb", Actual: "（登録なし）", Severity: sbxenv.SeverityMedium, ItemID: id}}}
+
+	// Act
+	u := targetUI(t, 120, 40, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: &live.Sandbox{Name: "web"}, Comparison: cmp})
+
+	// Assert: regression; the row read 一致 and the drift sat apart.
+	u.wantRe(`^ !  秘密 a\\tb +ref: op://x +（登録なし） *$`)
+	if u.has("一致") || u.has("宣言にない実体・その他のズレ") {
+		t.Errorf("the drift belongs to its row:\n%s", u.text())
+	}
+}

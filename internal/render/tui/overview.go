@@ -84,7 +84,7 @@ func (m *Model) buildOverview() {
 			// 一致 only for what was held against sbx's output: an area
 			// being checked does not confirm every item in it.
 			l.check = checkSkip
-			if slices.ContainsFunc(items, func(it *sbxenv.Item) bool { return slices.Contains(cmp.Compared, it.ID) }) {
+			if slices.ContainsFunc(items, func(it *sbxenv.Item) bool { return m.compared[it.ID] }) {
 				l.check = checkMatch
 			}
 			for i := range m.drifts {
@@ -242,31 +242,30 @@ func (m *Model) buildOverview() {
 		}
 		var groups []*group
 		find := map[string]*group{}
+		var drifted []*sbxenv.Item
 		for _, it := range net {
-			label := "許可"
-			if strings.Contains(it.ID, ".deny/") {
-				label = "禁止"
+			// A rule sbx disagrees with gets its own row, so the row names
+			// the host and every such drift is reachable from here.
+			if slices.ContainsFunc(m.drifts, func(d live.Drift) bool { return d.ItemID == it.ID }) {
+				drifted = append(drifted, it)
+				continue
 			}
-			if strings.Contains(it.ID, "/install.") {
-				label += "（準備時）"
-			} else {
-				label += "（実行中）"
-			}
+			label, host := ruleLabel(it)
 			g := find[label]
 			if g == nil {
 				g = &group{label: label}
 				find[label] = g
 				groups = append(groups, g)
 			}
-			host := it.Value
-			if parts := strings.SplitN(it.ID, "/", 4); len(parts) == 4 {
-				host = parts[3]
-			}
 			g.hosts = append(g.hosts, host)
 			g.items = append(g.items, it)
 		}
 		for _, g := range groups {
 			entry(g.label, fmt.Sprintf("%d 件  %s", len(g.hosts), strings.Join(g.hosts, "、")), g.items...)
+		}
+		for _, it := range drifted {
+			label, host := ruleLabel(it)
+			entry(label, host, it)
 		}
 	}
 
@@ -329,6 +328,25 @@ func (m *Model) buildOverview() {
 		}
 	}
 	m.rows = rows
+}
+
+// ruleLabel is the Overview's label of a Kit network rule (its decision
+// and phase) and the host it names.
+func ruleLabel(it *sbxenv.Item) (label, host string) {
+	label = "許可"
+	if strings.Contains(it.ID, ".deny/") {
+		label = "禁止"
+	}
+	if strings.Contains(it.ID, "/install.") {
+		label += "（準備時）"
+	} else {
+		label += "（実行中）"
+	}
+	host = it.Value
+	if parts := strings.SplitN(it.ID, "/", 4); len(parts) == 4 {
+		host = parts[3]
+	}
+	return label, host
 }
 
 // liveOnly shows a sandbox that no environment file declares.
@@ -451,7 +469,8 @@ func (m *Model) overviewPanes(w, top, ph int) string {
 		actualW = max(actualW, widthOf("実体（sbx）"))
 	}
 	const indent = 4 // " ✗  " margin before the label
-	declW := w - indent - labelW - 2
+	// A row is w-1 wide, like the column header, so nothing is cut at the edge.
+	declW := w - 1 - indent - labelW - 2
 	if live {
 		declW -= actualW + 2
 	}
