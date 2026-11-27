@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -2321,5 +2322,47 @@ func TestTUITabsMakeRoomForTheTargetPosition(t *testing.T) {
 	// Assert: regression; " 1/3" clipped the last tab.
 	if l := u.lines()[0]; !strings.Contains(l, "1/3") || !strings.Contains(l, "4 ファイル") {
 		t.Errorf("title bar = %q", l)
+	}
+}
+
+func TestTUIOverviewHeadsOnlyTheSectionsItDraws(t *testing.T) {
+	t.Parallel()
+	sections := []string{"基本", "Kit", "フォルダの共有", "ポート公開", "通信", "資格情報", "コマンドの実行"}
+	for _, tc := range []struct {
+		name     string
+		items    []sbxenv.Item
+		sections []string
+		want     []string
+	}{
+		{"nothing declared", nil, nil, []string{`^ {4}（表示できる設定がありません） *$`}},
+		{"an agent", []sbxenv.Item{{ID: "agent", Path: "agent", Value: "claude"}}, []string{"基本"}, nil},
+		{"memory and CPUs", []sbxenv.Item{{ID: "sandboxOptions.memory", Path: "sandboxOptions.memory", Value: "12g"}, {ID: "sandboxOptions.cpus", Path: "sandboxOptions.cpus", Value: "4"}},
+			[]string{"基本"}, []string{`^ {4}リソース +メモリ 12g、CPU 4 *$`}},
+		{"a kit's mount alone", []sbxenv.Item{{ID: "mounts./cache", Path: "mounts./cache", Value: "/work/cache"}},
+			[]string{"フォルダの共有"}, []string{`^ {4}Kit 用フォルダ +/work/cache *$`}},
+		{"a kit's host folder alone", []sbxenv.Item{{ID: "kit:k/host-mount@1/data", Path: "cap:host-mount@1", Value: "/work/data"}},
+			[]string{"フォルダの共有"}, []string{`^ {4}Kit の共有 +/work/data *$`}},
+		{"a command inside the sandbox alone", []sbxenv.Item{{ID: "kit:k/lifecycle@1/postCreate", Path: "cap:lifecycle@1", Value: "npm ci"}},
+			[]string{"コマンドの実行"}, []string{`^ {4}sandbox 内で実行 +npm ci *$`}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			// Act
+			m := tui.New(&sbxenv.Plan{Items: tc.items}, true)
+			m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+			u := &ui{t: t, m: m}
+
+			// Assert: a section is headed only when it has a row, and an
+			// empty manifest says so instead of showing a bare heading.
+			for _, s := range sections {
+				if got, want := u.hasLine(s), slices.Contains(tc.sections, s); got != want {
+					t.Errorf("heading %s shown = %v, want %v\n%s", s, got, want, u.text())
+				}
+			}
+			if got, want := u.has("（表示できる設定がありません）"), len(tc.items) == 0; got != want {
+				t.Errorf("empty-manifest note shown = %v, want %v\n%s", got, want, u.text())
+			}
+			u.wantRe(tc.want...)
+		})
 	}
 }

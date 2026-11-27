@@ -172,7 +172,16 @@ func (m *Model) buildOverview() {
 		}
 	}
 
-	section("基本")
+	// Like the other sections, 基本 is headed only above a row, so a plan
+	// that declares nothing reaches the note that says so.
+	headed := false
+	basic := func(label, declared string, its ...*sbxenv.Item) {
+		if !headed {
+			section("基本")
+			headed = true
+		}
+		entry(label, declared, its...)
+	}
 	for _, f := range [][2]string{
 		{"name", "名前"}, {"agent", "エージェント"}, {"sandboxOptions.template", "テンプレート"},
 		{"sandboxOptions.pullPolicy", "イメージの取得"}, {"sandboxOptions.memory", "リソース"},
@@ -189,12 +198,12 @@ func (m *Model) buildOverview() {
 				parts, its = append(parts, "CPU "+it.Value), append(its, it)
 			}
 			if len(its) > 0 {
-				entry(f[1], strings.Join(parts, "、"), its...)
+				basic(f[1], strings.Join(parts, "、"), its...)
 			}
 			continue
 		}
 		if it := byID[f[0]]; it != nil {
-			entry(f[1], it.Value, it)
+			basic(f[1], it.Value, it)
 		}
 	}
 
