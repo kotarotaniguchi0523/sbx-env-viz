@@ -2175,3 +2175,33 @@ func TestTUIOverviewReadsARulesPhaseAndDecisionFromItsSegment(t *testing.T) {
 		t.Errorf("a runtime allow was labelled otherwise:\n%s", u.text())
 	}
 }
+
+func TestTUIStateLineShowsALiveErrorThatIsAlsoTheNotice(t *testing.T) {
+	t.Parallel()
+	// Arrange: --live with one target passes its error as the notice too.
+	const msg = "sbx コマンドが見つかりません。Docker Sandboxes をインストールすると、稼働中の sandbox と照合できます"
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	m := tui.NewTargets([]live.Target{{Name: "web", State: "宣言", Plan: p, Err: msg}}, msg, true)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	u := &ui{t: t, m: m}
+
+	// Act
+	u.press("2", "f", "/", "x")
+
+	// Assert: regression; the shared message went last and was cut.
+	if l := u.lines()[2]; !strings.HasPrefix(strings.TrimSpace(l), "検索: x_  sbx コマンドが見つかりません") {
+		t.Errorf("state line = %q", l)
+	}
+}
+
+func TestTUIFooterWhileTypingASearch(t *testing.T) {
+	t.Parallel()
+	// Act
+	u := newUI(t, 120, 40, true).press("3", "/")
+
+	// Assert: regression; it offered j/k, Enter 詳細 and q 終了, which type.
+	f := u.footer()
+	if !strings.Contains(f, "enter 確定") || !strings.Contains(f, "esc 取り消し") || strings.Contains(f, "q 終了") || strings.Contains(f, "j/k") {
+		t.Errorf("footer = %q", f)
+	}
+}

@@ -309,8 +309,14 @@ func (m *Model) stateLine() string {
 	} else if m.query != "" && !overview {
 		state = append(state, "検索: "+m.query+"（Esc で解除）")
 	}
-	if t := m.target(); t != nil && t.Err != "" && t.Err != m.liveNote {
+	// This target's error comes next; when it is also the standing notice
+	// (--live with one target), it is shown here, once.
+	notice := m.liveNote
+	if t := m.target(); t != nil && t.Err != "" {
 		state = append(state, model.EscapeControl(t.Err))
+		if model.EscapeControl(t.Err) == notice {
+			notice = ""
+		}
 	}
 	if f := m.filter(); f != "" && !overview {
 		hidden := 0
@@ -326,8 +332,8 @@ func (m *Model) stateLine() string {
 		}
 		state = append(state, fmt.Sprintf("絞り込み（非表示の警告・エラー %d 件）: %s", hidden, label))
 	}
-	if m.liveNote != "" {
-		state = append(state, m.liveNote)
+	if notice != "" {
+		state = append(state, notice)
 	}
 	return strings.Join(state, "  ")
 }
@@ -340,6 +346,9 @@ func (m *Model) statusBar(w int) string {
 		keys = [][2]string{{"j/k", "スクロール"}, {"ほかのキー", "閉じる"}}
 	case m.picker:
 		keys = [][2]string{{"j/k", "選択"}, {"enter", "切替"}, {"esc", "閉じる"}}
+	case m.searching:
+		// Every other key types into the query.
+		keys = [][2]string{{"enter", "確定"}, {"esc", "取り消し"}, {"backspace", "1 文字消す"}}
 	case m.inDetail():
 		keys = [][2]string{{"j/k", "スクロール"}, {"esc", "戻る"}}
 	default:
@@ -357,7 +366,9 @@ func (m *Model) statusBar(w int) string {
 			keys = append(keys, [2]string{"s", "対象"})
 		}
 	}
-	keys = append(keys, [2]string{"?", "ヘルプ"}, [2]string{"q", "終了"})
+	if !m.searching {
+		keys = append(keys, [2]string{"?", "ヘルプ"}, [2]string{"q", "終了"})
+	}
 	var b strings.Builder
 	b.WriteString(" ")
 	for i, kv := range keys {
