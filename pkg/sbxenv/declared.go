@@ -61,11 +61,13 @@ type DeclaredMCP struct {
 }
 
 // DeclaredRule is one network-policy entry of an expanded, selected kit.
+// Bounded marks an @2 entry limited to some methods or paths.
 type DeclaredRule struct {
 	ItemID   string
 	Phase    string
 	Decision string
 	Host     string
+	Bounded  bool
 }
 
 //declscope:shared // finish in analyze.go attaches it to the Plan
@@ -141,7 +143,7 @@ func (rs *resolver) declared() *Declared {
 		if e.cap.skipped || e.host == nil || e.itemID == "" {
 			continue
 		}
-		d.Network = append(d.Network, DeclaredRule{ItemID: e.itemID, Phase: e.phase, Decision: e.list, Host: strings.ToLower(e.host.val)})
+		d.Network = append(d.Network, DeclaredRule{ItemID: e.itemID, Phase: e.phase, Decision: e.list, Host: strings.ToLower(e.host.val), Bounded: e.bounded()})
 	}
 	return d
 }

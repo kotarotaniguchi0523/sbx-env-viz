@@ -860,3 +860,24 @@ func TestAnIPv4ListenerDoesNotConfirmAnIPv6Port(t *testing.T) {
 		}
 	}
 }
+
+func TestABoundedRuleIsNotConfirmedByItsHost(t *testing.T) {
+	t.Parallel()
+	// Arrange: an @2 allow limited to GET /limited/**; sbx lists the host.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Network: []sbxenv.DeclaredRule{
+		{ItemID: "bounded", Phase: "runtime", Decision: "allow", Host: "api.example.com", Bounded: true},
+		{ItemID: "plain", Phase: "runtime", Decision: "allow", Host: "cdn.example.com"},
+	}}}
+	sb := &live.Sandbox{RulesKnown: true, Rules: []live.Rule{
+		{Decision: "allow", Resource: "api.example.com", Origin: "kit"},
+		{Decision: "allow", Resource: "cdn.example.com", Origin: "kit"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the host alone read as the whole rule.
+	if slices.Contains(c.Compared, "bounded") || !slices.Contains(c.Compared, "plain") || len(c.Drifts) > 0 {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}

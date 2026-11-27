@@ -291,7 +291,11 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				if r.Phase != "runtime" {
 					continue
 				}
-				c.Compared = append(c.Compared, r.ItemID)
+				// A rule bounded to methods or paths is listed by host
+				// alone, so its host being there confirms no more than that.
+				if !r.Bounded {
+					c.Compared = append(c.Compared, r.ItemID)
+				}
 				if live[r.Decision+" "+r.Host] {
 					continue
 				}
