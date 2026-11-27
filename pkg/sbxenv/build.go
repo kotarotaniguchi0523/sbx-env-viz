@@ -125,7 +125,6 @@ func (rs *resolver) fmtValue(v *vnode) string {
 	return "null"
 }
 
-//declscope:shared // declared.go shows mount targets the way their items do
 func (rs *resolver) fmtPath(v *vnode) string {
 	if v.kind != parser.Scalar {
 		return rs.fmtPlain(v)
@@ -213,7 +212,7 @@ func (rs *resolver) fmtLifecycle(v *vnode) string {
 // workspacePath is an additionalWorkspaces entry's path: the entry itself
 // when it is a bare path, else its path key (nil when it has none).
 //
-//declscope:shared // declared.go names a mount by the path its item shows
+//declscope:shared // declared.go reads the path of each entry it keeps
 func workspacePath(e *vnode) *vnode {
 	if e.kind == parser.Map {
 		return e.get("path")
@@ -389,6 +388,7 @@ func (rs *resolver) buildWorkspace() {
 		}
 		id := "additionalWorkspaces[" + target + "]"
 		it := rs.addItem(Item{ID: id, Path: "additionalWorkspaces[]", Section: SectionWorkspace}, e, rs.fmtWorkspaceEntry)
+		rs.itemOf[e] = it.ID
 		access := "rw"
 		it.Risk, it.Badges = SeverityMedium, []string{BadgeRW}
 		it.RiskReason = "追加のフォルダを sandbox が直接読み書きします。"
@@ -571,6 +571,7 @@ func (rs *resolver) buildMCP() {
 	for _, e := range rs.root.get("mcp").get("servers").list() {
 		name := rs.r.text(e.dstr("name"))
 		it := rs.addItem(Item{ID: "mcp.servers[" + name + "]", Path: "mcp.servers[]", Section: SectionMCP}, e, rs.fmtMCP)
+		rs.itemOf[e] = it.ID
 		if e.has("command") {
 			it.Risk = SeverityHigh
 			it.RiskReason = "MCP サーバーをあなたの PC の上で、あなたの権限で動かします。"
@@ -614,6 +615,7 @@ func (rs *resolver) buildPorts() {
 	for _, e := range rs.root.get("ports").list() {
 		it := rs.addItem(Item{ID: "ports[" + rs.portKey(e) + "]", Path: "ports[]", Section: SectionPorts, Risk: SeverityLow,
 			RiskReason: "あなたの PC の中からだけ接続できるポートです。"}, e, rs.fmtPort)
+		rs.itemOf[e] = it.ID
 		reason := "publishes a sandbox port on the host loopback interface"
 		switch it.Risk = PortExposure(e.str("hostIP")); it.Risk {
 		case SeverityHigh:
@@ -999,8 +1001,6 @@ func phaseReason(ph string) string {
 
 // portKey is the display form of a port's identity: sandbox port and
 // effective protocol.
-//
-//declscope:shared // declared.go names a port by the same key as its item
 func (rs *resolver) portKey(v *vnode) string {
 	proto := strings.ToLower(v.dstr("protocol"))
 	if proto == "" {

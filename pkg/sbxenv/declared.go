@@ -76,16 +76,6 @@ type DeclaredRule struct {
 //declscope:shared // finish in analyze.go attaches it to the Plan
 func (rs *resolver) declared() *Declared {
 	d := &Declared{Name: rs.root.str("name"), Agent: rs.root.str("agent")}
-	// addItem numbers a repeated ID (#2, #3, ...); entries here take the
-	// same numbers, in the same order, so each finds its own item.
-	seen := map[string]int{}
-	itemID := func(id string) string {
-		seen[id]++
-		if n := seen[id]; n > 1 {
-			return id + "#" + strconv.Itoa(n)
-		}
-		return id
-	}
 	if rs.opts.Name != "" {
 		d.Name = rs.opts.Name
 	}
@@ -103,15 +93,10 @@ func (rs *resolver) declared() *Declared {
 	}
 	for _, e := range rs.root.get("additionalWorkspaces").list() {
 		p := workspacePath(e)
-		target := rs.r.path(e.dstr("target"))
-		if target == "" && p != nil {
-			target = rs.fmtPath(p)
-		}
-		id := itemID("additionalWorkspaces[" + target + "]")
 		if p == nil || p.kind != parser.Scalar {
 			continue
 		}
-		d.Workspaces = append(d.Workspaces, DeclaredMount{ItemID: id,
+		d.Workspaces = append(d.Workspaces, DeclaredMount{ItemID: rs.itemOf[e],
 			Path: resolveHostPath(p.fileDir, p.val), Target: e.str("target"), ReadOnly: e.str("readOnly") == "true"})
 	}
 	for _, e := range rs.root.get("ports").list() {
@@ -124,7 +109,7 @@ func (rs *resolver) declared() *Declared {
 		}
 		host, _ := strconv.Atoi(e.str("host"))
 		sb, _ := strconv.Atoi(e.str("sandbox"))
-		d.Ports = append(d.Ports, DeclaredPort{Redacted: redacted, ItemID: itemID("ports[" + rs.portKey(e) + "]"), HostIP: e.str("hostIP"),
+		d.Ports = append(d.Ports, DeclaredPort{Redacted: redacted, ItemID: rs.itemOf[e], HostIP: e.str("hostIP"),
 			HostPort: host, SandboxPort: sb, Protocol: effectiveProtocol(e)})
 	}
 	for _, k := range rs.root.get("secrets").mapKeys() {
@@ -132,12 +117,11 @@ func (rs *resolver) declared() *Declared {
 	}
 	for _, e := range rs.root.get("mcp").get("servers").list() {
 		shown := rs.r.text(e.dstr("name"))
-		id := itemID("mcp.servers[" + shown + "]")
 		name := e.str("name")
 		if name == "" {
 			continue
 		}
-		d.MCP = append(d.MCP, DeclaredMCP{ItemID: id, Name: name, Shown: shown, Remote: e.has("url"),
+		d.MCP = append(d.MCP, DeclaredMCP{ItemID: rs.itemOf[e], Name: name, Shown: shown, Remote: e.has("url"),
 			Skipped: e.has("command") && rs.opts.SkipHostCommands})
 	}
 	for _, e := range rs.net.entries {
