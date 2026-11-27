@@ -3202,3 +3202,53 @@ func TestTUITruncMiddleKeepsAWideTailWithinItsWidth(t *testing.T) {
 		t.Errorf("row = %q", l)
 	}
 }
+
+func TestTUIHelpAndPickerFootersOfferOnlyTheirKeys(t *testing.T) {
+	t.Parallel()
+	// Act / Assert: regression; both offered ? ヘルプ, which the picker
+	// ignores and the help treats as closing.
+	if f := newTargetsUI(t, 120, 30).press("s").footer(); strings.Contains(f, "ヘルプ") {
+		t.Errorf("picker footer = %q", f)
+	}
+	if f := newUI(t, 120, 30, true).press("?").footer(); strings.Contains(f, "? ヘルプ") || !strings.Contains(f, "q 終了") {
+		t.Errorf("help footer = %q", f)
+	}
+}
+
+func TestTUIWheelScrollsTheHelpAndThePicker(t *testing.T) {
+	t.Parallel()
+	// Arrange: help on a screen too short for it.
+	u := newUI(t, 120, 24, true).press("?")
+	u.want("このツールについて")
+
+	// Act
+	u.wheel(10, 10, true)
+
+	// Assert: regression; the wheel did nothing over the help.
+	if u.has("このツールについて") {
+		t.Errorf("the help did not scroll:\n%s", u.text())
+	}
+
+	// The wheel moves the picker's cursor too.
+	p := newTargetsUI(t, 120, 30).press("s")
+	p.wheel(10, 6, true)
+	p.press("enter")
+	if !strings.HasPrefix(p.lines()[0], " sbxray  orphan") {
+		t.Errorf("title bar = %q", p.lines()[0])
+	}
+}
+
+func TestTUIClickOnEmptySpaceClosesThePicker(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	u := newTargetsUI(t, 120, 30).press("s")
+	u.want("対象の sandbox を選ぶ")
+
+	// Act: below the rows, where no zone lies.
+	u.click(10, 20)
+
+	// Assert: regression; only a tab or a switch closed it.
+	if u.has("対象の sandbox を選ぶ") {
+		t.Errorf("the picker is still open:\n%s", u.text())
+	}
+}

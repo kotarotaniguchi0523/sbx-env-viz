@@ -408,8 +408,13 @@ func (m *Model) statusBar(w int) string {
 			keys = append(keys, [2]string{"s", "対象"})
 		}
 	}
+	// ? opens the help only from a view: the picker ignores it, and in the
+	// help it closes like any other key.
+	if !m.searching && !m.picker && !m.help {
+		keys = append(keys, [2]string{"?", "ヘルプ"})
+	}
 	if !m.searching {
-		keys = append(keys, [2]string{"?", "ヘルプ"}, [2]string{"q", "終了"})
+		keys = append(keys, [2]string{"q", "終了"})
 	}
 	var b strings.Builder
 	b.WriteString(" ")

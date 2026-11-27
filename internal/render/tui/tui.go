@@ -474,11 +474,12 @@ func (m *Model) click(x, y int) {
 	}
 	m.searching = false
 	z, ok := m.zoneAt(x, y)
-	if !ok {
+	// A click anywhere but on a target closes the picker, empty space too.
+	if m.picker && (!ok || z.kind != zoneTarget && z.kind != zoneTargetRow) {
+		m.picker = false
 		return
 	}
-	if m.picker && z.kind != zoneTarget && z.kind != zoneTargetRow {
-		m.picker = false
+	if !ok {
 		return
 	}
 	switch z.kind {
@@ -525,6 +526,16 @@ func (m *Model) click(x, y int) {
 
 // wheel scrolls the pane under the pointer without moving focus.
 func (m *Model) wheel(x, y, delta int) {
+	// The help and the picker fill the pane, so the wheel scrolls them
+	// wherever it is.
+	switch {
+	case m.help:
+		m.hScroll = max(m.hScroll+delta*3, 0)
+		return
+	case m.picker:
+		m.pCursor = min(max(m.pCursor+delta, 0), len(m.targets)-1)
+		return
+	}
 	z, ok := m.zoneAt(x, y)
 	if !ok {
 		return
