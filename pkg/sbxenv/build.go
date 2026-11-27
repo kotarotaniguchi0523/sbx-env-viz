@@ -209,6 +209,17 @@ func (rs *resolver) fmtLifecycle(v *vnode) string {
 	return rs.r.command(v.dstr("command"))
 }
 
+// workspacePath is an additionalWorkspaces entry's path: the entry itself
+// when it is a bare path, else its path key (nil when it has none).
+//
+//declscope:shared // declared.go names a mount by the path its item shows
+func workspacePath(e *vnode) *vnode {
+	if e.kind == parser.Map {
+		return e.get("path")
+	}
+	return e
+}
+
 func (rs *resolver) fmtWorkspaceEntry(v *vnode) string {
 	if v.kind == parser.Scalar {
 		return rs.fmtPath(v)
@@ -372,8 +383,8 @@ func (rs *resolver) buildWorkspace() {
 	}
 	for _, e := range rs.root.get("additionalWorkspaces").list() {
 		target := rs.r.path(e.dstr("target"))
-		if target == "" {
-			target = rs.fmtPath(e.get("path"))
+		if p := workspacePath(e); target == "" && p != nil {
+			target = rs.fmtPath(p)
 		}
 		id := "additionalWorkspaces[" + target + "]"
 		it := rs.addItem(Item{ID: id, Path: "additionalWorkspaces[]", Section: SectionWorkspace}, e, rs.fmtWorkspaceEntry)

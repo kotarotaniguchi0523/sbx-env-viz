@@ -24,3 +24,20 @@ func TestDeclaredMarksACommandMCPServerSkippedByTheFlag(t *testing.T) {
 		}
 	}
 }
+
+func TestAnAdditionalWorkspaceWithoutAPathDoesNotCrash(t *testing.T) {
+	t.Parallel()
+	for _, entry := range []string{"123", "{readOnly: true}", "~"} {
+		// Arrange: entries the schema rejects, which sbxray still reads.
+		f := newFixture(t)
+		f.write(t, "sbxenv.yaml", "schemaVersion: \"1\"\nagent: claude\nadditionalWorkspaces: ["+entry+"]\n")
+
+		// Act: regression; a missing path was formatted and panicked.
+		p := f.resolve(t, run{paths: []string{"."}, opts: sbxenv.ResolveOptions{Redaction: sbxenv.RedactHome}})
+
+		// Assert
+		if p == nil {
+			t.Errorf("%s: no plan", entry)
+		}
+	}
+}

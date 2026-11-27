@@ -102,15 +102,12 @@ func (rs *resolver) declared() *Declared {
 		}
 	}
 	for _, e := range rs.root.get("additionalWorkspaces").list() {
+		p := workspacePath(e)
 		target := rs.r.path(e.dstr("target"))
-		if target == "" {
-			target = rs.fmtPath(e.get("path"))
+		if target == "" && p != nil {
+			target = rs.fmtPath(p)
 		}
 		id := itemID("additionalWorkspaces[" + target + "]")
-		p := e
-		if e.kind == parser.Map {
-			p = e.get("path")
-		}
 		if p == nil || p.kind != parser.Scalar {
 			continue
 		}
