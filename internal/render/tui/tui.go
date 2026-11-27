@@ -96,6 +96,9 @@ type Model struct {
 	// oScroll is the first visible canvas line of the Overview; hScroll
 	// is the first visible line of the help.
 	oScroll, hScroll int
+	// oExtra is how far the Overview is scrolled beyond the position that
+	// keeps the cursor in view: j past the last entry, or k past the first.
+	oExtra int
 	// zones are the clickable regions of the last frame; mouse events are
 	// resolved against them so drawing and hit-testing never disagree.
 	zones []zone
@@ -159,7 +162,7 @@ func (m *Model) setTarget(i int) {
 	}
 	m.resetFilters()
 	m.cursor = [viewCount]int{}
-	m.query, m.searching, m.detail, m.focus, m.dScroll, m.oScroll = "", false, false, 0, 0, 0
+	m.query, m.searching, m.detail, m.focus, m.dScroll, m.oScroll, m.oExtra = "", false, false, 0, 0, 0, 0
 	m.rebuild()
 }
 
@@ -328,6 +331,12 @@ func (m *Model) groupKey(it *sbxenv.Item) string {
 }
 
 func (m *Model) move(delta int) {
+	before, step := m.cursor[m.view], delta
+	defer func() {
+		if m.view == viewOverview {
+			m.scrollOverview(step, m.cursor[m.view] != before)
+		}
+	}()
 	if len(m.rows) == 0 {
 		return
 	}

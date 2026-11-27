@@ -69,18 +69,17 @@ func (m *Model) buildOverview() {
 	info := func(text string) {
 		m.manifest = append(m.manifest, manifestLine{kind: lineInfo, label: text, row: -1})
 	}
-	// entry adds a setting that stands for items.
+	// entry adds a setting that stands for items. Its detail is the
+	// riskiest item, so the explanation agrees with the row's mark.
 	entry := func(label, declared string, items ...*sbxenv.Item) {
 		l := manifestLine{kind: lineEntry, label: label, declared: declared, sev: sbxenv.SeverityInfo}
+		r := row{label: label}
 		for _, it := range items {
-			if it.Risk.Rank() > l.sev.Rank() {
-				l.sev = it.Risk
+			if r.item == nil || it.Risk.Rank() > l.sev.Rank() {
+				l.sev, r.item = it.Risk, it
 			}
 		}
-		r := row{label: label, sev: l.sev}
-		if len(items) > 0 {
-			r.item = items[0]
-		}
+		r.sev = l.sev
 		if cmp != nil {
 			// 一致 only for what was held against sbx's output: an area
 			// being checked does not confirm every item in it.
@@ -517,23 +516,30 @@ func (m *Model) overviewPanes(w, top, ph int) string {
 	if cursorY >= m.oScroll+bh-1 {
 		m.oScroll = cursorY - bh + 2
 	}
-	m.oScroll = min(max(m.oScroll, 0), max(len(body)-bh, 0))
+	maxScroll := max(len(body)-bh, 0)
+	m.oScroll = min(max(m.oScroll, 0), maxScroll)
+	scroll := min(max(m.oScroll+m.oExtra, 0), maxScroll)
+	// Keep only the part of the extra scroll that took effect, so k
+	// starts back at once after j was pressed at the very end.
+	m.oExtra = scroll - m.oScroll
 
-	m.addZone(0, top, w, top+ph, zoneListPane, 0)
-	for _, z := range zs {
-		if y := z.y - m.oScroll; y >= 0 && y < bh {
-			m.addZone(0, top+len(head)+y, w, top+len(head)+y+1, zoneRow, z.row)
-		}
-	}
 	out := append([]string{}, head...)
-	end := min(m.oScroll+bh, len(body))
-	for i := m.oScroll; i < end; i++ {
+	end := min(scroll+bh, len(body))
+	for i := scroll; i < end; i++ {
 		out = append(out, body[i])
 	}
+	visible := bh
 	if rest := len(body) - end; rest > 0 {
 		// The last visible line says how much follows, so the summary's
 		// counts never point at rows the user cannot see.
 		out[len(out)-1] = strings.Repeat(" ", indent) + p.muted.Render(fmt.Sprintf("ほか %d 行（j で下へ）", rest+1))
+		visible = bh - 1
+	}
+	m.addZone(0, top, w, top+ph, zoneListPane, 0)
+	for _, z := range zs {
+		if y := z.y - scroll; y >= 0 && y < visible {
+			m.addZone(0, top+len(head)+y, w, top+len(head)+y+1, zoneRow, z.row)
+		}
 	}
 	for len(out) < ph {
 		out = append(out, "")
@@ -542,6 +548,18 @@ func (m *Model) overviewPanes(w, top, ph int) string {
 		out[i] = pad(out[i], w)
 	}
 	return strings.Join(out[:ph], "\n")
+}
+
+// scrollOverview runs after j or k on the Overview: a move that changed
+// the cursor makes the canvas follow it again, and one that could not
+// (past the first or last entry) scrolls the canvas instead, so the
+// information lines beyond the entries can be read.
+func (m *Model) scrollOverview(delta int, moved bool) {
+	if moved {
+		m.oExtra = 0
+		return
+	}
+	m.oExtra += delta
 }
 
 // actualText is the 実体 column of an entry.

@@ -1452,3 +1452,65 @@ func TestTUIOverviewClaimsAMatchOnlyForWhatWasCompared(t *testing.T) {
 		u.wantRe(`^ {4}許可（実行中） +1 件  api\.example\.com +照合なし *$`)
 	}
 }
+
+func TestTUIOverviewGroupOpensItsRiskiestItem(t *testing.T) {
+	t.Parallel()
+	// Arrange: two runtime allow rules, the harmless one first.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{
+		{ID: "kit:net/network-policy@1/runtime.allow/one.test", Path: "cap:network-policy@1", Value: "one.test", Risk: sbxenv.SeverityLow},
+		{ID: "kit:net/network-policy@1/runtime.allow/*", Path: "cap:network-policy@1", Value: "*", Risk: sbxenv.SeverityHigh},
+	}}
+	m := tui.New(p, true)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	u := &ui{t: t, m: m}
+
+	// Act
+	u.wantRe(`^ ✗  許可（実行中） +2 件  one\.test、\*`)
+	u.press("enter")
+
+	// Assert: regression; Enter opened the first item, rated low.
+	if got := u.detailFirstLine(); got != "kit:net/network-policy@1/runtime.allow/*" {
+		t.Errorf("detail = %q\n%s", got, u.text())
+	}
+}
+
+func TestTUIOverviewScrollsToLinesBelowTheLastEntry(t *testing.T) {
+	t.Parallel()
+	// Arrange: a sandbox no file declares has information lines only.
+	sb := &live.Sandbox{Name: "orphan", Status: "stopped"}
+	for i := range 25 {
+		sb.Workspaces = append(sb.Workspaces, live.Mount{Path: fmt.Sprintf("/work/p%02d", i)})
+	}
+	u := targetUI(t, 80, 15, live.Target{Name: "orphan", State: "停止中・宣言ファイル未検出", Sandbox: sb})
+	u.want("ほか ")
+
+	// Act
+	for range 40 {
+		u.press("j")
+	}
+
+	// Assert: regression; j could not move past the hint.
+	u.want("ワークスペース: /work/p24")
+	if u.has("ほか ") {
+		t.Errorf("at the end nothing follows:\n%s", u.text())
+	}
+
+	// Act / Assert: k scrolls back at once.
+	u.press("k")
+	u.want("ほか ")
+}
+
+func TestTUIOverviewClickOnTheOverflowHintOpensNothing(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	u := newUI(t, 80, 14, true)
+
+	// Act
+	u.clickOn("ほか ", 0)
+
+	// Assert: regression; the hint replaced a row whose zone stayed live.
+	u.wantView("概要")
+	if u.has(backLink) {
+		t.Errorf("a click on the hint opened a detail:\n%s", u.text())
+	}
+}
