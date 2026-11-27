@@ -1103,3 +1103,25 @@ func TestAPortThatFixesItsFamilyPairsBeforeANeutralOne(t *testing.T) {
 		t.Errorf("drifts %v", c.Drifts)
 	}
 }
+
+func TestPortsSharingAHostPortPairByFamily(t *testing.T) {
+	t.Parallel()
+	// Arrange: 80/tcp and 80/tcp4 both on host port 4000; sbx lists the
+	// IPv4 listener first.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "any", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+		{ItemID: "v4", HostPort: 4000, SandboxPort: 80, Protocol: "tcp4"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+		{HostIP: "::1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the exact pass let tcp take the IPv4 listener.
+	if len(c.Drifts) > 0 {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}

@@ -191,8 +191,19 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			func(dp sbxenv.DeclaredPort, _ Port) bool { return portFamily(dp.Protocol, dp.HostIP) != "" },
 			func(sbxenv.DeclaredPort, Port) bool { return true },
 		}
-		for _, pass := range passes {
+		// Within each pass too, a declaration that fixes a family goes
+		// first, so a neutral one cannot take the listener it needs.
+		order := make([]int, 0, len(d.Ports))
+		for _, fixed := range []bool{true, false} {
 			for j, dp := range d.Ports {
+				if (portFamily(dp.Protocol, dp.HostIP) != "") == fixed {
+					order = append(order, j)
+				}
+			}
+		}
+		for _, pass := range passes {
+			for _, j := range order {
+				dp := d.Ports[j]
 				if pair[j] >= 0 {
 					continue
 				}
