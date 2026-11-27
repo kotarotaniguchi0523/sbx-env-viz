@@ -2226,3 +2226,18 @@ func TestTUIStateLineShortensALongQuery(t *testing.T) {
 		t.Errorf("state line = %q", l)
 	}
 }
+
+func TestTUIOverviewDoesNotShowAnItemSuffixAsAHost(t *testing.T) {
+	t.Parallel()
+	// Arrange: two @2 allows for one host (GET /a and POST /b).
+	p := &sbxenv.Plan{Items: []sbxenv.Item{
+		{ID: "kit:k/network-policy@2/runtime.allow/api.example.com", Path: "cap:network-policy@2", Kit: "k", Value: "runtime allow api.example.com [GET] /a"},
+		{ID: "kit:k/network-policy@2/runtime.allow/api.example.com#2", Path: "cap:network-policy@2", Kit: "k", Value: "runtime allow api.example.com [POST] /b"},
+	}}
+	m := tui.New(p, true)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	u := &ui{t: t, m: m}
+
+	// Assert: regression; the second read api.example.com#2.
+	u.wantRe(`^ {4}許可（実行中） +2 件  api\.example\.com、api\.example\.com *$`)
+}

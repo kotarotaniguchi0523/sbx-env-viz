@@ -393,6 +393,10 @@ func ruleLabel(it *sbxenv.Item) (label, host string) {
 	if !ok {
 		host = it.Value
 	}
+	// A second rule for one host gets a #2 in its ID, not in its host.
+	if i := strings.LastIndex(host, "#"); i > 0 && strings.Trim(host[i+1:], "0123456789") == "" && i < len(host)-1 {
+		host = host[:i]
+	}
 	phase, decision, _ := strings.Cut(rule, ".")
 	label = "許可"
 	if decision == "deny" {
