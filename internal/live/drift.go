@@ -168,32 +168,41 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 	// Ports.
 	if len(sb.Ports) > 0 || len(d.Ports) > 0 {
 		c.Checked = append(c.Checked, "ポート公開")
+		// Pair each declaration with a listener: first every one that has
+		// its declared host port, then the rest with any compatible one, so
+		// neither sbx's order nor a missing listener can swap two
+		// declarations of one sandbox port.
 		used := map[int]bool{}
-		for _, dp := range d.Ports {
-			decl := item(dp.ItemID)
-			// The listener that also has the declared host port wins over
-			// the first compatible one, so the order sbx lists them in
-			// cannot swap two declarations of one sandbox port.
-			found := -1
-			for i, lp := range sb.Ports {
-				if !used[i] && lp.SandboxPort == dp.SandboxPort && baseProto(lp.Protocol) == baseProto(dp.Protocol) &&
-					sameFamily(portFamily(lp.Protocol, lp.HostIP), portFamily(dp.Protocol, dp.HostIP)) {
-					if found < 0 {
-						found = i
-					}
-					if dp.HostPort != 0 && lp.HostPort == dp.HostPort {
-						found = i
+		pair := make([]int, len(d.Ports))
+		compatible := func(dp sbxenv.DeclaredPort, lp Port) bool {
+			return lp.SandboxPort == dp.SandboxPort && baseProto(lp.Protocol) == baseProto(dp.Protocol) &&
+				sameFamily(portFamily(lp.Protocol, lp.HostIP), portFamily(dp.Protocol, dp.HostIP))
+		}
+		for _, exact := range []bool{true, false} {
+			for j, dp := range d.Ports {
+				if exact {
+					pair[j] = -1
+				}
+				if pair[j] >= 0 || exact && dp.HostPort == 0 {
+					continue
+				}
+				for i, lp := range sb.Ports {
+					if !used[i] && compatible(dp, lp) && (!exact || lp.HostPort == dp.HostPort) {
+						pair[j], used[i] = i, true
 						break
 					}
 				}
 			}
+		}
+		for j, dp := range d.Ports {
+			decl := item(dp.ItemID)
+			found := pair[j]
 			if found < 0 {
 				c.Compared = append(c.Compared, dp.ItemID)
 				add(Drift{Kind: "ポート公開", Title: "宣言したポートが公開されていない", Declared: decl, Actual: "（公開されていない）",
 					Fix: fixRecreate, Severity: sbxenv.SeverityMedium, ItemID: dp.ItemID, Source: srcLs})
 				continue
 			}
-			used[found] = true
 			lp := sb.Ports[found]
 			// A fixed host port is confirmed only when sbx reports one, and
 			// a fixed family (tcp6, ::1) only when sbx's row shows one.

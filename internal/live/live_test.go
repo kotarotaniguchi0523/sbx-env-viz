@@ -1039,3 +1039,21 @@ func TestStrictRedactionHidesLiveHostsBesideAWildcardOrSkippedRule(t *testing.T)
 		}
 	}
 }
+
+func TestPortsPairByHostPortWhenOneListenerIsMissing(t *testing.T) {
+	t.Parallel()
+	// Arrange: 4000 -> 80/tcp and 5000 -> 80/tcp4; only 5000 is published.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "a", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+		{ItemID: "b", HostPort: 5000, SandboxPort: 80, Protocol: "tcp4"},
+	}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp"}}}, &live.Snapshot{}, nil)
+
+	// Assert: regression; a took b's listener as a fallback, so a "changed
+	// to 5000" and b went missing.
+	if len(c.Drifts) != 1 || c.Drifts[0].ItemID != "a" || c.Drifts[0].Title != "宣言したポートが公開されていない" {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
