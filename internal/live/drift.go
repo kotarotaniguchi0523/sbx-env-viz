@@ -120,16 +120,18 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		}
 	}
 
+	// Folders a kit mounts (mounts, host-mount) are not held against sbx's
+	// list, with or without a workspace; the TUI reads them 照合なし, text
+	// and JSON say so.
+	if slices.ContainsFunc(p.Items, func(it sbxenv.Item) bool {
+		return strings.HasPrefix(it.Path, "mounts.") || it.Path == "cap:host-mount@1"
+	}) {
+		c.Skipped = append(c.Skipped, "Kit が使うフォルダ（mounts・host-mount）は比較していません。")
+	}
+
 	// Workspaces.
 	if len(sb.Workspaces) > 0 || len(d.Workspaces) > 0 {
 		c.Checked = append(c.Checked, "ワークスペース・マウント")
-		// Folders a kit mounts (mounts, host-mount) are not held against
-		// sbx's list; the TUI reads them 照合なし, text and JSON say so.
-		if slices.ContainsFunc(p.Items, func(it sbxenv.Item) bool {
-			return strings.HasPrefix(it.Path, "mounts.") || it.Path == "cap:host-mount@1"
-		}) {
-			c.Skipped = append(c.Skipped, "Kit が使うフォルダ（mounts・host-mount）は比較していません。")
-		}
 		used := map[int]bool{}
 		readOnlyNote := false
 		for _, w := range d.Workspaces {

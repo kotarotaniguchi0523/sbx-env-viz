@@ -2129,6 +2129,11 @@ func TestMCPAndKitMountsLeftOutAreNoted(t *testing.T) {
 		t.Errorf("drifts %v, skipped %v", c.Drifts, c.Skipped)
 	}
 
+	// Without a workspace, the kit mount is still noted.
+	if c := live.Compare(&sbxenv.Plan{Meta: p.Meta, Items: p.Items, Declared: &sbxenv.Declared{}}, &live.Sandbox{}, snap, nil); !noted(c, "Kit が使うフォルダ") {
+		t.Errorf("no workspace: skipped %v", c.Skipped)
+	}
+
 	// A remote server and no kit mount need neither note.
 	p.Items, snap.MCP[0].Type, p.Declared.MCP[0].Remote = nil, "remote", true
 	if c := live.Compare(p, sb, snap, nil); noted(c, "MCP") || noted(c, "Kit") {
