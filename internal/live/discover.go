@@ -98,14 +98,14 @@ func Discover(ctx context.Context, req DiscoverRequest) ([]Target, Snapshot) {
 		t := Target{Files: groupFiles(g, show)}
 		p, err := req.Resolve(g)
 		if err != nil {
-			t.Name = filepath.Base(g.Dir) + "/" + filepath.Base(t.Files[len(t.Files)-1])
+			t.Name = filepath.Base(show(g.Dir)) + "/" + filepath.Base(t.Files[len(t.Files)-1])
 			t.Err = "設定ファイルを解析できませんでした: " + clean(err.Error())
 			t.State = "解析エラー"
 			targets = append(targets, t)
 			continue
 		}
 		t.Plan = p
-		t.Name = targetName(p, g)
+		t.Name = targetName(p, g, show)
 		if i := match(p.Declared, snap.Sandboxes, paired); i >= 0 {
 			paired[i] = true
 			sb := snap.Sandboxes[i]
@@ -229,7 +229,7 @@ func groupFiles(g Group, show Paths) []string {
 	return out
 }
 
-func targetName(p *sbxenv.Plan, g Group) string {
+func targetName(p *sbxenv.Plan, g Group, show Paths) string {
 	if p.Declared != nil && p.Declared.Name != "" {
 		for _, it := range p.Items {
 			if it.ID == "name" {
@@ -241,7 +241,8 @@ func targetName(p *sbxenv.Plan, g Group) string {
 	if len(g.Paths) > 0 {
 		file = filepath.Base(g.Paths[0])
 	}
-	return filepath.Base(g.Dir) + "/" + file
+	// The shown directory, so a file in $HOME is ~/…, not the user's name.
+	return filepath.Base(show(g.Dir)) + "/" + file
 }
 
 // match finds the sandbox a declaration created: same name first, then the

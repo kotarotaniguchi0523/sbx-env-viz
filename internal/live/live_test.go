@@ -1936,3 +1936,58 @@ func TestACompanionMustCarryTheDeclaredTransport(t *testing.T) {
 		t.Errorf("drifts %v", c.Drifts)
 	}
 }
+
+func TestAConfirmingRowBeatsARowWithoutAProtocol(t *testing.T) {
+	t.Parallel()
+	// Arrange: 80/tcp for both families, any host port; sbx lists a bare
+	// IPv4 row with its tcp6 half, and a row for both that is tcp.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", SandboxPort: 80, Protocol: "tcp"}}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80},
+		{HostIP: "::1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp6"},
+		{HostPort: 5001, SandboxPort: 80, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the bare row's companion made it rank first, so
+	// the port went unconfirmed and the tcp row was called undeclared.
+	if !slices.Contains(c.Compared, "dual") {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
+func TestATargetInHomeIsNotNamedAfterTheUser(t *testing.T) {
+	t.Parallel()
+	// Arrange: an unnamed file and a broken one, straight in $HOME.
+	home := filepath.Join(t.TempDir(), "someone")
+	if err := os.Mkdir(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"sbxenv.yaml": "schemaVersion: \"1\"\n", "sbxenv.broken.yaml": "name: [\n"} {
+		if err := os.WriteFile(filepath.Join(home, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	show := func(s string) string { return sbxenv.ShortenHome(s, home) }
+	resolve := func(g live.Group) (*sbxenv.Plan, error) {
+		if len(g.Paths) > 0 {
+			return nil, errors.New("yaml: bad")
+		}
+		return &sbxenv.Plan{}, nil
+	}
+
+	// Act
+	targets, _ := live.Discover(context.Background(), live.DiscoverRequest{WorkDir: home, Resolve: resolve, Show: show})
+
+	// Assert: regression; both were named someone/….
+	if len(targets) != 2 {
+		t.Fatalf("targets %v", names(targets))
+	}
+	for _, tg := range targets {
+		if strings.Contains(tg.Name, "someone") || !strings.HasPrefix(tg.Name, "~/") {
+			t.Errorf("name %q", tg.Name)
+		}
+	}
+}
