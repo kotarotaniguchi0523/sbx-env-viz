@@ -842,3 +842,21 @@ func TestStrictRedactionHidesALiveRuleForAHiddenHost(t *testing.T) {
 		t.Errorf("drifts = %v", actuals)
 	}
 }
+
+func TestAnIPv4ListenerDoesNotConfirmAnIPv6Port(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "ports[3000/tcp6]", HostIP: "::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"}}}}
+	for _, lp := range []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"},
+		{HostIP: "::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp4"},
+	} {
+		// Act
+		c := live.Compare(p, &live.Sandbox{Ports: []live.Port{lp}}, &live.Snapshot{}, nil)
+
+		// Assert: regression; both loopbacks counted as one address.
+		if _, ok := drift(&c, "ポート"); !ok {
+			t.Errorf("%+v matched a tcp6 ::1 declaration: %v", lp, c.Drifts)
+		}
+	}
+}

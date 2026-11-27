@@ -168,7 +168,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			decl := item(dp.ItemID)
 			found := -1
 			for i, lp := range sb.Ports {
-				if !used[i] && lp.SandboxPort == dp.SandboxPort && baseProto(lp.Protocol) == baseProto(dp.Protocol) {
+				if !used[i] && lp.SandboxPort == dp.SandboxPort && baseProto(lp.Protocol) == baseProto(dp.Protocol) && sameFamily(protoFamily(lp.Protocol), protoFamily(dp.Protocol)) {
 					found = i
 					break
 				}
@@ -395,10 +395,36 @@ func isAll(ip string) bool {
 
 func sameIP(a, b string) bool {
 	if isLoopback(a) && isLoopback(b) {
-		return true
+		return sameFamily(ipFamily(a), ipFamily(b))
 	}
 	return strings.Trim(a, "[]") == strings.Trim(b, "[]")
 }
+
+// ipFamily is "4" or "6" for an address literal, and "" for one that
+// does not fix the family (empty, localhost).
+func ipFamily(ip string) string {
+	switch ip = strings.Trim(ip, "[]"); {
+	case ip == "" || ip == "localhost":
+		return ""
+	case strings.Contains(ip, ":"):
+		return "6"
+	}
+	return "4"
+}
+
+// protoFamily is "4" or "6" for tcp4/udp6 and the like, and "" for a
+// protocol bound to both (tcp, udp).
+func protoFamily(p string) string {
+	p = strings.ToLower(p)
+	if strings.HasSuffix(p, "4") || strings.HasSuffix(p, "6") {
+		return p[len(p)-1:]
+	}
+	return ""
+}
+
+// sameFamily tells whether two families can meet: an unfixed one meets
+// either.
+func sameFamily(a, b string) bool { return a == "" || b == "" || a == b }
 
 func ipLabel(ip string) string {
 	switch {
