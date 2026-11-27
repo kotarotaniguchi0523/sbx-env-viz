@@ -205,7 +205,10 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			}
 			return -1
 		}
-		distance := func(dp sbxenv.DeclaredPort, lp Port) int {
+		never := func(int) bool { return false }
+		// distance scores lp for dp; skip leaves out rows already taken
+		// when looking for lp's companion.
+		distance := func(dp sbxenv.DeclaredPort, lp Port, skip func(int) bool) int {
 			// A fixed host port that differs costs most (it is a drift);
 			// an ephemeral one accepts any host port.
 			n := 0
@@ -218,7 +221,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			shows := portFamily(lp.Protocol, lp.HostIP) == portFamily(dp.Protocol, dp.HostIP)
 			// A row of one family with its companion shows both, as a row
 			// for both does, whatever order sbx lists them in.
-			if !shows && portFamily(dp.Protocol, dp.HostIP) == "" && companion(dp, lp, func(int) bool { return false }) >= 0 {
+			if !shows && portFamily(dp.Protocol, dp.HostIP) == "" && companion(dp, lp, skip) >= 0 {
 				shows = true
 			}
 			switch same := sameIP(dp.HostIP, lp.HostIP); {
@@ -258,7 +261,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 					cands = append(cands, i)
 				}
 			}
-			slices.SortStableFunc(cands, func(a, b int) int { return distance(dp, sb.Ports[a]) - distance(dp, sb.Ports[b]) })
+			slices.SortStableFunc(cands, func(a, b int) int { return distance(dp, sb.Ports[a], never) - distance(dp, sb.Ports[b], never) })
 			// A free listener is taken before one is pried from another
 			// declaration, which moves only when this one has no other.
 			for _, i := range cands {
@@ -331,7 +334,21 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 							hit = 1
 						}
 						taken[i], cur[k] = true, i
-						try(k+1, n+1, exact+hit, cost+distance(dp, lp))
+						// A row of one family for a port declared for both
+						// counts its companion only if no other declaration
+						// holds it, and then holds it for this one; both
+						// ways are tried, as another declaration may need it.
+						skip := func(x int) bool { return taken[x] }
+						c := -1
+						if portFamily(dp.Protocol, dp.HostIP) == "" {
+							c = companion(dp, lp, skip)
+						}
+						if c >= 0 {
+							taken[c] = true
+							try(k+1, n+1, exact+hit, cost+distance(dp, lp, never))
+							taken[c] = false
+						}
+						try(k+1, n+1, exact+hit, cost+distance(dp, lp, func(int) bool { return true }))
 						taken[i] = false
 					}
 				}

@@ -1715,3 +1715,26 @@ func TestADualStackPortFindsItsPairWhateverTheOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestPortPairingCountsACompanionOnlyIfItIsFree(t *testing.T) {
+	t.Parallel()
+	// Arrange: an ephemeral 80/tcp4, then 4000 -> 80/tcp (both families);
+	// sbx has IPv4 and IPv6 on 4000 and IPv4 on 5000.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "eph", SandboxPort: 80, Protocol: "tcp4"},
+		{ItemID: "dual", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+	}}}
+	v4 := live.Port{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp4"}
+	v6 := live.Port{HostIP: "::1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp6"}
+	other := live.Port{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp4"}
+	for _, order := range [][]live.Port{{v4, v6, other}, {other, v4, v6}} {
+		// Act
+		c := live.Compare(p, &live.Sandbox{Ports: order}, &live.Snapshot{}, nil)
+
+		// Assert: regression; with 4000 first, eph took the IPv4 4000 row
+		// the dual port's pair needed, and 5000 read as undeclared.
+		if len(c.Drifts) > 0 || !slices.Contains(c.Compared, "dual") {
+			t.Errorf("order %v: compared %v, drifts %v", order, c.Compared, c.Drifts)
+		}
+	}
+}
