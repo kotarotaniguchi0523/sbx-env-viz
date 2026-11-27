@@ -1301,3 +1301,19 @@ func TestStrictRedactionHidesLiveNamesBesideAHiddenOne(t *testing.T) {
 		t.Errorf("live-only sandboxes are numbered: %v", names(targets))
 	}
 }
+
+func TestTwoSpellingsOfOneIPv6AddressMatch(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "p", HostIP: "2001:0db8::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"},
+	}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Ports: []live.Port{{HostIP: "2001:db8::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"}}}, &live.Snapshot{}, nil)
+
+	// Assert: regression; the leading zero read as an address change.
+	if len(c.Drifts) > 0 {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}

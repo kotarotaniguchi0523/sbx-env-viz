@@ -2,6 +2,7 @@ package live
 
 import (
 	"fmt"
+	"net/netip"
 	"slices"
 	"sort"
 	"strings"
@@ -557,7 +558,14 @@ func sameIP(a, b string) bool {
 	if isLoopback(a) && isLoopback(b) {
 		return sameFamily(ipFamily(a), ipFamily(b))
 	}
-	return strings.Trim(a, "[]") == strings.Trim(b, "[]")
+	a, b = strings.Trim(a, "[]"), strings.Trim(b, "[]")
+	// Two spellings of one address (2001:0db8::1, 2001:db8::1) are one.
+	if x, err := netip.ParseAddr(a); err == nil {
+		if y, err := netip.ParseAddr(b); err == nil {
+			return x == y
+		}
+	}
+	return a == b
 }
 
 // ipFamily is "4" or "6" for an address literal, and "" for one that
