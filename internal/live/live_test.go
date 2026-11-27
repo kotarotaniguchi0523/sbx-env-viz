@@ -1001,3 +1001,17 @@ func TestPortsPairByHostPortWhateverTheOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestAnIPv6PortIsNotConfirmedWithoutALiveFamily(t *testing.T) {
+	t.Parallel()
+	// Arrange: sbx reports tcp with no address.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "v6", HostIP: "::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"}}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Ports: []live.Port{{HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"}}}, &live.Snapshot{}, nil)
+
+	// Assert: regression; nothing showed the listener is IPv6.
+	if slices.Contains(c.Compared, "v6") || len(c.Drifts) > 0 {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}

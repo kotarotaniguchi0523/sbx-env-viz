@@ -195,8 +195,10 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			}
 			used[found] = true
 			lp := sb.Ports[found]
-			// A fixed host port is confirmed only when sbx reports one.
-			if dp.HostPort == 0 || lp.HostPort != 0 {
+			// A fixed host port is confirmed only when sbx reports one, and
+			// a fixed family (tcp6, ::1) only when sbx's row shows one.
+			if (dp.HostPort == 0 || lp.HostPort != 0) &&
+				(portFamily(dp.Protocol, dp.HostIP) == "" || portFamily(lp.Protocol, lp.HostIP) != "") {
 				c.Compared = append(c.Compared, dp.ItemID)
 			}
 			var diffs []string
