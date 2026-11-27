@@ -168,6 +168,10 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 	// Ports.
 	if len(sb.Ports) > 0 || len(d.Ports) > 0 {
 		c.Checked = append(c.Checked, "ポート公開")
+		// Under strict redaction a port set by an argument is hidden, and
+		// any live port may carry the same number, so every live value is
+		// hidden then: a listener paired with another declaration too.
+		hidePorts := strict && slices.ContainsFunc(d.Ports, func(dp sbxenv.DeclaredPort) bool { return dp.Redacted })
 		// Pair each declaration with a listener: first every one that has
 		// its declared host port, then the rest with any compatible one, so
 		// neither sbx's order nor a missing listener can swap two
@@ -210,9 +214,10 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				(portFamily(dp.Protocol, dp.HostIP) == "" || portFamily(lp.Protocol, lp.HostIP) != "") {
 				c.Compared = append(c.Compared, dp.ItemID)
 			}
+			hide := dp.Redacted || hidePorts
 			var diffs []string
 			if dp.HostPort != 0 && lp.HostPort != 0 && lp.HostPort != dp.HostPort {
-				if dp.Redacted {
+				if hide {
 					diffs = append(diffs, "PC 側のポート番号が異なる")
 				} else {
 					diffs = append(diffs, fmt.Sprintf("PC 側のポート番号が %d ではなく %d", dp.HostPort, lp.HostPort))
@@ -220,7 +225,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			}
 			wider := false
 			if !sameIP(dp.HostIP, lp.HostIP) {
-				if dp.Redacted {
+				if hide {
 					diffs = append(diffs, "公開先のアドレスが異なる")
 				} else {
 					diffs = append(diffs, "公開先のアドレスが "+ipLabel(dp.HostIP)+" ではなく "+ipLabel(lp.HostIP))
@@ -233,16 +238,13 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 					sev = sbxenv.SeverityHigh
 				}
 				actual := portLabel(lp)
-				if dp.Redacted {
+				if hide {
 					actual = "<redacted>"
 				}
 				add(Drift{Kind: "ポート公開", Title: "ポートの公開のしかたが宣言と違う（" + strings.Join(diffs, "、") + "）", Declared: decl,
 					Actual: actual, Fix: fixRecreate, Severity: sev, ItemID: dp.ItemID, Source: srcLs})
 			}
 		}
-		// Under strict redaction a port set by an argument is hidden, and
-		// a live port the files do not match may carry the same number.
-		hidePorts := strict && slices.ContainsFunc(d.Ports, func(dp sbxenv.DeclaredPort) bool { return dp.Redacted })
 		for i, lp := range sb.Ports {
 			if used[i] {
 				continue

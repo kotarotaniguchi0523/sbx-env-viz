@@ -1057,3 +1057,27 @@ func TestPortsPairByHostPortWhenOneListenerIsMissing(t *testing.T) {
 		t.Errorf("drifts %v", c.Drifts)
 	}
 }
+
+func TestStrictRedactionHidesALiveNumberPairedWithALiteralPort(t *testing.T) {
+	t.Parallel()
+	// Arrange: 4000 -> 3000 is literal, <redacted> -> 3001 comes from an
+	// argument (54321); sbx reports only 54321 -> 3000.
+	p := strictPlan(&sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "lit", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp4"},
+		{ItemID: "arg", HostPort: 54321, SandboxPort: 3001, Protocol: "tcp4", Redacted: true},
+	}}, sbxenv.Item{ID: "lit", Value: "127.0.0.1:4000 -> sandbox:3000/tcp4"}, sbxenv.Item{ID: "arg", Value: "<redacted>"})
+	sb := &live.Sandbox{Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 54321, SandboxPort: 3000, Protocol: "tcp"}}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the literal port's drift printed 54321.
+	for _, d := range c.Drifts {
+		if strings.Contains(d.Title+d.Actual, "54321") {
+			t.Errorf("drift shows the hidden number: %+v", d)
+		}
+	}
+	if _, ok := drift(&c, "ポートの公開のしかたが宣言と違う"); !ok {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
