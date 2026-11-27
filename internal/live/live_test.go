@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -539,6 +540,32 @@ func TestCompareConfirmsOnlyTheItemsItHeldAgainstSbx(t *testing.T) {
 	for _, not := range []string{"workspace", "build.example.com"} {
 		if strings.Contains(got, not) {
 			t.Errorf("%s was not held against sbx's output: %v", not, c.Compared)
+		}
+	}
+}
+
+func TestStrictRedactionKeepsArgumentNamedMCPServersApart(t *testing.T) {
+	t.Parallel()
+	// Arrange: two servers named by arguments; under --redact both show
+	// as <redacted>, and only the second (jira) needs authorization.
+	env := "schemaVersion: \"1\"\nname: web-app\nagent: claude\nworkspace: ./web-app\nargs:\n  a: {default: docs}\n  b: {default: jira}\n" +
+		"mcp:\n  servers:\n    - {name: \"${{ env.args.a }}\", url: \"https://a.example.com\"}\n    - {name: \"${{ env.args.b }}\", url: \"https://b.example.com\"}\n"
+
+	// Act
+	c := compare(t, env, func(w *world) { w.strict = true })
+
+	// Assert: regression; both servers had one ID, so the drift landed on
+	// the first, and its fix printed the hidden name.
+	d, ok := drift(c, "使える状態ではない")
+	if !ok || d.ItemID != "mcp.servers[<redacted>]#2" {
+		t.Errorf("drift = %+v (%v)", d, c.Drifts)
+	}
+	if strings.Contains(d.Fix, "jira") || !strings.Contains(d.Fix, "sbx mcp auth <redacted>") {
+		t.Errorf("fix shows the redacted name: %q", d.Fix)
+	}
+	for _, id := range []string{"mcp.servers[<redacted>]", "mcp.servers[<redacted>]#2"} {
+		if !slices.Contains(c.Compared, id) {
+			t.Errorf("%s was compared: %v", id, c.Compared)
 		}
 	}
 }

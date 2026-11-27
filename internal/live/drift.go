@@ -332,7 +332,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			}
 			if st := row.Status; needsAuth(st) {
 				add(Drift{Kind: "MCP サーバー", Title: "MCP サーバーは登録済みだが使える状態ではない", Declared: item(m.ItemID), Actual: "状態: " + st,
-					Fix: "認証が必要な場合は sbx mcp auth " + m.Name + " を実行してください。詳しくは sbx mcp inspect " + m.Name + " で確認できます。", Severity: sbxenv.SeverityLow,
+					Fix: "認証が必要な場合は sbx mcp auth " + m.Shown + " を実行してください。詳しくは sbx mcp inspect " + m.Shown + " で確認できます。", Severity: sbxenv.SeverityLow,
 					ItemID: m.ItemID, Source: "sbx mcp ls --json"})
 			}
 		}

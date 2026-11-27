@@ -50,10 +50,13 @@ type DeclaredName struct {
 	Name   string
 }
 
-// DeclaredMCP is one MCP server; Remote is true for url servers.
+// DeclaredMCP is one MCP server; Remote is true for url servers. Shown is
+// the name as the Items show it (redacted like them), for text a person
+// reads; Name is only for matching.
 type DeclaredMCP struct {
 	ItemID string
 	Name   string
+	Shown  string
 	Remote bool
 }
 
@@ -68,6 +71,16 @@ type DeclaredRule struct {
 //declscope:shared // finish in analyze.go attaches it to the Plan
 func (rs *resolver) declared() *Declared {
 	d := &Declared{Name: rs.root.str("name"), Agent: rs.root.str("agent")}
+	// addItem numbers a repeated ID (#2, #3, ...); entries here take the
+	// same numbers, in the same order, so each finds its own item.
+	seen := map[string]int{}
+	itemID := func(id string) string {
+		seen[id]++
+		if n := seen[id]; n > 1 {
+			return id + "#" + strconv.Itoa(n)
+		}
+		return id
+	}
 	if rs.opts.Name != "" {
 		d.Name = rs.opts.Name
 	}
@@ -84,6 +97,11 @@ func (rs *resolver) declared() *Declared {
 		}
 	}
 	for _, e := range rs.root.get("additionalWorkspaces").list() {
+		target := rs.r.path(e.dstr("target"))
+		if target == "" {
+			target = rs.fmtPath(e.get("path"))
+		}
+		id := itemID("additionalWorkspaces[" + target + "]")
 		p := e
 		if e.kind == parser.Map {
 			p = e.get("path")
@@ -91,11 +109,7 @@ func (rs *resolver) declared() *Declared {
 		if p == nil || p.kind != parser.Scalar {
 			continue
 		}
-		target := rs.r.path(e.dstr("target"))
-		if target == "" {
-			target = rs.fmtPath(e.get("path"))
-		}
-		d.Workspaces = append(d.Workspaces, DeclaredMount{ItemID: "additionalWorkspaces[" + target + "]",
+		d.Workspaces = append(d.Workspaces, DeclaredMount{ItemID: id,
 			Path: resolveHostPath(p.fileDir, p.val), Target: e.str("target"), ReadOnly: e.str("readOnly") == "true"})
 	}
 	for _, e := range rs.root.get("ports").list() {
@@ -108,18 +122,20 @@ func (rs *resolver) declared() *Declared {
 		}
 		host, _ := strconv.Atoi(e.str("host"))
 		sb, _ := strconv.Atoi(e.str("sandbox"))
-		d.Ports = append(d.Ports, DeclaredPort{Redacted: redacted, ItemID: "ports[" + rs.portKey(e) + "]", HostIP: e.str("hostIP"),
+		d.Ports = append(d.Ports, DeclaredPort{Redacted: redacted, ItemID: itemID("ports[" + rs.portKey(e) + "]"), HostIP: e.str("hostIP"),
 			HostPort: host, SandboxPort: sb, Protocol: effectiveProtocol(e)})
 	}
 	for _, k := range rs.root.get("secrets").mapKeys() {
 		d.Secrets = append(d.Secrets, DeclaredName{ItemID: "secrets." + k, Name: k})
 	}
 	for _, e := range rs.root.get("mcp").get("servers").list() {
+		shown := rs.r.text(e.dstr("name"))
+		id := itemID("mcp.servers[" + shown + "]")
 		name := e.str("name")
 		if name == "" {
 			continue
 		}
-		d.MCP = append(d.MCP, DeclaredMCP{ItemID: "mcp.servers[" + rs.r.text(e.dstr("name")) + "]", Name: name, Remote: e.has("url")})
+		d.MCP = append(d.MCP, DeclaredMCP{ItemID: id, Name: name, Shown: shown, Remote: e.has("url")})
 	}
 	for _, e := range rs.net.entries {
 		if e.cap.skipped || e.host == nil || e.itemID == "" {
