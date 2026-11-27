@@ -640,7 +640,7 @@ func (m *Model) pickerLines(iw, top, ih int) []string {
 		}
 		text := pad(truncMiddle(model.EscapeControl(t.Name), nameW), nameW) + "  " + pad(t.State, 24) + "  " + pad(drift, 4) + "  " + model.EscapeControl(files)
 		y := top + len(lines)
-		m.addZone(1, y, 1+iw, y+1, zoneTargetRow, i)
+		m.addZone(0, y, iw, y+1, zoneTargetRow, i) // the row as frame draws it, from column 0
 		if i == m.pCursor {
 			lines = append(lines, p.selected.Render(pad("    "+text, iw)))
 		} else {

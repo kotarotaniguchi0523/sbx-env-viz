@@ -3282,3 +3282,19 @@ func TestTUIClickOnASectionHeaderFocusesTheList(t *testing.T) {
 		t.Errorf("footer = %q", f)
 	}
 }
+
+func TestTUIPickerRowAnswersAClickOnItsFirstColumn(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	u := newTargetsUI(t, 120, 30).press("s")
+	_, y := u.find("orphan", 3)
+
+	// Act: the leftmost cell of the row, as drawn.
+	u.click(0, y)
+
+	// Assert: regression; the zone began one column right, so the click
+	// closed the picker without switching.
+	if !strings.HasPrefix(u.lines()[0], " sbxray  orphan") {
+		t.Errorf("title bar = %q", u.lines()[0])
+	}
+}

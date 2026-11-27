@@ -1808,6 +1808,7 @@ func TestPortLabel(t *testing.T) {
 		{live.Port{HostPort: 4000, SandboxPort: 3000}, "loopback:4000 -> sandbox:3000/tcp"},
 		{live.Port{HostIP: "::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"}, "[::1]:4000 -> sandbox:3000/tcp6"},
 		{live.Port{HostIP: "0.0.0.0", HostPort: 8080, SandboxPort: 80, Protocol: "udp"}, "0.0.0.0:8080 -> sandbox:80/udp"},
+		{live.Port{HostIP: "[::1]", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"}, "[::1]:4000 -> sandbox:3000/tcp6"},
 	} {
 		if got := tc.p.Label(); got != tc.want {
 			t.Errorf("%+v: %q, want %q", tc.p, got, tc.want)

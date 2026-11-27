@@ -84,7 +84,7 @@ func (p Port) Label() string {
 	if ip == "" {
 		ip = "loopback"
 	}
-	if strings.Contains(ip, ":") {
+	if strings.Contains(ip, ":") && !strings.HasPrefix(ip, "[") {
 		ip = "[" + ip + "]"
 	}
 	proto := p.Protocol
