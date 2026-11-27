@@ -407,14 +407,8 @@ func frame(content []string, ww, hh int) string {
 // listColumns is the column-header row of each list view, and the width
 // the first column takes.
 func (m *Model) listColumns(iw int) (string, int) {
-	keyW := 0
 	if m.view == viewItems {
-		for _, r := range m.rows {
-			if k, _, ok := strings.Cut(r.label, " = "); ok && !r.header {
-				keyW = max(keyW, widthOf(k))
-			}
-		}
-		keyW = min(keyW, iw*50/100)
+		keyW := min(m.keyW, iw*50/100)
 		return "    " + pad("設定", keyW) + "  値", keyW
 	}
 	switch m.view {

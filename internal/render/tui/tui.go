@@ -97,6 +97,9 @@ type Model struct {
 	// like the plan's so they match its items.
 	compared map[string]bool
 	tally    riskTally
+	// keyW is the widest setting key of the 設定 rows, measured when they
+	// are built rather than on every frame.
+	keyW int
 	// oScroll is the first visible canvas line of the Overview; hScroll
 	// is the first visible line of the help.
 	oScroll, hScroll int
@@ -321,6 +324,14 @@ func (m *Model) rebuild() {
 		}
 	}
 	m.rows = rows
+	m.keyW = 0
+	if m.view == viewItems {
+		for _, r := range rows {
+			if k, _, ok := strings.Cut(r.label, " = "); ok && !r.header {
+				m.keyW = max(m.keyW, widthOf(k))
+			}
+		}
+	}
 	c := &m.cursor[m.view]
 	if *c >= len(rows) {
 		*c = len(rows) - 1
