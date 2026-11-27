@@ -2157,3 +2157,21 @@ func TestTUITitleBarKeepsTheStateOfALongNamedSandbox(t *testing.T) {
 		t.Errorf("title bar = %q", l)
 	}
 }
+
+func TestTUIOverviewReadsARulesPhaseAndDecisionFromItsSegment(t *testing.T) {
+	t.Parallel()
+	// Arrange: a host that contains "install", and a kit named egress.deny.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{
+		{ID: "kit:net/network-policy@1/runtime.allow/install.example.com", Path: "cap:network-policy@1", Kit: "net", Value: "runtime allow install.example.com"},
+		{ID: "kit:egress.deny/network-policy@1/runtime.allow/api.example.com", Path: "cap:network-policy@1", Kit: "egress.deny", Value: "runtime allow api.example.com"},
+	}}
+	m := tui.New(p, true)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	u := &ui{t: t, m: m}
+
+	// Assert: regression; substrings of the whole ID decided both.
+	u.wantRe(`^ {4}許可（実行中） +2 件  install\.example\.com、api\.example\.com *$`)
+	if u.has("準備時") || u.has("禁止") {
+		t.Errorf("a runtime allow was labelled otherwise:\n%s", u.text())
+	}
+}

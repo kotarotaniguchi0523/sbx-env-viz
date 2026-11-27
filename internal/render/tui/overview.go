@@ -377,20 +377,31 @@ func (m *Model) buildOverview() {
 }
 
 // ruleLabel is the Overview's label of a Kit network rule (its decision
-// and phase) and the host it names.
+// and phase) and the host it names. The ID is kit:<kit>/<capability>/
+// <phase>.<allow|deny>/<host>; the kit and the host may hold any text
+// (a kit named egress.deny, a host install.example.com), so only the
+// segment between them is read.
 func ruleLabel(it *sbxenv.Item) (label, host string) {
+	rest, ok := strings.CutPrefix(it.ID, "kit:"+it.Kit+"/"+strings.TrimPrefix(it.Path, "cap:")+"/")
+	if !ok {
+		// An item without its kit recorded: the rule is the third segment.
+		if parts := strings.SplitN(it.ID, "/", 3); len(parts) == 3 {
+			rest = parts[2]
+		}
+	}
+	rule, host, ok := strings.Cut(rest, "/")
+	if !ok {
+		host = it.Value
+	}
+	phase, decision, _ := strings.Cut(rule, ".")
 	label = "許可"
-	if strings.Contains(it.ID, ".deny/") {
+	if decision == "deny" {
 		label = "禁止"
 	}
-	if strings.Contains(it.ID, "/install.") {
+	if phase == "install" {
 		label += "（準備時）"
 	} else {
 		label += "（実行中）"
-	}
-	host = it.Value
-	if parts := strings.SplitN(it.ID, "/", 4); len(parts) == 4 {
-		host = parts[3]
 	}
 	return label, host
 }
