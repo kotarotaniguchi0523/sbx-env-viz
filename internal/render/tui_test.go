@@ -2022,3 +2022,22 @@ func TestTUIOverviewDoesNotReportAFilterOrSearchItIgnores(t *testing.T) {
 	u.press("3")
 	u.want("絞り込み（", "検索: N")
 }
+
+func TestTUIOverviewKeepsATabAndALiteralBackslashTApart(t *testing.T) {
+	t.Parallel()
+	// Arrange: two folders whose IDs escape to the same text; only the
+	// second one (the literal \t) is missing.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{
+		{ID: "additionalWorkspaces[/a\tb]", Path: "additionalWorkspaces[]", Value: "/w/one"},
+		{ID: `additionalWorkspaces[/a\tb]`, Path: "additionalWorkspaces[]", Value: "/w/two"},
+	}}
+	cmp := &live.Comparison{Checked: []string{"ワークスペース・マウント"}, Compared: []string{p.Items[0].ID, p.Items[1].ID},
+		Drifts: []live.Drift{{Kind: "ワークスペース・マウント", Title: "宣言したフォルダがマウントされていない", Declared: "/w/two", Actual: "（マウントされていない）",
+			Severity: sbxenv.SeverityMedium, ItemID: p.Items[1].ID}}}
+
+	// Act
+	u := targetUI(t, 120, 30, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: &live.Sandbox{Name: "web"}, Comparison: cmp})
+
+	// Assert: regression; the first row took the second one's drift.
+	u.wantRe(`^ {4}追加フォルダ +/w/one（読み書き） +パスは一致 *$`, `^ !  追加フォルダ +/w/two（読み書き） +（マウントされていない） *$`)
+}

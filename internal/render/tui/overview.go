@@ -59,10 +59,10 @@ func (m *Model) buildOverview() {
 	}
 	used := map[*live.Drift]bool{}
 	// The drifts by the item they are about, looked up once per entry.
-	driftsOf := map[string][]*live.Drift{}
-	for i := range m.drifts {
-		if d := &m.drifts[i]; d.ItemID != "" {
-			driftsOf[d.ItemID] = append(driftsOf[d.ItemID], d)
+	driftsOf := map[*sbxenv.Item][]*live.Drift{}
+	for i, it := range m.driftItem {
+		if it != nil {
+			driftsOf[it] = append(driftsOf[it], &m.drifts[i])
 		}
 	}
 	byID := map[string]*sbxenv.Item{}
@@ -98,13 +98,13 @@ func (m *Model) buildOverview() {
 			// against sbx's output: an area being checked, or one rule of
 			// a group, does not confirm the rest.
 			l.check = checkSkip
-			if len(items) > 0 && !slices.ContainsFunc(items, func(it *sbxenv.Item) bool { return !m.compared[it.ID] }) {
+			if len(items) > 0 && !slices.ContainsFunc(items, func(it *sbxenv.Item) bool { return !m.compared[it] }) {
 				l.check = checkMatch
 			}
 			// The row shows one drift, the worst; any other drift of the
 			// same items is listed with the rest below, so none is lost.
 			for _, it := range items {
-				for _, d := range driftsOf[it.ID] {
+				for _, d := range driftsOf[it] {
 					if !used[d] && (r.drift == nil || d.Severity.Rank() > r.drift.Severity.Rank()) {
 						r.drift = d
 					}
@@ -275,7 +275,7 @@ func (m *Model) buildOverview() {
 		for _, it := range net {
 			// A rule sbx disagrees with gets its own row, so the row names
 			// the host and every such drift is reachable from here.
-			if len(driftsOf[it.ID]) > 0 {
+			if len(driftsOf[it]) > 0 {
 				drifted = append(drifted, it)
 				continue
 			}

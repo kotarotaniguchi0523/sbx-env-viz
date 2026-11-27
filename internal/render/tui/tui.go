@@ -93,10 +93,13 @@ type Model struct {
 	picker   bool
 	pCursor  int
 	drifts   []live.Drift
-	// compared holds the ItemIDs the comparison held against sbx, escaped
-	// like the plan's so they match its items.
-	compared map[string]bool
-	tally    riskTally
+	// driftItem is the plan item each drift is about (nil for none), and
+	// compared the items the comparison held against sbx. Both are found
+	// by the comparison's own IDs, not the escaped ones on screen, which a
+	// tab and a literal \t share.
+	driftItem []*sbxenv.Item
+	compared  map[*sbxenv.Item]bool
+	tally     riskTally
 	// keyW is the widest setting key of the 設定 rows, measured when they
 	// are built rather than on every frame.
 	keyW int
@@ -161,18 +164,26 @@ func (m *Model) setTarget(i int) {
 	}
 	m.plan = model.ForTerminal(p)
 	m.idx = model.SourceIndex(m.plan)
-	m.drifts, m.compared = nil, map[string]bool{}
+	m.drifts, m.driftItem, m.compared = nil, nil, map[*sbxenv.Item]bool{}
 	if t.Comparison != nil {
-		// ItemIDs too: ForTerminal escaped the plan's, and a drift must
-		// find the item it is about (a secret named with a tab).
+		// ForTerminal keeps the items in order, so the unescaped IDs
+		// (unique, as addItem numbers repeats) find each one.
+		byID := make(map[string]*sbxenv.Item, len(p.Items))
+		for i := range p.Items {
+			byID[p.Items[i].ID] = &m.plan.Items[i]
+		}
 		for _, d := range t.Comparison.Drifts {
+			it := byID[d.ItemID]
 			for _, f := range []*string{&d.Kind, &d.Title, &d.Declared, &d.Actual, &d.Fix, &d.Source, &d.ItemID} {
 				*f = model.EscapeControl(*f)
 			}
 			m.drifts = append(m.drifts, d)
+			m.driftItem = append(m.driftItem, it)
 		}
 		for _, id := range t.Comparison.Compared {
-			m.compared[model.EscapeControl(id)] = true
+			if it := byID[id]; it != nil {
+				m.compared[it] = true
+			}
 		}
 	}
 	m.tally = tallyRisks(m.plan)
