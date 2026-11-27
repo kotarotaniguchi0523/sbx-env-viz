@@ -1748,7 +1748,7 @@ func TestTUIOverviewSaysASkippedCommandDoesNotRun(t *testing.T) {
 	u := &ui{t: t, m: m}
 
 	// Assert: regression; the row read as a command that runs on the PC.
-	u.wantRe(`^ {4}PC 上で実行 +echo hi（実行されない） *$`)
+	u.wantRe(`^ {4}PC 上で実行 +（実行されない）echo hi *$`)
 }
 
 func TestTUIContextLineOfAParseErrorTarget(t *testing.T) {
@@ -1812,7 +1812,7 @@ func TestTUIOverviewKeepsASkippedRuleOffTheActiveRow(t *testing.T) {
 	u := &ui{t: t, m: m}
 
 	// Assert: regression; both hosts read as allowed at runtime.
-	u.wantRe(`^ {4}許可（実行中） +1 件  on\.test *$`, `^ {4}許可（実行中） +1 件  off\.test（実行されない） *$`)
+	u.wantRe(`^ {4}許可（実行中） +1 件  on\.test *$`, `^ {4}許可（実行中） +（実行されない）1 件  off\.test *$`)
 }
 
 func TestTUIOverviewDoesNotCountRisksWithoutADeclaration(t *testing.T) {
@@ -1934,5 +1934,48 @@ func TestTUIDetailShowsTextBeforeAHintOnATinyPane(t *testing.T) {
 	}
 	if n := len(u.lines()); n != 8 {
 		t.Errorf("%d lines", n)
+	}
+}
+
+func TestTUIOverviewKeepsTheSkipMarkBesideALongCommand(t *testing.T) {
+	t.Parallel()
+	// Arrange: a skipped hook longer than the 80-column value column.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: "lifecycle.initialize[0]", Path: "lifecycle.initialize[0]", Risk: sbxenv.SeverityLow,
+		Value: "./scripts/bootstrap.sh --with-a-very-long-list-of-flags --and-more-flags --until-it-overflows", Badges: []string{sbxenv.BadgeHost, sbxenv.BadgeSkip}}}}
+	m := tui.New(p, true)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	u := &ui{t: t, m: m}
+
+	// Assert: regression; the trailing mark was cut with the command.
+	u.wantRe(`^ {4}PC 上で実行 +（実行されない）\./scripts/bootstrap\.sh`)
+}
+
+func TestTUIOverviewMCPMatchesByNameAndKindOnly(t *testing.T) {
+	t.Parallel()
+	// Arrange: sbx mcp ls confirmed the name and the kind, not the URL.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: "mcp.servers[docs]", Path: "mcp.servers[]", Value: "url: https://mcp.example.com/sse"}}}
+	cmp := &live.Comparison{Checked: []string{"MCP サーバー"}, Compared: []string{"mcp.servers[docs]"}}
+
+	// Act
+	u := targetUI(t, 120, 30, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: &live.Sandbox{Name: "web"}, Comparison: cmp})
+
+	// Assert: regression; the row read 一致 though the URL was not compared.
+	u.wantRe(`^ {4}MCP docs +リモート（URL に接続） +名前と種類は一致 *$`)
+}
+
+func TestTUIPickerShowsTheCursorRowOnAShortPane(t *testing.T) {
+	t.Parallel()
+	// Arrange: two targets and a live error leave the picker three rows.
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	m := tui.NewTargets([]live.Target{{Name: "alpha", State: "宣言", Plan: p, Err: "sbx コマンドが見つかりません"}, {Name: "bravo", State: "宣言", Plan: p}}, "", true)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 8})
+	u := &ui{t: t, m: m}
+
+	// Act
+	u.press("s", "j")
+
+	// Assert: regression; the title and headings took every row.
+	if !strings.Contains(u.frame(), "\x1b[7m") || !strings.Contains(u.text(), "    bravo") {
+		t.Errorf("the selected target is on screen:\n%s", u.text())
 	}
 }

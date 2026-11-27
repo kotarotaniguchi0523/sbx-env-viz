@@ -80,9 +80,10 @@ func (m *Model) buildOverview() {
 	// riskiest item, so the explanation agrees with the row's mark.
 	entry := func(label, declared string, items ...*sbxenv.Item) {
 		// A setting that will not take effect (--skip-host-commands, an
-		// optional group whose condition fails) says so on its row.
+		// optional group whose condition fails) says so first on its row,
+		// where a long value cannot push it out of the column.
 		if len(items) > 0 && !slices.ContainsFunc(items, func(it *sbxenv.Item) bool { return !hasBadge(it, sbxenv.BadgeSkip) }) {
-			declared += "（" + sbxenv.BadgeLabel(sbxenv.BadgeSkip) + "）"
+			declared = "（" + sbxenv.BadgeLabel(sbxenv.BadgeSkip) + "）" + declared
 		}
 		l := manifestLine{kind: lineEntry, label: label, declared: declared, sev: sbxenv.SeverityInfo}
 		r := row{label: label}
@@ -124,7 +125,8 @@ func (m *Model) buildOverview() {
 	// partly qualifies the match of the entry just added, for what sbx
 	// reports only in part: a mount's host path (not its mode or its place
 	// in the sandbox), a secret's name (not where its value comes from), a
-	// rule's host (not its bounds).
+	// rule's host (not its bounds), an MCP server's name and kind (not its
+	// URL or command).
 	partly := func(text string) {
 		if l := &m.manifest[len(m.manifest)-1]; l.check == checkMatch {
 			l.actual = text
@@ -259,6 +261,7 @@ func (m *Model) buildOverview() {
 				where = "あなたの PC 上で起動（stdio）"
 			}
 			entry("MCP "+name, where, it)
+			partly("名前と種類は一致")
 		}
 		// Rules group by decision and phase, one line each.
 		type group struct {

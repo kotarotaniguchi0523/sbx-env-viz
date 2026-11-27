@@ -542,6 +542,9 @@ func (m *Model) pickerLines(iw, top, ih int) []string {
 	p := m.pal
 	lines := []string{" " + p.title.Render("対象の sandbox を選ぶ"), ""}
 	lines = append(lines, p.colHead.Render(pad("    "+pad("名前", 18)+"  "+pad("状態", 24)+"  "+pad("ズレ", 4)+"  ファイル", iw)))
+	// On a short pane the title, then the spacer, then the column header
+	// give way, so at least the cursor row is always drawn.
+	lines = lines[len(lines)-min(len(lines), max(ih-1, 0)):]
 	// The rows scroll so the cursor stays on screen.
 	room := max(ih-len(lines), 1)
 	first := min(max(m.pCursor-room+1, 0), max(len(m.targets)-room, 0))
