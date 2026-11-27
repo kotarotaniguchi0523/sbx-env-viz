@@ -2845,8 +2845,12 @@ func TestTUIOverviewKeepsTheDeclarationBesideALongActualValue(t *testing.T) {
 	// Act
 	u := targetUI(t, 120, 40, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: &live.Sandbox{Name: "web"}, Comparison: cmp})
 
-	// Assert: the 実体 column stops at 30% of the width.
+	// Assert: the 実体 column stops at 30% of the width (36 of 120 cells),
+	// so it starts no further left than cell 119-36.
 	u.wantRe(`^ ✗  ポート +127\.0\.0\.1:3000 +0\.0\.0\.0:3000`)
+	if x, _ := u.find("0.0.0.0:3000", 0); x < 119-36 {
+		t.Errorf("the 実体 column starts at cell %d, wider than 30%%", x)
+	}
 }
 
 func TestTUIOverviewSummaryCountsFindingsAndDriftsByLevel(t *testing.T) {
