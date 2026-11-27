@@ -13,3 +13,8 @@
 /e2e/tui/.bin/
 /result
 /result-*
+# Impeccable per-developer state: local consent and suppressions, and live
+# session journals that can hold machine paths (review/, questions/ and
+# mocks/ ignore themselves).
+/.impeccable/config.local.json
+/.impeccable/live/

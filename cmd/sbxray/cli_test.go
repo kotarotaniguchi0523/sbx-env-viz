@@ -790,3 +790,57 @@ func TestActionableErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestLiveJSONHidesASandboxNamePairedByWorkspace(t *testing.T) {
+	t.Parallel()
+	// Arrange: no name is declared, so the sandbox is found by its workspace.
+	s := newSandbox(t)
+	ws := filepath.Join(s.work, "ws")
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s.write(t, "sbxenv.yaml", strings.Replace(liveEnv, "name: web-app\n", "", 1)+"workspace: ./ws\n")
+	quoted, _ := json.Marshal(ws)
+	path, _ := s.fakeSbx(t, `"workspaces":[]`, `"workspaces":[`+string(quoted)+`]`)
+
+	// Act
+	r := s.runPath(t, path, "--json", "--live")
+
+	// Assert: regression; live.sandbox carried sbx's raw name.
+	l, _ := r.json(t)["live"].(map[string]any)
+	if l["sandbox"] != "<redacted>-1" || strings.Contains(r.stdout, "web-app") {
+		t.Errorf("live = %v", l)
+	}
+}
+
+func TestLiveJSONDoesNotEscapeAngleBrackets(t *testing.T) {
+	t.Parallel()
+	// Arrange: a strict --json --live run with a drift whose value is hidden.
+	s := newSandbox(t)
+	s.write(t, "sbxenv.yaml", liveEnv)
+	path, _ := s.fakeSbx(t)
+
+	// Act
+	r := s.runPath(t, path, "--json", "--live")
+
+	// Assert: regression; the live section's encoder escaped HTML.
+	if strings.Contains(r.stdout, `\u003c`) || !strings.Contains(r.stdout, "<redacted>") {
+		t.Errorf("exit %d, stdout escapes < and >:\n%s%s", r.code, r.stdout, r.stderr)
+	}
+}
+
+func TestLiveErrorShortensHome(t *testing.T) {
+	t.Parallel()
+	// Arrange: sbx ls fails naming a socket under $HOME.
+	s := newSandbox(t)
+	s.write(t, "sbxenv.yaml", liveEnv)
+	path, _ := s.fakeSbx(t, `"ls --json --no-input") echo '[`, `"ls --json --no-input") echo "dial unix `+s.home+`/.sbx/daemon.sock: connection refused" >&2; exit 1; echo '[`)
+
+	// Act: without --redact, sbx's error text is shown.
+	r := s.runPath(t, path, "--text", "--live")
+
+	// Assert: regression; the home directory appeared in full.
+	if strings.Contains(r.stdout, s.home) || !strings.Contains(r.stdout, "~/.sbx/daemon.sock") {
+		t.Errorf("stdout:\n%s", r.stdout)
+	}
+}

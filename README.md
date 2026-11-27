@@ -24,10 +24,18 @@ Inspect effective config, security boundaries, provenance, and live drift before
 - **Live drift detection** — Compare declarations against existing `sbx` sandboxes using read-only commands without ever reading secret values.
 - **Single static binary** — Output as an interactive TUI, plain text, or strictly redacted JSON (`--json`).
 
-![sbxray TUI — 1:Overview](docs/images/tui-overview.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/tui-overview-dark.svg">
+  <img alt="sbxray TUI: the Overview manifest compares declarations with a running sandbox" src="docs/images/tui-overview-light.svg">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/tui-risk-dark.svg">
+  <img alt="sbxray TUI: the Risk list beside the drift detail" src="docs/images/tui-risk-light.svg">
+</picture>
 
 > [!NOTE]
-> Targets **`sbx` v0.54.0** ([`.github/sbx-version`](.github/sbx-version)). Items outside static analysis (remote kits, `:dev` templates, host-wide policies, unknown capabilities) are always reported under **Coverage** in `--text` / `--json` and marked `[未展開]` in `4:Sources`.
+> Targets **`sbx` v0.54.0** ([`.github/sbx-version`](.github/sbx-version)). Items outside static analysis (remote kits, `:dev` templates, host-wide policies, unknown capabilities) are always reported under **Coverage** in `--text` / `--json`; those a file names (remote kits, `:dev` templates, unknown capabilities) are also marked `未展開` in `4 ファイル`, and the premises every run shares (host-wide policies, the built-in agent, stored secrets) are explained in the help (`?`).
 
 ## Installation
 
@@ -90,14 +98,14 @@ Exit codes: `0` OK, `1` `--fail-on` threshold reached, `2` invalid arguments or 
 
 | View | Description |
 |---|---|
-| `1:Overview` | Summary cards for config, kits, mounts, MCP & network, credentials, SSH, ports, and host commands |
-| `2:Risk` | Diagnostics, risky items, and live drift sorted by severity |
-| `3:Items` | All resolved items (`g` toggles grouping by Layer / Boundary / Kit) |
-| `4:Sources` | Input files and kits with SHA-256 digests and unexpanded remote markers |
+| `1 概要` (Overview) | A manifest of the configuration: what the files declare and, with live data, what `sbx` actually has, stamped where they differ |
+| `2 リスク` (Risk) | Live drift, then diagnostics, then risky items, each section sorted by severity |
+| `3 設定` (Items) | All resolved items (`g` toggles grouping by Layer / Boundary / Kit) |
+| `4 ファイル` (Sources) | Input files and kits with SHA-256 digests and unexpanded remote markers |
+
+Rows carry at most one mark in the left margin (`✗` high, `!` medium); the full list of boundary tags is in the detail pane. Colours are the terminal's own 16 ANSI colours, so light and dark themes both work, and every mark is a glyph, so nothing depends on colour.
 
 Each detail pane shows official Docker Sandboxes docs, relevant OWASP references, and sbxray's boundary assessment (currently in Japanese), along with merge history and `file:line` provenance. Supports mouse navigation and `NO_COLOR`.
-
-![sbxray TUI — 3:Items with detail pane](docs/images/tui-items.svg)
 
 | Key | Action |
 |---|---|
@@ -111,7 +119,7 @@ Each detail pane shows official Docker Sandboxes docs, relevant OWASP references
 ## Live Drift & Redaction
 
 - **Read-only live comparison**: When run with no arguments in a terminal (or with `--live`), `sbxray` runs read-only `sbx` list commands (`ls`, `policy ls`, `secret ls`, `mcp ls` with `--json --no-input`) to highlight drift across agents, mounts, ports, network policies, secrets, and MCP servers. Secret values are never read.
-- **Strict redaction**: Secret values and embedded URL credentials are never emitted in any mode. `--json` and `--redact` also redact env values, arg values (including interpolated segments), command bodies, `op://` details, and URL paths/queries. Control and BiDi characters are escaped before terminal output.
+- **Strict redaction**: Secret values and embedded URL credentials are never emitted in any mode. `--json` and `--redact` also redact env values, arg values (including interpolated segments), command bodies, `op://` details, and URL paths/queries, and show every value `sbx` reports (names, agents, paths, ports, hosts, secret names) as `<redacted>`, since it can carry a hidden argument; each drift is still listed by kind. Control and BiDi characters are escaped before terminal output.
 
 ## For Coding Agents (Built-in Skills)
 

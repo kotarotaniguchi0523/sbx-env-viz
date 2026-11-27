@@ -1,9 +1,10 @@
 // Package tui is the interactive Bubble Tea v2 view of a Plan.
 //
-// Views: 1 Overview (default; cards that jump to details), 2 Risk, 3 Items
-// (g cycles layer / boundary / kit grouping), 4 Sources. At 120 columns or wider the list and the detail
-// pane sit side by side in rounded panels; narrower terminals show one pane
-// at a time. Tabs, chips, list rows, and panes respond to the mouse.
+// Views: 1 概要 (default; a manifest of what is declared and, with live
+// data, what sbx has, that jumps to details), 2 リスク, 3 設定 (g cycles
+// layer / boundary / kit grouping), 4 ファイル. At 120 columns or wider the
+// list and the detail pane sit side by side; narrower terminals show one
+// pane at a time. Tabs, switches, list rows, and panes respond to the mouse.
 package tui
 
 import (
@@ -33,7 +34,7 @@ const (
 	viewCount
 )
 
-var viewNames = []string{"1:Overview", "2:Risk", "3:Items", "4:Sources"}
+var viewNames = []string{"概要", "リスク", "設定", "ファイル"}
 
 type groupMode int
 
@@ -48,6 +49,11 @@ var groupNames = []string{"層別", "境界別", "kit別"}
 type row struct {
 	header bool
 	label  string
+	// note follows the label in muted ink (a risky item's value).
+	note string
+	// key is a 設定 row's setting ID, the part of label before " = "; it
+	// is kept apart because the ID itself may hold " = " (a mount target).
+	key    string
 	badges []string
 	sev    sbxenv.Severity
 	item   *sbxenv.Item
@@ -77,9 +83,9 @@ type Model struct {
 	searching bool
 	query     string
 
-	pal   palette
-	rows  []row
-	cards []card
+	pal      palette
+	rows     []row
+	manifest []manifestLine
 
 	// targets are the sandboxes found by discovery; empty for a single
 	// plan given on the command line.
@@ -90,8 +96,25 @@ type Model struct {
 	picker   bool
 	pCursor  int
 	drifts   []live.Drift
-	// oScroll is the first visible canvas line of the Overview.
-	oScroll int
+	// driftItem is the plan item each drift is about (nil for none), and
+	// compared the items the comparison held against sbx. Both are found
+	// by the comparison's own IDs, not the escaped ones on screen, which a
+	// tab and a literal \t share.
+	driftItem []*sbxenv.Item
+	compared  map[*sbxenv.Item]bool
+	tally     riskTally
+	// keyW is the widest setting key of the 設定 rows, measured when they
+	// are built rather than on every frame.
+	keyW int
+	// oScroll is the first visible canvas line of the Overview; hScroll
+	// is the first visible line of the help.
+	oScroll, hScroll int
+	// oExtra is how far the Overview is scrolled beyond the position that
+	// keeps the cursor in view: j past the last entry, or k past the first.
+	// oCursorShown tells whether the cursor row was on the last frame;
+	// Enter opens nothing the user cannot see.
+	oExtra       int
+	oCursorShown bool
 	// zones are the clickable regions of the last frame; mouse events are
 	// resolved against them so drawing and hit-testing never disagree.
 	zones []zone
@@ -101,7 +124,7 @@ type Model struct {
 // borders, bold, and reverse video remain.
 func New(p *sbxenv.Plan, noColor bool) *Model {
 	p = model.ForTerminal(p)
-	m := &Model{plan: p, idx: model.SourceIndex(p), width: 100, height: 30, pal: newPalette(noColor)}
+	m := &Model{plan: p, idx: model.SourceIndex(p), tally: tallyRisks(p), width: 100, height: 30, pal: newPalette(noColor)}
 	m.resetFilters()
 	m.rebuild()
 	return m
@@ -126,6 +149,9 @@ func (m *Model) resetFilters() {
 
 func (m *Model) multi() bool { return len(m.targets) > 0 }
 
+// switchable reports whether there is another target to switch to.
+func (m *Model) switchable() bool { return len(m.targets) > 1 }
+
 func (m *Model) target() *live.Target {
 	if !m.multi() {
 		return nil
@@ -144,18 +170,42 @@ func (m *Model) setTarget(i int) {
 	}
 	m.plan = model.ForTerminal(p)
 	m.idx = model.SourceIndex(m.plan)
-	m.drifts = nil
+	m.drifts, m.driftItem, m.compared = nil, nil, map[*sbxenv.Item]bool{}
 	if t.Comparison != nil {
+		// ForTerminal keeps the items in order, so the unescaped IDs
+		// (unique, as addItem numbers repeats) find each one.
+		byID := make(map[string]*sbxenv.Item, len(p.Items))
+		for i := range p.Items {
+			byID[p.Items[i].ID] = &m.plan.Items[i]
+		}
 		for _, d := range t.Comparison.Drifts {
-			for _, f := range []*string{&d.Kind, &d.Title, &d.Declared, &d.Actual, &d.Fix, &d.Source} {
+			it := byID[d.ItemID]
+			for _, f := range []*string{&d.Kind, &d.Title, &d.Declared, &d.Actual, &d.Fix, &d.Source, &d.ItemID} {
 				*f = model.EscapeControl(*f)
 			}
 			m.drifts = append(m.drifts, d)
+			m.driftItem = append(m.driftItem, it)
+		}
+		for _, id := range t.Comparison.Compared {
+			if it := byID[id]; it != nil {
+				m.compared[it] = true
+			}
+		}
+	}
+	m.tally = tallyRisks(m.plan)
+	// The summary's counts take in the drifts too: a port open to every
+	// network is as high a risk found live as declared.
+	for _, d := range m.drifts {
+		switch {
+		case d.Severity.Rank() >= sbxenv.SeverityHigh.Rank():
+			m.tally.high++
+		case d.Severity == sbxenv.SeverityMedium:
+			m.tally.medium++
 		}
 	}
 	m.resetFilters()
 	m.cursor = [viewCount]int{}
-	m.query, m.searching, m.detail, m.focus, m.dScroll, m.oScroll = "", false, false, 0, 0, 0
+	m.query, m.searching, m.detail, m.focus, m.dScroll, m.oScroll, m.oExtra = "", false, false, 0, 0, 0, 0
 	m.rebuild()
 }
 
@@ -180,21 +230,34 @@ func (m *Model) itemVisible(it *sbxenv.Item) bool {
 	return m.matches(it.ID + " " + it.Value + " " + strings.Join(it.Badges, ""))
 }
 
+// relist rebuilds the list after its search, filter or grouping changed,
+// and shows the list: the detail on screen belonged to the old one.
+func (m *Model) relist() {
+	m.detail, m.focus = false, 0
+	m.rebuild()
+}
+
 func (m *Model) rebuild() {
+	// The rows may change under the cursor, so a detail starts at its top.
+	m.dScroll = 0
 	var rows []row
 	switch m.view {
 	case viewOverview:
 		m.buildOverview()
 		rows = m.rows
 	case viewRisk:
+		// Three sections, each ordered by risk level: drift from the
+		// running sandbox, this tool's findings, and risky settings.
+		var drifts, diags, items []row
 		if m.filter() == "" {
 			for i := range m.drifts {
 				d := &m.drifts[i]
-				label := "ズレ: " + d.Title
-				if m.matches(label + " " + d.Kind) {
-					rows = append(rows, row{label: label, badges: []string{"[DRIFT]"}, sev: d.Severity, drift: d})
+				// The section's own word (ズレ) finds them, as do both sides.
+				if m.matches("ズレ DRIFT " + d.Kind + " " + d.Title + " " + d.Declared + " " + d.Actual) {
+					drifts = append(drifts, row{label: d.Kind + ": " + d.Title, badges: []string{"[DRIFT]"}, sev: d.Severity, drift: d})
 				}
 			}
+			sort.SliceStable(drifts, func(i, j int) bool { return drifts[i].sev.Rank() > drifts[j].sev.Rank() })
 		}
 		for _, r := range model.RiskList(m.plan) {
 			if r.Cover != nil {
@@ -208,23 +271,27 @@ func (m *Model) rebuild() {
 					continue
 				case r.Diag != nil && !model.DiagTouchesSource(r.Diag, f):
 					continue
-				case r.Cover != nil && r.Cover.Origin.SourceID != f:
-					continue
 				}
 			}
-			label, search := r.Label, r.Label
-			switch {
-			case r.Diag != nil:
-				label = sbxenv.ExplainDiagnostic(r.Diag.Code).Title
-				search = label + " " + r.Label
-			case r.Cover != nil:
-				label = "未展開 " + sbxenv.CoverageTitle(r.Cover.Kind) + ": " + r.Cover.Ref
-				search = label + " " + r.Label
-			}
-			if !m.matches(strings.Join(r.Badges, "") + " " + search) {
+			if r.Diag != nil {
+				label := sbxenv.ExplainDiagnostic(r.Diag.Code).Title
+				if m.matches(strings.Join(r.Badges, "") + " " + label + " " + r.Label) {
+					diags = append(diags, row{label: label, badges: r.Badges, sev: r.Severity, diag: r.Diag})
+				}
 				continue
 			}
-			rows = append(rows, row{label: label, badges: r.Badges, sev: r.Severity, item: r.Item, diag: r.Diag, cover: r.Cover})
+			if m.matches(strings.Join(r.Badges, "") + " " + r.Label) {
+				items = append(items, row{label: r.Item.ID, note: r.Item.Value, badges: r.Badges, sev: r.Severity, item: r.Item})
+			}
+		}
+		for _, sec := range []struct {
+			title string
+			rows  []row
+		}{{"sbx とのズレ", drifts}, {"このツールの指摘", diags}, {"設定ごとの危険度", items}} {
+			if len(sec.rows) > 0 {
+				rows = append(rows, row{header: true, label: fmt.Sprintf("%s（%d 件）", sec.title, len(sec.rows))})
+				rows = append(rows, sec.rows...)
+			}
 		}
 	case viewItems:
 		groups := map[string][]*sbxenv.Item{}
@@ -244,7 +311,12 @@ func (m *Model) rebuild() {
 		for _, k := range keys {
 			rows = append(rows, row{header: true, label: k})
 			for _, it := range groups[k] {
-				rows = append(rows, row{label: it.ID + " = " + it.Value, badges: it.Badges, sev: it.Risk, item: it})
+				id := it.ID
+				if m.group != groupBoundary && it.Kit != "" {
+					// The group header already names the kit.
+					id = strings.TrimPrefix(id, "kit:"+it.Kit+"/")
+				}
+				rows = append(rows, row{label: id + " = " + it.Value, key: id, badges: it.Badges, sev: it.Risk, item: it})
 			}
 		}
 	case viewSources:
@@ -257,7 +329,7 @@ func (m *Model) rebuild() {
 			if !s.Expanded {
 				state = "未展開"
 			}
-			label := fmt.Sprintf("%-7s [%s] %s（%s）", s.ID, state, s.Path, sbxenv.SourceKindLabel(s.Kind))
+			label := pad(s.ID, 7) + "  " + pad(state, 8) + "  " + s.Path + "（" + sbxenv.SourceKindLabel(s.Kind) + "）"
 			if !m.matches(label) {
 				continue
 			}
@@ -271,13 +343,21 @@ func (m *Model) rebuild() {
 			if f := m.filter(); f != "" && c.Origin.SourceID != f {
 				continue
 			}
-			label := fmt.Sprintf("%-7s [未展開] %s（%s）", "-", c.Ref, sbxenv.CoverageTitle(c.Kind))
+			label := pad("-", 7) + "  " + pad("未展開", 8) + "  " + c.Ref + "（" + sbxenv.CoverageTitle(c.Kind) + "）"
 			if m.matches(label) {
 				rows = append(rows, row{label: label, sev: sbxenv.SeverityInfo, cover: c})
 			}
 		}
 	}
 	m.rows = rows
+	m.keyW = 0
+	if m.view == viewItems {
+		for _, r := range rows {
+			if r.key != "" && !r.header {
+				m.keyW = max(m.keyW, widthOf(r.key))
+			}
+		}
+	}
 	c := &m.cursor[m.view]
 	if *c >= len(rows) {
 		*c = len(rows) - 1
@@ -312,25 +392,44 @@ func (m *Model) groupKey(it *sbxenv.Item) string {
 }
 
 func (m *Model) move(delta int) {
+	// On the Overview, a move back toward the cursor first undoes a scroll
+	// past the ends, so k after j past the end returns through the lines
+	// it passed instead of jumping to the entry above.
+	if m.view == viewOverview && (m.oExtra > 0 && delta < 0 || m.oExtra < 0 && delta > 0) {
+		m.oExtra += delta
+		return
+	}
+	before := m.cursor[m.view]
+	defer func() {
+		if m.view == viewOverview {
+			m.scrollOverview(delta, m.cursor[m.view] != before)
+		}
+	}()
 	if len(m.rows) == 0 {
 		return
 	}
+	// The next selectable row that way; at either end, or when only
+	// headers lie that way, the cursor stays where it is (or, on a header,
+	// goes to the nearest selectable row).
 	c := m.cursor[m.view]
-	for i := 0; i < len(m.rows); i++ {
-		c += delta
-		if c < 0 {
-			c = 0
-			delta = 1
-		}
-		if c >= len(m.rows) {
-			c = len(m.rows) - 1
-			delta = -1
-		}
-		if !m.rows[c].header {
+	next := -1
+	for i := c + delta; i >= 0 && i < len(m.rows); i += delta {
+		if !m.rows[i].header {
+			next = i
 			break
 		}
 	}
-	m.cursor[m.view] = c
+	if next < 0 && m.rows[min(max(c, 0), len(m.rows)-1)].header {
+		for i := c - delta; i >= 0 && i < len(m.rows); i -= delta {
+			if !m.rows[i].header {
+				next = i
+				break
+			}
+		}
+	}
+	if next >= 0 {
+		m.cursor[m.view] = next
+	}
 	m.dScroll = 0
 }
 
@@ -370,16 +469,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // click acts on the zone under (x, y) in the last frame.
 func (m *Model) click(x, y int) {
-	z, ok := m.zoneAt(x, y)
-	if !ok {
-		return
-	}
+	// Any click closes the help, its text included, and ends typing a
+	// search, so keys move the cursor again wherever the click lands.
 	if m.help {
 		m.help = false
 		return
 	}
-	if m.picker && z.kind != zoneTarget && z.kind != zoneTargetRow {
+	m.searching = false
+	z, ok := m.zoneAt(x, y)
+	// A click anywhere but on a target closes the picker, empty space too.
+	if m.picker && (!ok || z.kind != zoneTarget && z.kind != zoneTargetRow) {
 		m.picker = false
+		return
+	}
+	if !ok {
 		return
 	}
 	switch z.kind {
@@ -389,12 +492,12 @@ func (m *Model) click(x, y int) {
 		if m.group != groupMode(z.value) {
 			m.group = groupMode(z.value)
 			m.cursor[viewItems] = 0
-			m.rebuild()
+			m.relist()
 		}
 	case zoneFilter:
 		if m.filterIdx != z.value {
 			m.filterIdx = z.value
-			m.rebuild()
+			m.relist()
 		}
 	case zoneRow:
 		if m.view == viewOverview {
@@ -426,6 +529,16 @@ func (m *Model) click(x, y int) {
 
 // wheel scrolls the pane under the pointer without moving focus.
 func (m *Model) wheel(x, y, delta int) {
+	// The help and the picker fill the pane, so the wheel scrolls them
+	// wherever it is.
+	switch {
+	case m.help:
+		m.hScroll = max(m.hScroll+delta*3, 0)
+		return
+	case m.picker:
+		m.pCursor = min(max(m.pCursor+delta, 0), len(m.targets)-1)
+		return
+	}
 	z, ok := m.zoneAt(x, y)
 	if !ok {
 		return
@@ -470,10 +583,16 @@ func (m *Model) key(k string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.help {
-		if k == "q" || k == "ctrl+c" {
+		switch k {
+		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "j", "down":
+			m.hScroll++
+		case "k", "up":
+			m.hScroll = max(m.hScroll-1, 0)
+		default:
+			m.help = false
 		}
-		m.help = false
 		return m, nil
 	}
 	if m.picker {
@@ -498,17 +617,17 @@ func (m *Model) key(k string) (tea.Model, tea.Cmd) {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "?":
-		m.help = true
+		m.help, m.hScroll = true, 0
 	case "s":
-		if m.multi() {
+		if m.switchable() {
 			m.picker, m.pCursor = true, m.tIdx
 		}
 	case ">", ".":
-		if m.multi() {
+		if m.switchable() {
 			m.setTarget((m.tIdx + 1) % len(m.targets))
 		}
 	case "<", ",":
-		if m.multi() {
+		if m.switchable() {
 			m.setTarget((m.tIdx + len(m.targets) - 1) % len(m.targets))
 		}
 	case "1", "2", "3", "4":
@@ -541,15 +660,23 @@ func (m *Model) key(k string) (tea.Model, tea.Cmd) {
 		if m.view == viewItems {
 			m.group = (m.group + 1) % 3
 			m.cursor[viewItems] = 0
-			m.rebuild()
+			m.relist()
 		}
 	case "f":
-		m.filterIdx = (m.filterIdx + 1) % len(m.filters)
-		m.rebuild()
+		// The Overview applies no filter and shows no switch, so f there
+		// would change the next view's filter unseen.
+		if m.view != viewOverview {
+			m.filterIdx = (m.filterIdx + 1) % len(m.filters)
+			m.relist()
+		}
 	case "/":
+		// The Overview is a fixed manifest; its search is the settings'.
+		if m.view == viewOverview {
+			m.setView(viewItems)
+		}
 		m.searching = true
 		m.query = ""
-		m.rebuild()
+		m.relist()
 	case "l", "right", "enter":
 		if m.view == viewOverview {
 			m.jump()
@@ -565,13 +692,16 @@ func (m *Model) key(k string) (tea.Model, tea.Cmd) {
 			m.detail = false
 		}
 	case "esc":
-		if m.query != "" {
+		// Esc steps back one level: out of the detail first (as its back
+		// link and footer say), then out of a confirmed search.
+		switch {
+		case m.inDetail() && m.twoPane():
+			m.focus = 0
+		case m.inDetail():
+			m.detail = false
+		case m.query != "" && m.view != viewOverview:
 			m.query = ""
 			m.rebuild()
-		} else if m.twoPane() {
-			m.focus = 0
-		} else {
-			m.detail = false
 		}
 	}
 	return m, nil
@@ -588,6 +718,9 @@ func (m *Model) inDetail() bool {
 }
 
 func (m *Model) setView(v viewID) {
+	// Typing a search ends with the view it was typed in (a tab clicked
+	// mid-search), so keys go back to moving the cursor.
+	m.searching = false
 	m.view = v
 	m.detail = false
 	m.focus = 0
@@ -621,7 +754,17 @@ func run(m *Model, in io.Reader, out io.Writer) (string, error) {
 	}
 	line := exitSummary(m.plan)
 	if t := m.target(); t != nil {
-		line = "sbxray: " + model.EscapeControl(t.Name) + ": " + sbxenv.SummaryLine(m.plan.Summary)
+		line = "sbxray: " + model.EscapeControl(t.Name) + ": "
+		// A target without a plan was not assessed: counts of 0 from the
+		// stand-in plan would read as nothing found.
+		switch {
+		case t.Plan == nil && t.Sandbox != nil:
+			line += "宣言ファイルがないため、危険度は評価していません"
+		case t.Plan == nil:
+			line += "設定ファイルを解析できないため、危険度は評価していません"
+		default:
+			line += sbxenv.SummaryLine(m.plan.Summary)
+		}
 		if t.Comparison != nil {
 			line += fmt.Sprintf(" | ズレ %d", len(t.Comparison.Drifts))
 		}

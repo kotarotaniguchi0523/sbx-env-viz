@@ -56,6 +56,10 @@ type resolver struct {
 	lostByArg    map[string][]lostRef
 
 	itemIndex map[string]int
+	// itemOf is the item an entry of a list (additionalWorkspaces, ports,
+	// mcp.servers) became, numbered (#2) as addItem left it, so the
+	// declaration the live comparison reads names the same items.
+	itemOf map[*vnode]string
 }
 
 type layerState struct {
@@ -79,6 +83,7 @@ func Resolve(layers []LayerInput, opts ResolveOptions) (*Plan, error) {
 		argDecls:     map[string]*argDecl{},
 		argValues:    map[string]*ArgValue{},
 		itemIndex:    map[string]int{},
+		itemOf:       map[*vnode]string{},
 		skippedItems: map[string]bool{},
 	}
 	if err := rs.parseLayers(layers); err != nil {

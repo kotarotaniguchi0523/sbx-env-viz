@@ -18,6 +18,8 @@ type netEntry struct {
 	// host is the pattern as written (one entry per host of an @2 object).
 	host *vnode
 	// methods and paths bound an @2 entry; both empty means unbounded.
+	// They are display texts (an argument in them is redacted like any
+	// value), since they are only shown and counted.
 	methods []string
 	paths   []string
 	itemID  string
@@ -42,7 +44,7 @@ func parseNetPolicy(c *capState) []*netEntry {
 				case parser.Map:
 					for _, h := range e.get("hosts").list() {
 						out = append(out, &netEntry{cap: c, phase: ph, list: list, host: h,
-							methods: e.get("methods").scalars(), paths: e.get("paths").scalars()})
+							methods: e.get("methods").dscalars(), paths: e.get("paths").dscalars()})
 					}
 				}
 			}

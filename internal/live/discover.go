@@ -2,6 +2,7 @@ package live
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -55,6 +56,9 @@ type DiscoverRequest struct {
 	Resolve Resolver
 	// Show formats a host path for display (home shortened).
 	Show Paths
+	// Redaction is the plans' mode; under strict (or empty) the paths of
+	// a sandbox no file declares are hidden too.
+	Redaction sbxenv.Redaction
 }
 
 // Discover finds environment files in the working directory and next to
@@ -73,8 +77,8 @@ func Discover(ctx context.Context, req DiscoverRequest) ([]Target, Snapshot) {
 	dirs := []string{req.WorkDir}
 	for _, sb := range snap.Sandboxes {
 		for _, w := range sb.Workspaces {
-			if filepath.IsAbs(w.Path) {
-				dirs = append(dirs, w.Path, filepath.Dir(w.Path))
+			if p := w.matchPath(); filepath.IsAbs(p) {
+				dirs = append(dirs, p, filepath.Dir(p))
 			}
 		}
 	}
@@ -94,14 +98,14 @@ func Discover(ctx context.Context, req DiscoverRequest) ([]Target, Snapshot) {
 		t := Target{Files: groupFiles(g, show)}
 		p, err := req.Resolve(g)
 		if err != nil {
-			t.Name = filepath.Base(g.Dir) + "/" + filepath.Base(t.Files[len(t.Files)-1])
+			t.Name = filepath.Base(show(g.Dir)) + "/" + filepath.Base(t.Files[len(t.Files)-1])
 			t.Err = "設定ファイルを解析できませんでした: " + clean(err.Error())
 			t.State = "解析エラー"
 			targets = append(targets, t)
 			continue
 		}
 		t.Plan = p
-		t.Name = targetName(p, g)
+		t.Name = targetName(p, g, show)
 		if i := match(p.Declared, snap.Sandboxes, paired); i >= 0 {
 			paired[i] = true
 			sb := snap.Sandboxes[i]
@@ -109,7 +113,7 @@ func Discover(ctx context.Context, req DiscoverRequest) ([]Target, Snapshot) {
 			if p.Declared.Name == "" {
 				t.Name = sb.Name
 			}
-			t.State = StateLabel(sb.Status)
+			t.State = ShownState(sb.Status, req.Redaction)
 			cmp := Compare(p, &sb, &snap, show)
 			t.Comparison = &cmp
 		} else if snap.Available {
@@ -119,12 +123,35 @@ func Discover(ctx context.Context, req DiscoverRequest) ([]Target, Snapshot) {
 		}
 		targets = append(targets, t)
 	}
+	// Under strict redaction a value sbx reports may carry an argument
+	// hidden in any declaration of the session, so the names, agents,
+	// ports and secret names of the sandboxes no file declares, and the
+	// name a pairing took from sbx, are hidden; names are numbered so the
+	// picker still tells them apart.
+	strict := req.Redaction.Strict()
+	n := 0
+	shownName := func() string {
+		n++
+		return fmt.Sprintf("<redacted>-%d", n)
+	}
+	for i := range targets {
+		if t := &targets[i]; strict && t.Sandbox != nil && t.Plan != nil && t.Plan.Declared != nil && t.Plan.Declared.Name == "" {
+			t.Name = shownName()
+		}
+	}
 	for i, sb := range snap.Sandboxes {
 		if paired[i] {
 			continue
 		}
 		sb := sb
-		targets = append(targets, Target{Name: sb.Name, State: StateLabel(sb.Status) + "・宣言ファイル未検出", Sandbox: &sb})
+		sb.Workspaces, sb.Mounts = shownMounts(sb.Workspaces, req.Redaction, show), shownMounts(sb.Mounts, req.Redaction, show)
+		if strict {
+			sb.Name, sb.Redacted = shownName(), true
+			if sb.Agent != "" {
+				sb.Agent = "<redacted>"
+			}
+		}
+		targets = append(targets, Target{Name: sb.Name, State: ShownState(sb.Status, req.Redaction) + "・宣言ファイル未検出", Sandbox: &sb})
 	}
 	rank := func(t Target) int {
 		switch {
@@ -202,7 +229,7 @@ func groupFiles(g Group, show Paths) []string {
 	return out
 }
 
-func targetName(p *sbxenv.Plan, g Group) string {
+func targetName(p *sbxenv.Plan, g Group, show Paths) string {
 	if p.Declared != nil && p.Declared.Name != "" {
 		for _, it := range p.Items {
 			if it.ID == "name" {
@@ -214,7 +241,8 @@ func targetName(p *sbxenv.Plan, g Group) string {
 	if len(g.Paths) > 0 {
 		file = filepath.Base(g.Paths[0])
 	}
-	return filepath.Base(g.Dir) + "/" + file
+	// The shown directory, so a file in $HOME is ~/…, not the user's name.
+	return filepath.Base(show(g.Dir)) + "/" + file
 }
 
 // match finds the sandbox a declaration created: same name first, then the
@@ -242,7 +270,7 @@ func match(d *sbxenv.Declared, sbs []Sandbox, taken map[int]bool) int {
 				continue
 			}
 			for _, m := range sb.Workspaces {
-				if samePath(m.Path, w.Path) {
+				if samePath(m.matchPath(), w.Path) {
 					return i
 				}
 			}
@@ -262,4 +290,26 @@ func StateLabel(status string) string {
 		return "状態不明"
 	}
 	return status
+}
+
+// ShownState is StateLabel under the redaction mode: a status sbx reports
+// that is not one of the known words is shown as 状態不明 under strict
+// redaction, since it is copied from sbx verbatim.
+func ShownState(status string, mode sbxenv.Redaction) string {
+	label := StateLabel(status)
+	if label == status && status != "" && mode.Strict() {
+		return "状態不明"
+	}
+	return label
+}
+
+// shownMounts is mounts with each path as a person reads it: a sandbox no
+// file declares is drawn from sbx's paths alone, so they go through the
+// same livePath as a drift's.
+func shownMounts(mounts []Mount, mode sbxenv.Redaction, show Paths) []Mount {
+	out := make([]Mount, len(mounts))
+	for i, w := range mounts {
+		out[i] = Mount{Path: livePath(mode, show, w.Path)}
+	}
+	return out
 }

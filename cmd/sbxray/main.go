@@ -350,13 +350,19 @@ func run(args []string, e env) int {
 	// person switch between them.
 	if len(o.paths) == 0 && mode == "tui" && !o.offline {
 		targets, snap := live.Discover(context.Background(), live.DiscoverRequest{
-			WorkDir: wd, Runner: e.sbx, Show: show,
+			WorkDir: wd, Runner: e.sbx, Show: show, Redaction: redaction,
 			Resolve: func(g live.Group) (*sbxenv.Plan, error) {
-				return resolve(loader.Request{Paths: g.Paths, EnvArgsFiles: o.envArgsFiles, KitArgsFiles: o.kitArgsFiles, WorkDir: g.Dir, HomeDir: home})
+				p, err := resolve(loader.Request{Paths: g.Paths, EnvArgsFiles: o.envArgsFiles, KitArgsFiles: o.kitArgsFiles, WorkDir: g.Dir, HomeDir: home})
+				if err != nil {
+					// As for explicit paths: the error names the file with
+					// $HOME shortened, never the home directory itself.
+					return nil, errors.New(sbxenv.ShortenHome(err.Error(), home, homeAliases...))
+				}
+				return p, nil
 			},
 		})
 		if len(targets) > 0 {
-			line, err := tui.RunTargets(targets, snap.Problem, e.stdin, e.stdout)
+			line, err := tui.RunTargets(targets, sbxenv.ShortenHome(snap.Reason(redaction), home, homeAliases...), e.stdin, e.stdout)
 			if err != nil {
 				fmt.Fprintf(e.stderr, "sbxray: %s\n", shorten(err.Error()))
 				return exitUsage
@@ -380,6 +386,8 @@ func run(args []string, e env) int {
 	var target *live.Target
 	if o.live {
 		target = liveTarget(plan, e.sbx, show)
+		// sbx's own error text can name paths under $HOME.
+		target.Err = sbxenv.ShortenHome(target.Err, home, homeAliases...)
 	}
 	switch {
 	case mode == "tui" && target != nil:
@@ -453,7 +461,7 @@ func threshold(failOn string, p *sbxenv.Plan, cmp *live.Comparison) int {
 // carries the reason when sbx gave no answer or no sandbox matches.
 func liveTarget(plan *sbxenv.Plan, r live.Runner, show live.Paths) *live.Target {
 	snap := live.CollectMatched(context.Background(), r, plan.Declared)
-	t := &live.Target{Name: "（宣言）", State: "宣言", Plan: plan, Err: snap.Problem}
+	t := &live.Target{Name: "（宣言）", State: "宣言", Plan: plan, Err: snap.Reason(plan.Meta.Redaction)}
 	if plan.Declared != nil && plan.Declared.Name != "" {
 		for _, it := range plan.Items {
 			if it.ID == "name" {
@@ -470,9 +478,14 @@ func liveTarget(plan *sbxenv.Plan, r live.Runner, show live.Paths) *live.Target 
 		sb := snap.Sandboxes[0]
 		cmp := live.Compare(plan, &sb, &snap, show)
 		if plan.Declared == nil || sb.Name != plan.Declared.Name {
+			// sbx's name, paired by workspace; under strict redaction it
+			// is hidden like every value sbx reports.
 			t.Name = sb.Name
+			if plan.Meta.Redaction.Strict() {
+				t.Name = "<redacted>-1"
+			}
 		}
-		t.State, t.Sandbox, t.Comparison = live.StateLabel(sb.Status), &sb, &cmp
+		t.State, t.Sandbox, t.Comparison = live.ShownState(sb.Status, plan.Meta.Redaction), &sb, &cmp
 	}
 	return t
 }
@@ -504,5 +517,7 @@ func writeJSONWithLive(w io.Writer, plan *sbxenv.Plan, t *live.Target) error {
 	doc["live"] = l
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
+	// As jsonout does: <redacted> and -> stay as written, not \u003c...
+	enc.SetEscapeHTML(false)
 	return enc.Encode(doc)
 }

@@ -2,6 +2,8 @@ package live
 
 import (
 	"fmt"
+	"net/netip"
+	"slices"
 	"sort"
 	"strings"
 
@@ -33,6 +35,12 @@ type Comparison struct {
 	// not compared and why.
 	Checked []string
 	Skipped []string
+	// Compared lists the ItemIDs of the declared items that were held
+	// against sbx's output, whether they matched or drifted. An item in a
+	// checked area that is not listed here (a clone workspace, a Kit mount,
+	// an install-time rule) was not confirmed either way, so a reader must
+	// not take it as matching.
+	Compared []string
 }
 
 const (
@@ -42,6 +50,19 @@ const (
 
 // Paths turns a host path into what a person reads (home shortened).
 type Paths func(string) string
+
+// livePath shows a path sbx reports. Under strict redaction (mode, where
+// empty means strict, as in sbxenv) a workspace path is hidden like the
+// declared ones, since it can carry the very argument values the plan
+// redacts (a name, a project directory).
+//
+//declscope:shared // discover.go shows the paths of a sandbox no file declares with it
+func livePath(mode sbxenv.Redaction, show Paths, path string) string {
+	if mode.Strict() {
+		return "<redacted>"
+	}
+	return show(path)
+}
 
 // Compare reports how sandbox sb differs from plan p. Only what sbx
 // reports is compared; anything else is listed in Skipped, never guessed.
@@ -70,14 +91,42 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		return labels[id]
 	}
 	add := func(x Drift) { c.Drifts = append(c.Drifts, x) }
+	// Under strict redaction (--redact, --json) a value sbx reports is
+	// shown only as <redacted>: an argument hidden in any declaration of
+	// the session (this one or another target's) can come back inside a
+	// live name, agent, port, host or secret name in any form, so no live
+	// value is held to be safe. What differs is still said, by kind.
+	strict := p.Meta.Redaction.Strict()
+	shown := func(v string) string {
+		if strict {
+			return "<redacted>"
+		}
+		return v
+	}
+
+	// Name: a declared name is how the sandbox was found, so it is
+	// confirmed when sbx has the same one.
+	if d.Name != "" && d.Name == sb.Name {
+		c.Compared = append(c.Compared, "name")
+	}
 
 	// Agent.
 	if d.Agent != "" && sb.Agent != "" {
 		c.Checked = append(c.Checked, "エージェント")
+		c.Compared = append(c.Compared, "agent")
 		if !strings.EqualFold(d.Agent, sb.Agent) {
-			add(Drift{Kind: "エージェント", Title: "宣言と違うエージェントで動いている", Declared: item("agent"), Actual: sb.Agent,
+			add(Drift{Kind: "エージェント", Title: "宣言と違うエージェントで動いている", Declared: item("agent"), Actual: shown(sb.Agent),
 				Fix: "agent を変えた場合は、作り直し（sbx env rm → sbx env create）で反映されます。", Severity: sbxenv.SeverityMedium, ItemID: "agent", Source: srcLs})
 		}
+	}
+
+	// Folders a kit mounts (mounts, host-mount) are not held against sbx's
+	// list, with or without a workspace; the TUI reads them 照合なし, text
+	// and JSON say so.
+	if slices.ContainsFunc(p.Items, func(it sbxenv.Item) bool {
+		return strings.HasPrefix(it.Path, "mounts.") || it.Path == "cap:host-mount@1"
+	}) {
+		c.Skipped = append(c.Skipped, "Kit が使うフォルダ（mounts・host-mount）は比較していません。")
 	}
 
 	// Workspaces.
@@ -90,22 +139,23 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			if w.Primary && w.Clone {
 				c.Skipped = append(c.Skipped, "メインのワークスペースは clone モード（専用のコピー）なので、マウント先のパスは比較していません。")
 				for i, m := range sb.Workspaces {
-					if samePath(m.Path, w.Path) {
+					if samePath(m.matchPath(), w.Path) {
 						used[i] = true
 					}
 				}
 				continue
 			}
+			c.Compared = append(c.Compared, w.ItemID)
 			found := -1
 			for i, m := range sb.Workspaces {
-				if !used[i] && samePath(m.Path, w.Path) {
+				if !used[i] && samePath(m.matchPath(), w.Path) {
 					found = i
 					break
 				}
 			}
 			if found < 0 {
 				for _, m := range sb.Mounts {
-					if samePath(m.Path, w.Path) {
+					if samePath(m.matchPath(), w.Path) {
 						found = -2
 						break
 					}
@@ -130,7 +180,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				continue
 			}
 			add(Drift{Kind: "ワークスペース・マウント", Title: "宣言にないフォルダがマウントされている", Declared: "（宣言なし）",
-				Actual:   show(m.Path) + "（読み書きの区別は sbx から取得できません）",
+				Actual:   livePath(p.Meta.Redaction, show, m.Path) + "（読み書きの区別は sbx から取得できません）",
 				Fix:      "sbx の操作で後から追加された可能性があります。不要なら作り直して宣言どおりにし、必要なら設定ファイルの additionalWorkspaces に書いてください。",
 				Severity: sbxenv.SeverityMedium, Source: srcLs})
 		}
@@ -139,26 +189,237 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 	// Ports.
 	if len(sb.Ports) > 0 || len(d.Ports) > 0 {
 		c.Checked = append(c.Checked, "ポート公開")
-		used := map[int]bool{}
-		for _, dp := range d.Ports {
-			decl := item(dp.ItemID)
-			found := -1
-			for i, lp := range sb.Ports {
-				if !used[i] && lp.SandboxPort == dp.SandboxPort && baseProto(lp.Protocol) == baseProto(dp.Protocol) {
-					found = i
-					break
+		// Pair declarations with listeners so that as many as possible
+		// pair (a declaration never takes the listener another one needs,
+		// so sbx's order cannot swap two of one sandbox port), each trying
+		// the closest listener first: its exact host port, then its
+		// address and a row showing its family, its address, its family,
+		// then any. Declarations that can claim an exact host port go
+		// first, then those that fix a family, then the rest.
+		// A row without a protocol may carry either transport, so it can
+		// pair with tcp or udp; it confirms neither (below).
+		compatible := func(dp sbxenv.DeclaredPort, lp Port) bool {
+			return lp.SandboxPort == dp.SandboxPort && (lp.Protocol == "" || baseProto(lp.Protocol) == baseProto(dp.Protocol)) &&
+				sameFamily(portFamily(lp.Protocol, lp.HostIP), portFamily(dp.Protocol, dp.HostIP))
+		}
+		// companion finds the row of the other family that, with lp, makes
+		// up a port declared for both families (sbx may list one row per
+		// family): same ports (a host port sbx left out is no evidence of
+		// one publication), the declaration's transport (lp may have none),
+		// on the declared address too, so a [::] row never passes for
+		// loopback. skip leaves out rows taken.
+		companion := func(dp sbxenv.DeclaredPort, lp Port, skip func(int) bool) int {
+			other := map[string]string{"4": "6", "6": "4"}[portFamily(lp.Protocol, lp.HostIP)]
+			for i, x := range sb.Ports {
+				if other != "" && !skip(i) && x.Protocol != "" && x.SandboxPort == lp.SandboxPort && x.HostPort != 0 && x.HostPort == lp.HostPort &&
+					baseProto(x.Protocol) == baseProto(dp.Protocol) && portFamily(x.Protocol, x.HostIP) == other && sameIP(dp.HostIP, x.HostIP) {
+					return i
 				}
 			}
+			return -1
+		}
+		never := func(int) bool { return false }
+		// distance scores lp for dp; skip leaves out rows already taken
+		// when looking for lp's companion.
+		distance := func(dp sbxenv.DeclaredPort, lp Port, skip func(int) bool) int {
+			// A fixed host port that differs costs most (it is a drift);
+			// an ephemeral one accepts any host port.
+			n := 0
+			if dp.HostPort != 0 && lp.HostPort != dp.HostPort {
+				n += 4
+			}
+			// A row shows the declared family when it is that family; for a
+			// port declared for both (tcp, no address) that is a row for both
+			// too, or a row of one family with its companion, whatever order
+			// sbx lists them in. A row without a protocol says nothing of its
+			// transport (nor its families), so it shows nothing and comes
+			// after a row that can confirm the port.
+			df := portFamily(dp.Protocol, dp.HostIP)
+			shows := lp.Protocol != "" && (portFamily(lp.Protocol, lp.HostIP) == df || df == "" && companion(dp, lp, skip) >= 0)
+			switch same := sameIP(dp.HostIP, lp.HostIP); {
+			case same && shows:
+			case same:
+				n++
+			case shows:
+				n += 2
+			default:
+				n += 3
+			}
+			return n
+		}
+		rank := func(dp sbxenv.DeclaredPort) int {
+			if dp.HostPort != 0 && slices.ContainsFunc(sb.Ports, func(lp Port) bool { return compatible(dp, lp) && lp.HostPort == dp.HostPort }) {
+				return 0
+			}
+			if portFamily(dp.Protocol, dp.HostIP) != "" {
+				return 1
+			}
+			return 2
+		}
+		pair := make([]int, len(d.Ports))   // declaration -> listener, or -1
+		owner := make([]int, len(sb.Ports)) // listener -> declaration, or -1
+		for j := range pair {
+			pair[j] = -1
+		}
+		for i := range owner {
+			owner[i] = -1
+		}
+		var claim func(j int, seen []bool) bool
+		claim = func(j int, seen []bool) bool {
+			dp := d.Ports[j]
+			var cands []int
+			for i, lp := range sb.Ports {
+				if !seen[i] && compatible(dp, lp) {
+					cands = append(cands, i)
+				}
+			}
+			slices.SortStableFunc(cands, func(a, b int) int { return distance(dp, sb.Ports[a], never) - distance(dp, sb.Ports[b], never) })
+			// A free listener is taken before one is pried from another
+			// declaration, which moves only when this one has no other.
+			for _, i := range cands {
+				if owner[i] < 0 {
+					seen[i] = true
+					owner[i], pair[j] = j, i
+					return true
+				}
+			}
+			for _, i := range cands {
+				seen[i] = true
+				if claim(owner[i], seen) {
+					owner[i], pair[j] = j, i
+					return true
+				}
+			}
+			return false
+		}
+		order := make([]int, len(d.Ports))
+		for j := range order {
+			order[j] = j
+		}
+		slices.SortStableFunc(order, func(a, b int) int { return rank(d.Ports[a]) - rank(d.Ports[b]) })
+		for _, j := range order {
+			claim(j, make([]bool, len(sb.Ports)))
+		}
+		// The matching pairs as many as it can, but its first choices can
+		// still cost an exact pair (one declaration on a listener another
+		// needed exactly). A sandbox port with a few declarations, as real
+		// ones have, is settled by trying every assignment: the most pairs,
+		// then the least total distance.
+		type group struct{ decls, lists []int }
+		groups := map[int]*group{}
+		// Groups are by sandbox port alone: a row without a protocol may
+		// belong to a tcp or a udp declaration, and compatible tells which
+		// pairs can be made.
+		for j, dp := range d.Ports {
+			k := dp.SandboxPort
+			if groups[k] == nil {
+				groups[k] = &group{}
+			}
+			groups[k].decls = append(groups[k].decls, j)
+		}
+		for i, lp := range sb.Ports {
+			if g := groups[lp.SandboxPort]; g != nil {
+				g.lists = append(g.lists, i)
+			}
+		}
+		for _, g := range groups {
+			if len(g.decls) < 2 || len(g.decls) > 5 || len(g.lists) > 6 {
+				continue
+			}
+			// Best: the most pairs, then the most fixed host ports met
+			// exactly (a listener on 4000 is 4000's, not an ephemeral
+			// one's), then the least distance.
+			best, bestN, bestExact, bestCost := []int(nil), -1, 0, 0
+			cur := make([]int, len(g.decls))
+			taken := map[int]bool{}
+			var try func(k, n, exact, cost int)
+			try = func(k, n, exact, cost int) {
+				if k == len(g.decls) {
+					if n > bestN || n == bestN && (exact > bestExact || exact == bestExact && cost < bestCost) {
+						best, bestN, bestExact, bestCost = slices.Clone(cur), n, exact, cost
+					}
+					return
+				}
+				dp := d.Ports[g.decls[k]]
+				for _, i := range g.lists {
+					if lp := sb.Ports[i]; !taken[i] && compatible(dp, lp) {
+						hit := 0
+						if dp.HostPort != 0 && lp.HostPort == dp.HostPort {
+							hit = 1
+						}
+						taken[i], cur[k] = true, i
+						// A row of one family for a port declared for both
+						// counts its companion only if no other declaration
+						// holds it, and then holds it for this one; both
+						// ways are tried, as another declaration may need it.
+						skip := func(x int) bool { return taken[x] }
+						c := -1
+						if portFamily(dp.Protocol, dp.HostIP) == "" {
+							c = companion(dp, lp, skip)
+						}
+						if c >= 0 {
+							taken[c] = true
+							try(k+1, n+1, exact+hit, cost+distance(dp, lp, never))
+							taken[c] = false
+						}
+						try(k+1, n+1, exact+hit, cost+distance(dp, lp, func(int) bool { return true }))
+						taken[i] = false
+					}
+				}
+				cur[k] = -1
+				try(k+1, n, exact, cost)
+			}
+			try(0, 0, 0, 0)
+			for _, i := range g.lists {
+				owner[i] = -1
+			}
+			for k, j := range g.decls {
+				pair[j] = best[k]
+				if best[k] >= 0 {
+					owner[best[k]] = j
+				}
+			}
+		}
+		used := map[int]bool{}
+		for i, j := range owner {
+			used[i] = j >= 0
+		}
+		unsure := false
+		for j, dp := range d.Ports {
+			decl := item(dp.ItemID)
+			found := pair[j]
 			if found < 0 {
+				c.Compared = append(c.Compared, dp.ItemID)
 				add(Drift{Kind: "ポート公開", Title: "宣言したポートが公開されていない", Declared: decl, Actual: "（公開されていない）",
 					Fix: fixRecreate, Severity: sbxenv.SeverityMedium, ItemID: dp.ItemID, Source: srcLs})
 				continue
 			}
-			used[found] = true
 			lp := sb.Ports[found]
+			// A fixed host port is confirmed only when sbx reports one, a
+			// fixed family (tcp6, ::1) only when sbx's row shows one, and
+			// a port for both families (tcp, no address) only by a row for
+			// both: one IPv4 listener does not show the IPv6 one.
+			df, lf := portFamily(dp.Protocol, dp.HostIP), portFamily(lp.Protocol, lp.HostIP)
+			// sbx may list a port for both families as two rows, one per
+			// family: the other row is this declaration's too, not an
+			// undeclared listener, and the two together show both.
+			if df == "" && lf != "" {
+				if i := companion(dp, lp, func(i int) bool { return used[i] }); i >= 0 {
+					used[i], lf = true, ""
+				}
+			}
+			// A row without a protocol confirms neither the transport (tcp,
+			// udp) nor, for a port declared for both, its families; it can
+			// still pair, so it is no drift, but it reads 照合なし.
+			if lp.Protocol != "" && (dp.HostPort == 0 || lp.HostPort != 0) && (df == "" && lf == "" || df != "" && lf != "") {
+				c.Compared = append(c.Compared, dp.ItemID)
+			} else {
+				unsure = true
+			}
+			hide := dp.Redacted || strict
 			var diffs []string
 			if dp.HostPort != 0 && lp.HostPort != 0 && lp.HostPort != dp.HostPort {
-				if dp.Redacted {
+				if hide {
 					diffs = append(diffs, "PC 側のポート番号が異なる")
 				} else {
 					diffs = append(diffs, fmt.Sprintf("PC 側のポート番号が %d ではなく %d", dp.HostPort, lp.HostPort))
@@ -166,7 +427,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			}
 			wider := false
 			if !sameIP(dp.HostIP, lp.HostIP) {
-				if dp.Redacted {
+				if hide {
 					diffs = append(diffs, "公開先のアドレスが異なる")
 				} else {
 					diffs = append(diffs, "公開先のアドレスが "+ipLabel(dp.HostIP)+" ではなく "+ipLabel(lp.HostIP))
@@ -178,23 +439,28 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				if wider {
 					sev = sbxenv.SeverityHigh
 				}
-				actual := portLabel(lp)
-				if dp.Redacted {
+				actual := lp.Label()
+				if hide {
 					actual = "<redacted>"
 				}
 				add(Drift{Kind: "ポート公開", Title: "ポートの公開のしかたが宣言と違う（" + strings.Join(diffs, "、") + "）", Declared: decl,
 					Actual: actual, Fix: fixRecreate, Severity: sev, ItemID: dp.ItemID, Source: srcLs})
 			}
 		}
+		if unsure {
+			// The TUI marks these 照合なし; say so in text and JSON too.
+			c.Skipped = append(c.Skipped, "sbx ls --json の行だけでは確かめられない点（通信の種類、PC 側のポート番号、IPv4 と IPv6 の両方で公開されているか）があるポートは、その点を照合していません。")
+		}
 		for i, lp := range sb.Ports {
 			if used[i] {
 				continue
 			}
-			sev := sbxenv.SeverityLow
-			if isAll(lp.HostIP) {
-				sev = sbxenv.SeverityHigh
+			sev := sbxenv.PortExposure(lp.HostIP)
+			actual := lp.Label()
+			if strict {
+				actual = "<redacted>"
 			}
-			add(Drift{Kind: "ポート公開", Title: "宣言にないポートが公開されている", Declared: "（宣言なし）", Actual: portLabel(lp),
+			add(Drift{Kind: "ポート公開", Title: "宣言にないポートが公開されている", Declared: "（宣言なし）", Actual: actual,
 				Fix:      "Kit が公開したポート（空きポートが自動で割り当てられます）か、sbx ports で手動公開したものです。不要なら sbx ports --unpublish で外せます。",
 				Severity: sev, Source: srcLs})
 		}
@@ -205,9 +471,11 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		c.Skipped = append(c.Skipped, "sbx policy ls の結果を取得できなかったため、通信ルールは比較していません。")
 	} else {
 		c.Checked = append(c.Checked, "通信の許可・拒否")
+		// A bounded rule does not declare its whole host, so a manual
+		// rule for that host is still reported.
 		declared := map[string]bool{}
 		for _, r := range d.Network {
-			if r.Phase == "runtime" {
+			if r.Phase == "runtime" && !r.Bounded {
 				declared[r.Decision+" "+r.Host] = true
 			}
 		}
@@ -224,16 +492,17 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			if !manual || declared[r.Decision+" "+r.Resource] {
 				continue
 			}
+			resource := shown(r.Resource)
 			how := "sbx policy allow などで手動追加"
 			if r.CreatedVia == "approval" {
 				how = "通信の承認プロンプトで許可"
 			}
 			if r.Decision == "allow" {
-				add(Drift{Kind: "通信の許可・拒否", Title: "宣言にない通信許可がある（" + how + "）", Declared: "（宣言なし）", Actual: "許可: " + r.Resource,
+				add(Drift{Kind: "通信の許可・拒否", Title: "宣言にない通信許可がある（" + how + "）", Declared: "（宣言なし）", Actual: "許可: " + resource,
 					Fix:      "不要なら sbx policy rm network で削除します。必要なら Kit の network-policy に書いて宣言に含めると、どこで許可したかが分かります。",
 					Severity: sbxenv.SeverityMedium, Source: "sbx policy ls <name> --json"})
 			} else {
-				add(Drift{Kind: "通信の許可・拒否", Title: "宣言にない通信の拒否がある", Declared: "（宣言なし）", Actual: "拒否: " + r.Resource,
+				add(Drift{Kind: "通信の許可・拒否", Title: "宣言にない通信の拒否がある", Declared: "（宣言なし）", Actual: "拒否: " + resource,
 					Fix: "手動で追加した拒否ルールです。意図したものか確認してください。", Severity: sbxenv.SeverityLow, Source: "sbx policy ls <name> --json"})
 			}
 		}
@@ -242,13 +511,35 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				c.Skipped = append(c.Skipped, "sbx policy ls の結果に Kit 由来のルールが含まれていないため、宣言した通信ルールが反映済みかは比較していません。")
 			}
 		} else {
+			// The TUI marks what is left out 照合なし; text and JSON say so
+			// in a note.
+			install, bounded := false, false
 			for _, r := range d.Network {
-				if r.Phase != "runtime" || live[r.Decision+" "+r.Host] {
+				// sbx policy ls lists the rules in force now, so only
+				// runtime rules can be held against it.
+				if r.Phase != "runtime" {
+					install = true
+					continue
+				}
+				// A rule bounded to methods or paths is listed by host
+				// alone, so its host being there confirms no more than that.
+				if !r.Bounded {
+					c.Compared = append(c.Compared, r.ItemID)
+				} else {
+					bounded = true
+				}
+				if live[r.Decision+" "+r.Host] {
 					continue
 				}
 				label := map[string]string{"allow": "許可", "deny": "拒否"}[r.Decision]
 				add(Drift{Kind: "通信の許可・拒否", Title: "宣言した通信の" + label + "が反映されていない", Declared: item(r.ItemID), Actual: "（該当するルールなし）",
 					Fix: fixRecreate, Severity: sbxenv.SeverityMedium, ItemID: r.ItemID, Source: "sbx policy ls <name> --json"})
+			}
+			if install {
+				c.Skipped = append(c.Skipped, "sbx policy ls はいま有効なルールだけを出力するため、準備時（install）の通信ルールは比較していません。")
+			}
+			if bounded {
+				c.Skipped = append(c.Skipped, "sbx policy ls はホストだけを出力するため、メソッドやパスで絞った通信ルールは、ホスト以外を照合していません。")
 			}
 		}
 	}
@@ -265,6 +556,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		declared := map[string]bool{}
 		for _, s := range d.Secrets {
 			declared[s.Name] = true
+			c.Compared = append(c.Compared, s.ItemID)
 			if !live[s.Name] {
 				add(Drift{Kind: "シークレット", Title: "宣言したシークレットが登録されていない", Declared: s.Name + "（" + item(s.ItemID) + "）", Actual: "（登録なし）",
 					Fix:      "シークレットは sandbox を作成したときに登録されます。作り直す（sbx env rm → sbx env create）か、sbx secret set で登録してください。",
@@ -273,7 +565,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		}
 		for _, s := range sb.Secrets {
 			if !declared[s] {
-				add(Drift{Kind: "シークレット", Title: "宣言にないシークレットが登録されている", Declared: "（宣言なし）", Actual: s + "（値は表示しません）",
+				add(Drift{Kind: "シークレット", Title: "宣言にないシークレットが登録されている", Declared: "（宣言なし）", Actual: shown(s) + "（値は表示しません）",
 					Fix:      "sbx secret set で手動登録した可能性があります。不要なら sbx secret rm で削除してください。",
 					Severity: sbxenv.SeverityLow, Source: "sbx secret ls --sandbox <name> --json"})
 			}
@@ -286,8 +578,17 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 	case snap == nil || !snap.MCPKnown:
 		c.Skipped = append(c.Skipped, "sbx mcp ls の結果を取得できなかったため、MCP サーバーは比較していません。")
 	default:
-		c.Checked = append(c.Checked, "MCP サーバー")
+		// MCP is listed as checked only when a server is compared, not
+		// when --skip-host-commands left out every one.
+		if slices.ContainsFunc(d.MCP, func(m sbxenv.DeclaredMCP) bool { return !m.Skipped }) {
+			c.Checked = append(c.Checked, "MCP サーバー")
+		}
+		skipped, untyped := false, false
 		for _, m := range d.MCP {
+			if m.Skipped {
+				skipped = true
+				continue
+			}
 			var row *MCPServer
 			for i := range snap.MCP {
 				if snap.MCP[i].Name == m.Name {
@@ -296,15 +597,37 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				}
 			}
 			if row == nil {
+				c.Compared = append(c.Compared, m.ItemID)
 				add(Drift{Kind: "MCP サーバー", Title: "宣言した MCP サーバーが登録されていない", Declared: item(m.ItemID), Actual: "（登録なし）",
 					Fix: fixRecreate, Severity: sbxenv.SeverityMedium, ItemID: m.ItemID, Source: "sbx mcp ls --json"})
 				continue
 			}
+			// The kind sbx reports is held against url versus command, but
+			// only "remote" is known to mean a url server: another word
+			// (unknown, a newer kind) shows neither, so it confirms nothing
+			// and is no drift; only the registration is known then.
+			if row.Type != "remote" {
+				untyped = true
+			} else {
+				c.Compared = append(c.Compared, m.ItemID)
+				if !m.Remote {
+					add(Drift{Kind: "MCP サーバー", Title: "同じ名前の MCP サーバーが、宣言と違う種類で登録されている", Declared: item(m.ItemID),
+						Actual: "種類: " + shown(row.Type) + "（" + shown(orDefault(row.Transport, "接続方式不明")) + "）",
+						Fix:    "別の設定で登録された可能性があります。sbx mcp inspect " + m.Shown + " で確認してください。", Severity: sbxenv.SeverityMedium,
+						ItemID: m.ItemID, Source: "sbx mcp ls --json"})
+				}
+			}
 			if st := row.Status; needsAuth(st) {
-				add(Drift{Kind: "MCP サーバー", Title: "MCP サーバーは登録済みだが使える状態ではない", Declared: item(m.ItemID), Actual: "状態: " + st,
-					Fix: "認証が必要な場合は sbx mcp auth " + m.Name + " を実行してください。詳しくは sbx mcp inspect " + m.Name + " で確認できます。", Severity: sbxenv.SeverityLow,
+				add(Drift{Kind: "MCP サーバー", Title: "MCP サーバーは登録済みだが使える状態ではない", Declared: item(m.ItemID), Actual: "状態: " + shown(st),
+					Fix: "認証が必要な場合は sbx mcp auth " + m.Shown + " を実行してください。詳しくは sbx mcp inspect " + m.Shown + " で確認できます。", Severity: sbxenv.SeverityLow,
 					ItemID: m.ItemID, Source: "sbx mcp ls --json"})
 			}
+		}
+		if skipped {
+			c.Skipped = append(c.Skipped, "--skip-host-commands で起動しないコマンド型の MCP サーバーは比較していません。")
+		}
+		if untyped {
+			c.Skipped = append(c.Skipped, "sbx mcp ls の種類が remote でない MCP サーバーは、登録だけを確かめ、種類（URL 型かコマンド型か）は照合していません。")
 		}
 	}
 	c.Skipped = append(c.Skipped, "メモリ・CPU・lifecycle の実行履歴などは sbx の一覧から取得できないため比較していません。")
@@ -313,11 +636,15 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 }
 
 func baseProto(p string) string {
-	p = strings.ToLower(p)
-	if strings.HasPrefix(p, "udp") {
+	switch p = strings.ToLower(p); p {
+	case "", "tcp", "tcp4", "tcp6":
+		return "tcp"
+	case "udp", "udp4", "udp6":
 		return "udp"
 	}
-	return "tcp"
+	// Anything else (sctp, a typo) is its own transport: tcp does not
+	// confirm it.
+	return p
 }
 
 func isLoopback(ip string) bool {
@@ -332,10 +659,52 @@ func isAll(ip string) bool {
 
 func sameIP(a, b string) bool {
 	if isLoopback(a) && isLoopback(b) {
-		return true
+		return sameFamily(ipFamily(a), ipFamily(b))
 	}
-	return strings.Trim(a, "[]") == strings.Trim(b, "[]")
+	a, b = strings.Trim(a, "[]"), strings.Trim(b, "[]")
+	// Two spellings of one address (2001:0db8::1, 2001:db8::1) are one.
+	if x, err := netip.ParseAddr(a); err == nil {
+		if y, err := netip.ParseAddr(b); err == nil {
+			return x == y
+		}
+	}
+	return a == b
 }
+
+// ipFamily is "4" or "6" for an address literal, and "" for one that
+// does not fix the family (empty, localhost).
+func ipFamily(ip string) string {
+	switch ip = strings.Trim(ip, "[]"); {
+	case ip == "" || ip == "localhost":
+		return ""
+	case strings.Contains(ip, ":"):
+		return "6"
+	}
+	return "4"
+}
+
+// protoFamily is "4" or "6" for tcp4/udp6 and the like, and "" for a
+// protocol bound to both (tcp, udp).
+func protoFamily(p string) string {
+	p = strings.ToLower(p)
+	if strings.HasSuffix(p, "4") || strings.HasSuffix(p, "6") {
+		return p[len(p)-1:]
+	}
+	return ""
+}
+
+// portFamily is the address family a port is bound to: its protocol's
+// (tcp4, udp6), else its address literal's, else "" for both.
+func portFamily(proto, ip string) string {
+	if f := protoFamily(proto); f != "" {
+		return f
+	}
+	return ipFamily(ip)
+}
+
+// sameFamily tells whether two families can meet: an unfixed one meets
+// either.
+func sameFamily(a, b string) bool { return a == "" || b == "" || a == b }
 
 func ipLabel(ip string) string {
 	switch {
@@ -352,21 +721,6 @@ func orDefault(s, d string) string {
 		return d
 	}
 	return s
-}
-
-func portLabel(p Port) string {
-	ip := p.HostIP
-	if ip == "" {
-		ip = "loopback"
-	}
-	if strings.Contains(ip, ":") {
-		ip = "[" + ip + "]"
-	}
-	proto := p.Protocol
-	if proto == "" {
-		proto = "tcp"
-	}
-	return fmt.Sprintf("%s:%d -> sandbox:%d/%s", ip, p.HostPort, p.SandboxPort, proto)
 }
 
 func needsAuth(status string) bool {

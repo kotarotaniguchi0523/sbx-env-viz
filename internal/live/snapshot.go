@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -17,8 +18,11 @@ import (
 type Snapshot struct {
 	// Available is true when `sbx ls --json` answered.
 	Available bool
-	// Problem explains in Japanese why live data is missing or partial.
+	// Problem explains in Japanese why live data is missing or partial;
+	// Detail is sbx's own error text, which may carry paths and is so
+	// left out under strict redaction (see Reason).
 	Problem   string
+	Detail    string
 	Sandboxes []Sandbox
 	MCP       []MCPServer
 	// MCPKnown is true when `sbx mcp ls --json` answered.
@@ -39,12 +43,30 @@ type Sandbox struct {
 	// SecretsKnown is true when `sbx secret ls --sandbox NAME --json`
 	// answered. Only names are read; values are never requested.
 	SecretsKnown bool
+	// Redacted is set on a sandbox shown under strict redaction: its
+	// ports and secret names are drawn as <redacted>.
+	Redacted bool
 }
 
 // Mount is a host directory mounted into a sandbox. sbx ls reports paths
-// only, not whether a mount is read-only.
+// only, not whether a mount is read-only. Path is escaped for display like
+// every value read from sbx; host keeps the path as sbx reported it, only
+// to be matched with declared paths, since escaping is not one-to-one (a
+// tab and a literal \t read the same).
 type Mount struct {
 	Path string
+	host string
+}
+
+// matchPath is the path to compare with a declared one: as sbx reported
+// it, or Path for a Mount built without one.
+//
+//declscope:shared // drift.go and discover.go match declared paths with it
+func (m Mount) matchPath() string {
+	if m.host != "" {
+		return m.host
+	}
+	return m.Path
 }
 
 // Port is a published port.
@@ -53,6 +75,24 @@ type Port struct {
 	HostPort    int
 	SandboxPort int
 	Protocol    string
+}
+
+// Label is the port as a person reads it: loopback for no address, an
+// IPv6 address in brackets, and no transport when sbx gave none (it is
+// not known to be tcp).
+func (p Port) Label() string {
+	ip := p.HostIP
+	if ip == "" {
+		ip = "loopback"
+	}
+	if strings.Contains(ip, ":") && !strings.HasPrefix(ip, "[") {
+		ip = "[" + ip + "]"
+	}
+	label := fmt.Sprintf("%s:%d -> sandbox:%d", ip, p.HostPort, p.SandboxPort)
+	if p.Protocol != "" {
+		label += "/" + p.Protocol
+	}
+	return label
 }
 
 // Rule is one effective network rule.
@@ -97,6 +137,15 @@ func CollectMatched(ctx context.Context, r Runner, d *sbxenv.Declared) Snapshot 
 	return s
 }
 
+// Reason is Problem with sbx's error text, which is left out under strict
+// redaction (mode, where empty means strict), since it can name paths.
+func (s Snapshot) Reason(mode sbxenv.Redaction) string {
+	if s.Detail == "" || mode.Strict() {
+		return s.Problem
+	}
+	return s.Problem + " " + s.Detail
+}
+
 func listSandboxes(ctx context.Context, r Runner) Snapshot {
 	var s Snapshot
 	if r == nil {
@@ -108,12 +157,14 @@ func listSandboxes(ctx context.Context, r Runner) Snapshot {
 		s.Problem = "sbx コマンドが見つからないため、稼働中の sandbox は表示していません（設定ファイルだけを解析しています）。"
 		return s
 	case err != nil:
-		s.Problem = "sbx から sandbox の一覧を取得できませんでした（デーモンが停止している可能性があります）。設定ファイルだけを解析しています: " + clean(err.Error())
+		s.Problem = "sbx から sandbox の一覧を取得できませんでした（デーモンが停止している可能性があります）。設定ファイルだけを解析しています。"
+		s.Detail = clean(err.Error())
 		return s
 	}
 	s.Sandboxes, err = parseList(out)
 	if err != nil {
-		s.Problem = "sbx ls --json の出力を読めませんでした。設定ファイルだけを解析しています: " + clean(err.Error())
+		s.Problem = "sbx ls --json の出力を読めませんでした。設定ファイルだけを解析しています。"
+		s.Detail = clean(err.Error())
 		return s
 	}
 	s.Available = true
@@ -229,7 +280,7 @@ func paths(list []string) []Mount {
 	var out []Mount
 	for _, p := range list {
 		if p != "" {
-			out = append(out, Mount{Path: esc(p)})
+			out = append(out, Mount{Path: esc(p), host: p})
 		}
 	}
 	return out

@@ -50,19 +50,27 @@ type DeclaredName struct {
 	Name   string
 }
 
-// DeclaredMCP is one MCP server; Remote is true for url servers.
+// DeclaredMCP is one MCP server; Remote is true for url servers. Shown is
+// the name as the Items show it (redacted like them), for text a person
+// reads; Name is only for matching.
 type DeclaredMCP struct {
 	ItemID string
 	Name   string
+	Shown  string
 	Remote bool
+	// Skipped marks a command server --skip-host-commands keeps from
+	// running, so its registration says nothing about the declaration.
+	Skipped bool
 }
 
 // DeclaredRule is one network-policy entry of an expanded, selected kit.
+// Bounded marks an @2 entry limited to some methods or paths.
 type DeclaredRule struct {
 	ItemID   string
 	Phase    string
 	Decision string
 	Host     string
+	Bounded  bool
 }
 
 //declscope:shared // finish in analyze.go attaches it to the Plan
@@ -84,18 +92,11 @@ func (rs *resolver) declared() *Declared {
 		}
 	}
 	for _, e := range rs.root.get("additionalWorkspaces").list() {
-		p := e
-		if e.kind == parser.Map {
-			p = e.get("path")
-		}
+		p := workspacePath(e)
 		if p == nil || p.kind != parser.Scalar {
 			continue
 		}
-		target := rs.r.path(e.dstr("target"))
-		if target == "" {
-			target = rs.fmtPath(e.get("path"))
-		}
-		d.Workspaces = append(d.Workspaces, DeclaredMount{ItemID: "additionalWorkspaces[" + target + "]",
+		d.Workspaces = append(d.Workspaces, DeclaredMount{ItemID: rs.itemOf[e],
 			Path: resolveHostPath(p.fileDir, p.val), Target: e.str("target"), ReadOnly: e.str("readOnly") == "true"})
 	}
 	for _, e := range rs.root.get("ports").list() {
@@ -108,24 +109,26 @@ func (rs *resolver) declared() *Declared {
 		}
 		host, _ := strconv.Atoi(e.str("host"))
 		sb, _ := strconv.Atoi(e.str("sandbox"))
-		d.Ports = append(d.Ports, DeclaredPort{Redacted: redacted, ItemID: "ports[" + rs.portKey(e) + "]", HostIP: e.str("hostIP"),
+		d.Ports = append(d.Ports, DeclaredPort{Redacted: redacted, ItemID: rs.itemOf[e], HostIP: e.str("hostIP"),
 			HostPort: host, SandboxPort: sb, Protocol: effectiveProtocol(e)})
 	}
 	for _, k := range rs.root.get("secrets").mapKeys() {
 		d.Secrets = append(d.Secrets, DeclaredName{ItemID: "secrets." + k, Name: k})
 	}
 	for _, e := range rs.root.get("mcp").get("servers").list() {
+		shown := rs.r.text(e.dstr("name"))
 		name := e.str("name")
 		if name == "" {
 			continue
 		}
-		d.MCP = append(d.MCP, DeclaredMCP{ItemID: "mcp.servers[" + rs.r.text(e.dstr("name")) + "]", Name: name, Remote: e.has("url")})
+		d.MCP = append(d.MCP, DeclaredMCP{ItemID: rs.itemOf[e], Name: name, Shown: shown, Remote: e.has("url"),
+			Skipped: e.has("command") && rs.opts.SkipHostCommands})
 	}
 	for _, e := range rs.net.entries {
 		if e.cap.skipped || e.host == nil || e.itemID == "" {
 			continue
 		}
-		d.Network = append(d.Network, DeclaredRule{ItemID: e.itemID, Phase: e.phase, Decision: e.list, Host: strings.ToLower(e.host.val)})
+		d.Network = append(d.Network, DeclaredRule{ItemID: e.itemID, Phase: e.phase, Decision: e.list, Host: strings.ToLower(e.host.val), Bounded: e.bounded()})
 	}
 	return d
 }

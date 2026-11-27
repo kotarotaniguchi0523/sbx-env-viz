@@ -2,6 +2,7 @@ package sbxenv
 
 import (
 	"fmt"
+	"net/netip"
 	"net/url"
 	"strings"
 
@@ -124,7 +125,6 @@ func (rs *resolver) fmtValue(v *vnode) string {
 	return "null"
 }
 
-//declscope:shared // declared.go shows mount targets the way their items do
 func (rs *resolver) fmtPath(v *vnode) string {
 	if v.kind != parser.Scalar {
 		return rs.fmtPlain(v)
@@ -207,6 +207,17 @@ func (rs *resolver) fmtLifecycle(v *vnode) string {
 		return rs.r.command(rs.fmtPlain(v))
 	}
 	return rs.r.command(v.dstr("command"))
+}
+
+// workspacePath is an additionalWorkspaces entry's path: the entry itself
+// when it is a bare path, else its path key (nil when it has none).
+//
+//declscope:shared // declared.go reads the path of each entry it keeps
+func workspacePath(e *vnode) *vnode {
+	if e.kind == parser.Map {
+		return e.get("path")
+	}
+	return e
 }
 
 func (rs *resolver) fmtWorkspaceEntry(v *vnode) string {
@@ -372,11 +383,12 @@ func (rs *resolver) buildWorkspace() {
 	}
 	for _, e := range rs.root.get("additionalWorkspaces").list() {
 		target := rs.r.path(e.dstr("target"))
-		if target == "" {
-			target = rs.fmtPath(e.get("path"))
+		if p := workspacePath(e); target == "" && p != nil {
+			target = rs.fmtPath(p)
 		}
 		id := "additionalWorkspaces[" + target + "]"
 		it := rs.addItem(Item{ID: id, Path: "additionalWorkspaces[]", Section: SectionWorkspace}, e, rs.fmtWorkspaceEntry)
+		rs.itemOf[e] = it.ID
 		access := "rw"
 		it.Risk, it.Badges = SeverityMedium, []string{BadgeRW}
 		it.RiskReason = "追加のフォルダを sandbox が直接読み書きします。"
@@ -559,6 +571,7 @@ func (rs *resolver) buildMCP() {
 	for _, e := range rs.root.get("mcp").get("servers").list() {
 		name := rs.r.text(e.dstr("name"))
 		it := rs.addItem(Item{ID: "mcp.servers[" + name + "]", Path: "mcp.servers[]", Section: SectionMCP}, e, rs.fmtMCP)
+		rs.itemOf[e] = it.ID
 		if e.has("command") {
 			it.Risk = SeverityHigh
 			it.RiskReason = "MCP サーバーをあなたの PC の上で、あなたの権限で動かします。"
@@ -583,18 +596,32 @@ func (rs *resolver) buildMCP() {
 	}
 }
 
+// PortExposure rates a port by the host address it is published on: every
+// interface high, a specific network address medium, loopback (all of
+// 127.0.0.0/8, ::1, localhost, or none given) low. A declared port and a
+// live one sbx reports are rated alike.
+func PortExposure(hostIP string) Severity {
+	ip := strings.Trim(hostIP, "[]")
+	switch a, err := netip.ParseAddr(ip); {
+	case ip == "0.0.0.0" || ip == "::":
+		return SeverityHigh
+	case ip == "" || ip == "localhost" || err == nil && a.IsLoopback():
+		return SeverityLow
+	}
+	return SeverityMedium
+}
+
 func (rs *resolver) buildPorts() {
 	for _, e := range rs.root.get("ports").list() {
 		it := rs.addItem(Item{ID: "ports[" + rs.portKey(e) + "]", Path: "ports[]", Section: SectionPorts, Risk: SeverityLow,
 			RiskReason: "あなたの PC の中からだけ接続できるポートです。"}, e, rs.fmtPort)
-		ip := e.str("hostIP")
+		rs.itemOf[e] = it.ID
 		reason := "publishes a sandbox port on the host loopback interface"
-		if ip == "0.0.0.0" || ip == "::" || ip == "[::]" {
-			it.Risk = SeverityHigh
+		switch it.Risk = PortExposure(e.str("hostIP")); it.Risk {
+		case SeverityHigh:
 			it.RiskReason = "LAN など外部のネットワークから、このポートに接続できます。"
 			reason = "publishes a sandbox port on every host interface, reachable from the network"
-		} else if ip != "" && ip != "127.0.0.1" && ip != "::1" {
-			it.Risk = SeverityMedium
+		case SeverityMedium:
 			it.RiskReason = "特定のネットワークアドレスに公開されるため、そのネットワーク上の他の機械から接続できる場合があります。"
 			reason = "publishes a sandbox port on a non-loopback host address"
 		}
@@ -851,9 +878,9 @@ func (rs *resolver) buildNetEntry(c *capState, e *netEntry) {
 	shown := rs.r.text(e.host.disp)
 	value := e.phase + " " + e.list + " " + shown
 	if e.bounded() {
-		value += " [" + strings.Join(e.methods, ",") + "]"
+		value += " [" + rs.r.text(strings.Join(e.methods, ",")) + "]"
 		if len(e.paths) > 0 {
-			value += " " + strings.Join(e.paths, " ")
+			value += " " + rs.r.text(strings.Join(e.paths, " "))
 		}
 	}
 	risk, badges := SeverityLow, []string{BadgeNet}
@@ -974,8 +1001,6 @@ func phaseReason(ph string) string {
 
 // portKey is the display form of a port's identity: sandbox port and
 // effective protocol.
-//
-//declscope:shared // declared.go names a port by the same key as its item
 func (rs *resolver) portKey(v *vnode) string {
 	proto := strings.ToLower(v.dstr("protocol"))
 	if proto == "" {

@@ -1,32 +1,50 @@
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ sbxray   1:Overview   2:Risk   3:Items   4:Sources                                                                               │
-│ [Host実行 2]   [Host永続 4]   [RWマウント 2]   [外への許可 3]   [エラー 0]   [警告 5]                                            │
-│宣言の静的解析（稼働中 sandbox の状態ではない） env-args: workspace=./web-app (default), channel=stable (default)                 │
-│全体の構成をカードで表示。項目を選んで Enter（またはクリック）で詳細へ移動します                                                  │
-│╭───────────────────────────────────────────────────────────────╮╭───────────────────────────────────────────────────────────────╮│
-││▍基本構成                                                      ││▍適用される Kits                                               ││
-││ ▶ 名前: web-app                                               ││ • playwright: リモートの Kit（中身は 4: Sources）             ││
-││ • エージェント: claude                                        ││ • egress: 中身を確認済み                                      ││
-││ • [!] テンプレート: ghcr.io/example/common-claude:dev         ││ • history: 中身を確認済み                                     ││
-││ • イメージの取得: always                                      │╰───────────────────────────────────────────────────────────────╯│
-││ • メモリ: 12g                                                 │╭───────────────────────────────────────────────────────────────╮│
-││ • CPU: 4                                                      ││▍ワークスペース・マウント                                      ││
-││ • 共有スキル: off                                             ││ • [RW] ワークスペース（読み書き）: ~/proj/web-app             ││
-││ entrypoint: （未設定・sbx の既定値）                          ││ • [!][RW][PERSIST] Kit が共有するフォルダ: /home/agent/.histo…││
-││ cmd: （未設定・sbx の既定値）                                 │╰───────────────────────────────────────────────────────────────╯│
-│╰───────────────────────────────────────────────────────────────╯╭───────────────────────────────────────────────────────────────╮│
-│╭───────────────────────────────────────────────────────────────╮│▍MCP & Network                                                 ││
-││▍資格情報・SSH・ポート・ホスト実行                             ││ • [PERSIST] MCP docs: リモート（URL に接続）                  ││
-││ • [CRED] 秘密 example: ref: op://Private/Example/credential   ││ • [NET] 通信の許可（準備時）: registry.npmjs.org              ││
-││ • [CRED][HOST][OPAQUE] 秘密 github: command: gh auth token    ││ • [NET] 通信の許可（実行中）: api.internal.example.com        ││
-││ • [!][CRED][PERSIST] 使用の承認 example.apiKey: api.example.c…││ • [NET] 通信の許可（実行中）: *.cdn.example.com               ││
-││ • [CRED] Kit の認証情報: service=example phase=runtime env=EX…││ • 通信の禁止（実行中）: telemetry.example.com                 ││
-││ • [!][SSH][HOST] SSH エージェント: phase=runtime unrestricted │╰───────────────────────────────────────────────────────────────╯│
-││ • Git の名前・メール: user.name / user.email from the host    │                                                                 │
-││ • [!] ポート公開: 0.0.0.0:4000 -> sandbox:3000/tcp4           │                                                                 │
-││ • [HOST][OPAQUE] PC 上で実行: ./hooks/load-secrets.sh         │                                                                 │
-││ • [OPAQUE] sandbox 内で実行: sh -c ln -sf /home/agent/.histor…│                                                                 │
-│╰───────────────────────────────────────────────────────────────╯                                                                 │
+│ sbxray  web-app                                                                1 概要   2 リスク 24   3 設定 34   4 ファイル 9   │
+│ 宣言 2 ファイル・Kit 2 を静的に解析（稼働中の状態ではありません）                                                                │
+│                                                                                                                                  │
+│ ✗ 最重要・高 10    ! 中 7    印なしでも問題がないとは限りません                                                                  │
+│                                                                                                                                  │
+│    項目                宣言（sbxenv.yaml）                                                                                       │
+│ 基本                                                                                                                             │
+│    名前                web-app                                                                                                   │
+│    エージェント        claude                                                                                                    │
+│    テンプレート        ghcr.io/example/common-claude:dev                                                                         │
+│    イメージの取得      always                                                                                                    │
+│    リソース            メモリ 12g、CPU 4                                                                                         │
+│    共有スキル          off                                                                                                       │
+│                                                                                                                                  │
+│ Kit                                                                                                                              │
+│    playwright          リモート（中身は読んでいない。理由は「4 ファイル」で確認）                                                │
+│    egress              展開済み                                                                                                  │
+│    history             展開済み                                                                                                  │
+│                                                                                                                                  │
+│ フォルダの共有                                                                                                                   │
+│ !  ワークスペース      ~/proj/web-app（読み書き）                                                                                │
+│ ✗  Kit の共有          /home/agent/.history（削除後も残る）                                                                      │
+│                                                                                                                                  │
+│ ポート公開                                                                                                                       │
+│ ✗  ポート              0.0.0.0:4000 -> sandbox:3000/tcp4                                                                         │
+│                                                                                                                                  │
+│ 通信                                                                                                                             │
+│ !  MCP docs            リモート（URL に接続）                                                                                    │
+│    許可（準備時）      1 件  registry.npmjs.org                                                                                  │
+│ !  許可（実行中）      2 件  api.internal.example.com、*.cdn.example.com                                                         │
+│    禁止（実行中）      1 件  telemetry.example.com                                                                               │
+│                                                                                                                                  │
+│ 資格情報                                                                                                                         │
+│ !  秘密 example        ref: op://Private/Example/credential                                                                      │
+│ ✗  秘密 github         command: gh auth token                                                                                    │
+│ !  使用の承認 examp..  api.example.com                                                                                           │
+│ !  Kit の認証情報      service=example phase=runtime env=EXAMPLE_TOKEN inject=api.internal.example.com                           │
+│ ✗  SSH エージェント    phase=runtime unrestricted                                                                                │
+│    Git の名前・メール  user.name / user.email from the host                                                                      │
+│                                                                                                                                  │
+│ コマンドの実行                                                                                                                   │
+│ ✗  PC 上で実行         ./hooks/load-secrets.sh                                                                                   │
+│    sandbox 内で実行    sh -c ln -sf /home/agent/.history ${{ kit.env.HOME }}/.hist                                               │
+│                                                                                                                                  │
+│ その他の危険度のある設定                                                                                                         │
+│ !  Kit egress          io.example/telemetry@2                                                                                    │
 │                                                                                                                                  │
 │                                                                                                                                  │
 │                                                                                                                                  │
@@ -50,23 +68,5 @@
 │                                                                                                                                  │
 │                                                                                                                                  │
 │                                                                                                                                  │
-│                                                                                                                                  │
-│                                                                                                                                  │
-│                                                                                                                                  │
-│                                                                                                                                  │
-│                                                                                                                                  │
-│                                                                                                                                  │
-│                                                                                                                                  │
-│                                                                                                                                  │
-│                                                                                                                                  │
-│                                                                                                                                  │
-│                                                                                                                                  │
-│                                                                                                                                  │
-│                                                                                                                                  │
-│                                                                                                                                  │
-│                                                                                                                                  │
-│                                                                                                                                  │
-│                                                                                                                                  │
-│                                                                                                                                  │
-│ q  終了  ?  ヘルプ  1-4  画面  j/k  移動  Enter  詳細  h/l  ペイン  g  グループ  f  絞り込み  /  検索  マウス: クリックで選択・… │
+│ j/k 移動   enter 詳細   / 設定を検索   ? ヘルプ   q 終了                                                                         │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

@@ -2,10 +2,12 @@ package live_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -53,6 +55,8 @@ func fixture(t *testing.T, name string, vars map[string]string) string {
 type world struct {
 	dir, ws, other string
 	sbx            *fakeSbx
+	// strict resolves the plans with strict redaction (--redact, --json).
+	strict bool
 }
 
 func newWorld(t *testing.T, env string) *world {
@@ -84,17 +88,24 @@ func newWorld(t *testing.T, env string) *world {
 	}}
 }
 
+func (w *world) redaction() sbxenv.Redaction {
+	if w.strict {
+		return sbxenv.RedactStrict
+	}
+	return sbxenv.RedactHome
+}
+
 func (w *world) resolve(g live.Group) (*sbxenv.Plan, error) {
 	res, err := loader.Load(loader.Request{Paths: g.Paths, WorkDir: g.Dir, HomeDir: filepath.Join(w.dir, "no-home")})
 	if err != nil {
 		return nil, err
 	}
-	return sbxenv.Resolve(res.Layers, sbxenv.ResolveOptions{ProjectDir: res.ProjectDir, HomeDir: filepath.Join(w.dir, "no-home"), Kits: loader.FSKits{}, Redaction: sbxenv.RedactHome})
+	return sbxenv.Resolve(res.Layers, sbxenv.ResolveOptions{ProjectDir: res.ProjectDir, HomeDir: filepath.Join(w.dir, "no-home"), Kits: loader.FSKits{}, Redaction: w.redaction()})
 }
 
 func (w *world) discover(t *testing.T, r live.Runner) []live.Target {
 	t.Helper()
-	targets, _ := live.Discover(context.Background(), live.DiscoverRequest{WorkDir: w.dir, Runner: r, Resolve: w.resolve})
+	targets, _ := live.Discover(context.Background(), live.DiscoverRequest{WorkDir: w.dir, Runner: r, Resolve: w.resolve, Redaction: w.redaction()})
 	return targets
 }
 
@@ -170,8 +181,13 @@ func TestCollectFallsBackWhenTheDaemonFails(t *testing.T) {
 	s := live.Collect(context.Background(), r)
 
 	// Assert
-	if s.Available || !strings.Contains(s.Problem, "デーモンが停止") || !strings.Contains(s.Problem, "cannot connect") {
+	if s.Available || !strings.Contains(s.Problem, "デーモンが停止") || !strings.Contains(s.Reason(sbxenv.RedactHome), "cannot connect") {
 		t.Errorf("snapshot = %+v", s)
+	}
+	// sbx's own text can name paths (a socket under a project), so strict
+	// redaction leaves it out.
+	if strings.Contains(s.Reason(sbxenv.RedactStrict), "cannot connect") {
+		t.Errorf("strict reason = %q", s.Reason(sbxenv.RedactStrict))
 	}
 }
 
@@ -464,6 +480,155 @@ func TestDriftWorkspaceMissingAndExtra(t *testing.T) {
 	}
 }
 
+func TestStrictRedactionHidesAnUndeclaredWorkspacePath(t *testing.T) {
+	t.Parallel()
+	// Arrange: under --redact, sbx mounts a directory the files do not
+	// declare; its path can carry values the plan redacts.
+	env := strings.Replace(matching, "workspace: ./web-app\n", "", 1)
+
+	// Act
+	c := compare(t, env, func(w *world) { w.strict = true })
+
+	// Assert
+	d, ok := drift(c, "宣言にないフォルダ")
+	if !ok || !strings.HasPrefix(d.Actual, "<redacted>") || strings.Contains(d.Actual, "web-app") {
+		t.Errorf("undeclared workspace under strict redaction: %+v (%v)", d, c.Drifts)
+	}
+}
+
+func TestStrictRedactionHidesTheMountsOfAnUndeclaredSandbox(t *testing.T) {
+	t.Parallel()
+	for _, strict := range []bool{false, true} {
+		// Arrange: no file declares the sandbox "orphan", so its Overview
+		// is drawn from sbx's own paths.
+		w := newWorld(t, matching)
+		w.strict = strict
+
+		// Act
+		// Under strict redaction its name is hidden too, numbered.
+		name := "orphan"
+		if strict {
+			name = "<redacted>-1"
+		}
+		orphan := find(t, w.discover(t, w.sbx), name)
+
+		// Assert
+		if len(orphan.Sandbox.Workspaces) == 0 {
+			t.Fatalf("the fixture's orphan mounts a workspace: %+v", orphan.Sandbox)
+		}
+		for _, m := range append(orphan.Sandbox.Workspaces, orphan.Sandbox.Mounts...) {
+			if hidden := m.Path == "<redacted>"; hidden != strict {
+				t.Errorf("strict=%v: path %q", strict, m.Path)
+			}
+		}
+	}
+}
+
+func TestCompareConfirmsOnlyTheItemsItHeldAgainstSbx(t *testing.T) {
+	t.Parallel()
+	// Arrange: a clone workspace keeps no mount path to compare, and sbx
+	// policy ls lists the rules in force, not the install-time ones.
+	env := strings.Replace(matching, "workspace: ./web-app", "workspace: {path: ./web-app, clone: true}", 1) + "kits:\n  - ./kits/net\n"
+	kit := "schemaVersion: \"3\"\nkind: mixin\nname: net\ncapabilities:\n  - type: com.docker.sandbox/network-policy@1\n    config:\n      install:\n        allow: [build.example.com]\n      runtime:\n        allow: [api.example.com]\n"
+
+	// Act
+	c := compare(t, env, func(w *world) {
+		if err := os.MkdirAll(filepath.Join(w.dir, "kits", "net"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(w.dir, "kits", "net", "net.yaml"), []byte(kit), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	// Assert
+	got := strings.Join(c.Compared, " ")
+	for _, want := range []string{"agent", "ports[", "secrets.github", "mcp.servers[docs]", "runtime.allow/api.example.com"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%s was compared: %v", want, c.Compared)
+		}
+	}
+	if !slices.Contains(c.Compared, "name") {
+		t.Errorf("the name the sandbox was found by was compared: %v", c.Compared)
+	}
+	for _, not := range []string{"workspace", "build.example.com"} {
+		if strings.Contains(got, not) {
+			t.Errorf("%s was not held against sbx's output: %v", not, c.Compared)
+		}
+	}
+}
+
+func TestStrictRedactionKeepsArgumentNamedMCPServersApart(t *testing.T) {
+	t.Parallel()
+	// Arrange: two servers named by arguments; under --redact both show
+	// as <redacted>, and only the second (jira) needs authorization.
+	env := "schemaVersion: \"1\"\nname: web-app\nagent: claude\nworkspace: ./web-app\nargs:\n  a: {default: docs}\n  b: {default: jira}\n" +
+		"mcp:\n  servers:\n    - {name: \"${{ env.args.a }}\", url: \"https://a.example.com\"}\n    - {name: \"${{ env.args.b }}\", url: \"https://b.example.com\"}\n"
+
+	// Act
+	c := compare(t, env, func(w *world) { w.strict = true })
+
+	// Assert: regression; both servers had one ID, so the drift landed on
+	// the first, and its fix printed the hidden name.
+	d, ok := drift(c, "使える状態ではない")
+	if !ok || d.ItemID != "mcp.servers[<redacted>]#2" {
+		t.Errorf("drift = %+v (%v)", d, c.Drifts)
+	}
+	if strings.Contains(d.Fix, "jira") || !strings.Contains(d.Fix, "sbx mcp auth <redacted>") {
+		t.Errorf("fix shows the redacted name: %q", d.Fix)
+	}
+	for _, id := range []string{"mcp.servers[<redacted>]", "mcp.servers[<redacted>]#2"} {
+		if !slices.Contains(c.Compared, id) {
+			t.Errorf("%s was compared: %v", id, c.Compared)
+		}
+	}
+}
+
+func TestStrictRedactionKeepsArgumentPortsApart(t *testing.T) {
+	t.Parallel()
+	// Arrange: two ports set by arguments both show as <redacted>/tcp4;
+	// sbx publishes only the first.
+	env := "schemaVersion: \"1\"\nname: web-app\nagent: claude\nworkspace: ./web-app\nargs:\n  a: {default: \"3000\"}\n  b: {default: \"3001\"}\n" +
+		"ports:\n  - {sandbox: \"${{ env.args.a }}\", host: 4000}\n  - {sandbox: \"${{ env.args.b }}\", host: 4001}\n"
+
+	// Act
+	c := compare(t, env, func(w *world) { w.strict = true })
+
+	// Assert: the drift is the second port's, under its own item ID.
+	d, ok := drift(c, "宣言したポートが公開されていない")
+	if !ok || d.ItemID != "ports[<redacted>/tcp4]#2" {
+		t.Errorf("drift = %+v (%v)", d, c.Drifts)
+	}
+}
+
+func TestDriftMCPOfAnotherKind(t *testing.T) {
+	t.Parallel()
+	// Arrange: docs is declared as a command server, but sbx has a remote
+	// server of that name.
+	env := strings.Replace(matching, `{name: docs, url: "https://mcp.example.com/sse"}`, `{name: docs, command: "docs-mcp"}`, 1)
+
+	// Act
+	c := compare(t, env, nil)
+
+	// Assert
+	if d, ok := drift(c, "宣言と違う種類"); !ok || d.Actual != "種類: remote（sse）" {
+		t.Errorf("drift = %+v (%v)", d, c.Drifts)
+	}
+}
+
+func TestMCPWithoutAKindIsNotConfirmed(t *testing.T) {
+	t.Parallel()
+	// Act: sbx lists docs but not what kind of server it is.
+	c := compare(t, matching, func(w *world) {
+		w.sbx.out["mcp ls --json"] = `[{"name": "docs", "status": "ready"}]`
+	})
+
+	// Assert: registered, but url versus command is unknown.
+	if slices.Contains(c.Compared, "mcp.servers[docs]") || len(c.Drifts) > 1 {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
 func TestReadOnlyIsNotComparedBecauseSbxDoesNotReportIt(t *testing.T) {
 	t.Parallel()
 	// Arrange: the declaration wants a read-only mount; sbx ls lists paths
@@ -639,5 +804,1339 @@ func BenchmarkCompareMissingPorts(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+// --- hand-built comparisons --------------------------------------------------
+
+// strictPlan is a strictly redacted plan with the given declaration and
+// items, as Resolve would leave it.
+func strictPlan(d *sbxenv.Declared, items ...sbxenv.Item) *sbxenv.Plan {
+	return &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactStrict}, Declared: d, Items: items}
+}
+
+func TestStrictRedactionHidesALivePortThatMayCarryAnArgument(t *testing.T) {
+	t.Parallel()
+	// Arrange: the declared UDP port comes from an argument (3000); sbx
+	// publishes TCP 3000, which matches nothing declared.
+	p := strictPlan(&sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "ports[<redacted>/udp]", SandboxPort: 3000, HostPort: 4000, Protocol: "udp", Redacted: true}}},
+		sbxenv.Item{ID: "ports[<redacted>/udp]", Value: "<redacted>"})
+	sb := &live.Sandbox{Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"}}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the extra port printed the hidden number.
+	d, ok := drift(&c, "宣言にないポート")
+	if !ok || d.Actual != "<redacted>" {
+		t.Errorf("drift = %+v (%v)", d, c.Drifts)
+	}
+}
+
+func TestStrictRedactionHidesALiveRuleForAHiddenHost(t *testing.T) {
+	t.Parallel()
+	// Arrange: a Kit denies a host set by an argument; someone allowed the
+	// same host by hand.
+	p := strictPlan(&sbxenv.Declared{Network: []sbxenv.DeclaredRule{{ItemID: "r1", Phase: "runtime", Decision: "deny", Host: "acme.example.com"}}},
+		sbxenv.Item{ID: "r1", Path: "cap:network-policy@1", Value: "runtime deny <redacted>.example.com"})
+	sb := &live.Sandbox{RulesKnown: true, Rules: []live.Rule{
+		{Decision: "allow", Resource: "acme.example.com", CreatedVia: "added"},
+		{Decision: "allow", Resource: "other.example.com", CreatedVia: "added"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; 許可: acme.example.com revealed the argument.
+	// A live host may name a hidden one in any form, so all are hidden.
+	var actuals []string
+	for _, d := range c.Drifts {
+		actuals = append(actuals, d.Actual)
+	}
+	if got := strings.Join(actuals, " "); got != "許可: <redacted> 許可: <redacted>" {
+		t.Errorf("drifts = %v", actuals)
+	}
+}
+
+func TestAnIPv4ListenerDoesNotConfirmAnIPv6Port(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "ports[3000/tcp6]", HostIP: "::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"}}}}
+	for _, lp := range []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"},
+		{HostIP: "::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp4"},
+	} {
+		// Act
+		c := live.Compare(p, &live.Sandbox{Ports: []live.Port{lp}}, &live.Snapshot{}, nil)
+
+		// Assert: regression; both loopbacks counted as one address.
+		if _, ok := drift(&c, "ポート"); !ok {
+			t.Errorf("%+v matched a tcp6 ::1 declaration: %v", lp, c.Drifts)
+		}
+	}
+}
+
+func TestABoundedRuleIsNotConfirmedByItsHost(t *testing.T) {
+	t.Parallel()
+	// Arrange: an @2 allow limited to GET /limited/**; sbx lists the host.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Network: []sbxenv.DeclaredRule{
+		{ItemID: "bounded", Phase: "runtime", Decision: "allow", Host: "api.example.com", Bounded: true},
+		{ItemID: "plain", Phase: "runtime", Decision: "allow", Host: "cdn.example.com"},
+	}}}
+	sb := &live.Sandbox{RulesKnown: true, Rules: []live.Rule{
+		{Decision: "allow", Resource: "api.example.com", Origin: "kit"},
+		{Decision: "allow", Resource: "cdn.example.com", Origin: "kit"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the host alone read as the whole rule.
+	if slices.Contains(c.Compared, "bounded") || !slices.Contains(c.Compared, "plain") || len(c.Drifts) > 0 {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
+func TestStrictRedactionHidesAHiddenHostWithAPort(t *testing.T) {
+	t.Parallel()
+	// Arrange: the manual rule names the hidden host with a port.
+	p := strictPlan(&sbxenv.Declared{Network: []sbxenv.DeclaredRule{{ItemID: "r1", Phase: "runtime", Decision: "deny", Host: "private.example"}}},
+		sbxenv.Item{ID: "r1", Path: "cap:network-policy@1", Value: "runtime deny <redacted>"})
+	sb := &live.Sandbox{RulesKnown: true, Rules: []live.Rule{{Decision: "allow", Resource: "private.example:443", CreatedVia: "added"}}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the whole resource was looked up, port and all.
+	if d, ok := drift(&c, "宣言にない通信許可"); !ok || d.Actual != "許可: <redacted>" {
+		t.Errorf("drift = %+v (%v)", d, c.Drifts)
+	}
+}
+
+func TestPortsPairByTheFamilyOfTheirAddress(t *testing.T) {
+	t.Parallel()
+	// Arrange: sbx reports both listeners as tcp; the address tells them
+	// apart. The IPv6 one comes first.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "v4", HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp4"},
+		{ItemID: "v6", HostIP: "::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"},
+		{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; each declaration took the other's listener.
+	if len(c.Drifts) > 0 || !slices.Contains(c.Compared, "v4") || !slices.Contains(c.Compared, "v6") {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+
+	// Act / Assert: a default tcp4 port is not confirmed by an IPv6-only listener.
+	p.Declared.Ports = []sbxenv.DeclaredPort{{ItemID: "v4", SandboxPort: 3000, Protocol: "tcp4"}}
+	c = live.Compare(p, &live.Sandbox{Ports: sb.Ports[:1]}, &live.Snapshot{}, nil)
+	if _, ok := drift(&c, "宣言したポートが公開されていない"); !ok {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestAFixedHostPortIsNotConfirmedWithoutOne(t *testing.T) {
+	t.Parallel()
+	// Arrange: sbx gives no host port for the sandbox port. A tcp4 port is
+	// also held back by the row's unknown family; a tcp one only by the
+	// missing number.
+	for _, proto := range []string{"tcp4", "tcp"} {
+		p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "p", HostPort: 8080, SandboxPort: 3000, Protocol: proto}}}}
+
+		// Act
+		c := live.Compare(p, &live.Sandbox{Ports: []live.Port{{SandboxPort: 3000, Protocol: "tcp"}}}, &live.Snapshot{}, nil)
+
+		// Assert: regression; the missing number read as a match.
+		if slices.Contains(c.Compared, "p") || len(c.Drifts) > 0 {
+			t.Errorf("%s: compared %v, drifts %v", proto, c.Compared, c.Drifts)
+		}
+	}
+}
+
+func TestABoundedRuleDoesNotHideAManualRuleForItsHost(t *testing.T) {
+	t.Parallel()
+	// Arrange: the Kit allows GET /health only; someone allowed the whole host.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Network: []sbxenv.DeclaredRule{
+		{ItemID: "bounded", Phase: "runtime", Decision: "allow", Host: "api.example.com", Bounded: true},
+	}}}
+	sb := &live.Sandbox{RulesKnown: true, Rules: []live.Rule{
+		{Decision: "allow", Resource: "api.example.com", Origin: "kit"},
+		{Decision: "allow", Resource: "api.example.com", CreatedVia: "added"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the bounded declaration covered the manual rule.
+	if d, ok := drift(&c, "宣言にない通信許可"); !ok || d.Actual != "許可: api.example.com" {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestStrictRedactionHidesAHiddenHostOnAnotherPort(t *testing.T) {
+	t.Parallel()
+	// Arrange: the hidden host is declared on 443; the manual rule uses 8443.
+	p := strictPlan(&sbxenv.Declared{Network: []sbxenv.DeclaredRule{{ItemID: "r1", Phase: "runtime", Decision: "deny", Host: "private.example:443"}}},
+		sbxenv.Item{ID: "r1", Path: "cap:network-policy@1", Value: "runtime deny <redacted>:443"})
+	sb := &live.Sandbox{RulesKnown: true, Rules: []live.Rule{{Decision: "allow", Resource: "private.example:8443", CreatedVia: "added"}}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; only the declared host:port was looked up.
+	if d, ok := drift(&c, "宣言にない通信許可"); !ok || d.Actual != "許可: <redacted>" {
+		t.Errorf("drift = %+v (%v)", d, c.Drifts)
+	}
+}
+
+func TestPortsPairByHostPortWhateverTheOrder(t *testing.T) {
+	t.Parallel()
+	// Arrange: one sandbox port declared twice, on host ports 4000 and 5000.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "a", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+		{ItemID: "b", HostPort: 5000, SandboxPort: 80, Protocol: "tcp4"},
+	}}}
+	listeners := []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp"},
+		{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+	}
+	for _, order := range [][]live.Port{listeners, {listeners[1], listeners[0]}} {
+		// Act
+		c := live.Compare(p, &live.Sandbox{Ports: order}, &live.Snapshot{}, nil)
+
+		// Assert: regression; the first compatible listener was taken.
+		if len(c.Drifts) > 0 {
+			t.Errorf("order %v: drifts %v", order, c.Drifts)
+		}
+	}
+}
+
+func TestAnIPv6PortIsNotConfirmedWithoutALiveFamily(t *testing.T) {
+	t.Parallel()
+	// Arrange: sbx reports tcp with no address.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "v6", HostIP: "::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"}}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Ports: []live.Port{{HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"}}}, &live.Snapshot{}, nil)
+
+	// Assert: regression; nothing showed the listener is IPv6.
+	if slices.Contains(c.Compared, "v6") || len(c.Drifts) > 0 {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
+func TestStrictRedactionHidesLiveHostsBesideAWildcardOrSkippedRule(t *testing.T) {
+	t.Parallel()
+	for name, it := range map[string]sbxenv.Item{
+		// *.${{ kit.args.host }}.example.com, active.
+		"wildcard": {ID: "w", Path: "cap:network-policy@1", Value: "runtime allow *.<redacted>.example.com"},
+		// A rule of an optional group whose condition fails: Declared
+		// leaves it out, but its host is hidden all the same.
+		"skipped": {ID: "s", Path: "cap:network-policy@1", Value: "runtime allow <redacted>.example.com", Badges: []string{sbxenv.BadgeSkip}},
+	} {
+		// Arrange
+		p := strictPlan(&sbxenv.Declared{}, it)
+		sb := &live.Sandbox{RulesKnown: true, Rules: []live.Rule{{Decision: "allow", Resource: "api.acme.example.com", CreatedVia: "approval"}}}
+
+		// Act
+		c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+		// Assert: regression; the exact-host lookup missed both.
+		if d, ok := drift(&c, "宣言にない通信許可"); !ok || d.Actual != "許可: <redacted>" {
+			t.Errorf("%s: drift = %+v (%v)", name, d, c.Drifts)
+		}
+	}
+}
+
+func TestPortsPairByHostPortWhenOneListenerIsMissing(t *testing.T) {
+	t.Parallel()
+	// Arrange: 4000 -> 80/tcp and 5000 -> 80/tcp4; only 5000 is published.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "a", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+		{ItemID: "b", HostPort: 5000, SandboxPort: 80, Protocol: "tcp4"},
+	}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp"}}}, &live.Snapshot{}, nil)
+
+	// Assert: regression; a took b's listener as a fallback, so a "changed
+	// to 5000" and b went missing.
+	if len(c.Drifts) != 1 || c.Drifts[0].ItemID != "a" || c.Drifts[0].Title != "宣言したポートが公開されていない" {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestStrictRedactionHidesALiveNumberPairedWithALiteralPort(t *testing.T) {
+	t.Parallel()
+	// Arrange: 4000 -> 3000 is literal, <redacted> -> 3001 comes from an
+	// argument (54321); sbx reports only 54321 -> 3000.
+	p := strictPlan(&sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "lit", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp4"},
+		{ItemID: "arg", HostPort: 54321, SandboxPort: 3001, Protocol: "tcp4", Redacted: true},
+	}}, sbxenv.Item{ID: "lit", Value: "127.0.0.1:4000 -> sandbox:3000/tcp4"}, sbxenv.Item{ID: "arg", Value: "<redacted>"})
+	sb := &live.Sandbox{Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 54321, SandboxPort: 3000, Protocol: "tcp"}}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the literal port's drift printed 54321.
+	for _, d := range c.Drifts {
+		if strings.Contains(d.Title+d.Actual, "54321") {
+			t.Errorf("drift shows the hidden number: %+v", d)
+		}
+	}
+	if _, ok := drift(&c, "ポートの公開のしかたが宣言と違う"); !ok {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestAPortThatFixesItsFamilyPairsBeforeANeutralOne(t *testing.T) {
+	t.Parallel()
+	// Arrange: 3000/tcp and 3000/tcp4, both with ephemeral host ports;
+	// sbx lists the IPv4 listener before the IPv6 one.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "any", SandboxPort: 3000, Protocol: "tcp"},
+		{ItemID: "v4", SandboxPort: 3000, Protocol: "tcp4"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 50001, SandboxPort: 3000, Protocol: "tcp"},
+		{HostIP: "::1", HostPort: 50002, SandboxPort: 3000, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; tcp took the IPv4 listener, leaving tcp4 none.
+	if len(c.Drifts) > 0 {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestPortsSharingAHostPortPairByFamily(t *testing.T) {
+	t.Parallel()
+	// Arrange: 80/tcp and 80/tcp4 both on host port 4000; sbx lists the
+	// IPv4 listener first.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "any", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+		{ItemID: "v4", HostPort: 4000, SandboxPort: 80, Protocol: "tcp4"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+		{HostIP: "::1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the exact pass let tcp take the IPv4 listener.
+	if len(c.Drifts) > 0 {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestPortsPairByAddressBeforeOrder(t *testing.T) {
+	t.Parallel()
+	// Arrange: 3000 on 127.0.0.1 (tcp4) and on 0.0.0.0 (tcp), both with
+	// ephemeral host ports; sbx lists the wildcard listener first.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "lo", HostIP: "127.0.0.1", SandboxPort: 3000, Protocol: "tcp4"},
+		{ItemID: "all", HostIP: "0.0.0.0", SandboxPort: 3000, Protocol: "tcp"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "0.0.0.0", HostPort: 50001, SandboxPort: 3000, Protocol: "tcp"},
+		{HostIP: "127.0.0.1", HostPort: 50002, SandboxPort: 3000, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the loopback port took the wildcard listener
+	// and read as exposed to every network.
+	if len(c.Drifts) > 0 {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestStrictRedactionHidesAnAgentNamedByAnArgument(t *testing.T) {
+	t.Parallel()
+	// Arrange: agent ${{ env.args.tenant }}-v2 (tenant=canary); sbx runs canary-v1.
+	p := strictPlan(&sbxenv.Declared{Agent: "canary-v2"}, sbxenv.Item{ID: "agent", Path: "agent", Value: "<redacted>-v2"})
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Agent: "canary-v1"}, &live.Snapshot{}, nil)
+
+	// Assert: regression; 実体 printed canary-v1.
+	if d, ok := drift(&c, "違うエージェント"); !ok || d.Actual != "<redacted>" {
+		t.Errorf("drift = %+v (%v)", d, c.Drifts)
+	}
+}
+
+func TestAFamilyPortPrefersARowShowingItsFamily(t *testing.T) {
+	t.Parallel()
+	// Arrange: 80/tcp4 and 80/tcp6, ephemeral; sbx lists a row with no
+	// address before one on 127.0.0.1.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "v4", SandboxPort: 80, Protocol: "tcp4"},
+		{ItemID: "v6", SandboxPort: 80, Protocol: "tcp6"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostPort: 50001, SandboxPort: 80, Protocol: "tcp"},
+		{HostIP: "127.0.0.1", HostPort: 50002, SandboxPort: 80, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; tcp4 took the row of unknown family.
+	if len(c.Drifts) > 0 || !slices.Contains(c.Compared, "v4") {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
+func TestWorkspacesMatchByThePathSbxReported(t *testing.T) {
+	t.Parallel()
+	// Arrange: one folder named with a tab, one with a literal \t; sbx
+	// mounts only the first. The snapshot escapes both alike for display.
+	// Neither exists, under a fresh directory, so no alias can join them.
+	dir := t.TempDir()
+	r := &fakeSbx{out: map[string]string{
+		"ls --json": `[{"name": "web", "status": "running", "workspaces": [` + jsonString(t, dir+"/a\tb") + `]}]`, "policy ls web --json": `{"rules": []}`,
+		"secret ls --sandbox web --json": `{"secrets": []}`, "mcp ls --json": "[]",
+	}}
+	snap := live.Collect(context.Background(), r)
+	if len(snap.Sandboxes) != 1 {
+		t.Fatalf("the fixture did not load: %+v", snap)
+	}
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Workspaces: []sbxenv.DeclaredMount{
+		{ItemID: "tab", Path: dir + "/a\tb"}, {ItemID: "literal", Path: dir + `/a\tb`},
+	}}}
+
+	// Act
+	c := live.Compare(p, &snap.Sandboxes[0], &snap, nil)
+
+	// Assert: regression; the escaped path matched the literal one.
+	if d, ok := drift(&c, "マウントされていない"); !ok || d.ItemID != "literal" || len(c.Drifts) != 1 {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestPortPairingDoesNotTakeAListenerAnotherDeclarationNeeds(t *testing.T) {
+	t.Parallel()
+	// Arrange: 4000 -> 80/tcp on loopback and an ephemeral 80/tcp4; sbx
+	// lists 127.0.0.1:4000 before [::1]:4000.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "any", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+		{ItemID: "v4", SandboxPort: 80, Protocol: "tcp4"},
+	}}}
+	listeners := []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+		{HostIP: "::1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+	}
+	for _, order := range [][]live.Port{listeners, {listeners[1], listeners[0]}} {
+		// Act
+		c := live.Compare(p, &live.Sandbox{Ports: order}, &live.Snapshot{}, nil)
+
+		// Assert: regression; tcp took the only IPv4 listener, so tcp4 read
+		// as missing and the IPv6 one as undeclared.
+		if len(c.Drifts) > 0 {
+			t.Errorf("order %v: drifts %v", order, c.Drifts)
+		}
+	}
+}
+
+func TestPortPairingKeepsAnExactMatchWhenAFreeListenerWillDo(t *testing.T) {
+	t.Parallel()
+	// Arrange: 4000 -> 3000/tcp and an ephemeral 3000/tcp4; sbx has two
+	// IPv4 loopback listeners, on 4000 then 5000.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "fixed", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"},
+		{ItemID: "eph", SandboxPort: 3000, Protocol: "tcp4"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"},
+		{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 3000, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the ephemeral one pried 4000 away, so the fixed
+	// one read as changed to 5000.
+	if len(c.Drifts) > 0 {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestPortPairingSettlesASmallGroupByTryingEveryAssignment(t *testing.T) {
+	t.Parallel()
+	// Arrange: 80/tcp4 ephemeral and 4000 -> 80/tcp on loopback; sbx has
+	// 127.0.0.1:4000, [::1]:4000 and 192.0.2.1:5000, in that order.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "v4", SandboxPort: 80, Protocol: "tcp4"},
+		{ItemID: "fixed", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+		{HostIP: "::1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+		{HostIP: "192.0.2.1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; fixed took 127.0.0.1:4000 and tcp4 the far
+	// listener, an invented address change. Only 192.0.2.1:5000 is extra.
+	if len(c.Drifts) != 1 || c.Drifts[0].Title != "宣言にないポートが公開されている" {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestStrictRedactionHidesLiveNamesBesideAHiddenOne(t *testing.T) {
+	t.Parallel()
+	// Arrange: the declaration is named ${{ env.args.tenant }}-new
+	// (tenant=web); sbx still has the old web-app on the same workspace.
+	env := "schemaVersion: \"1\"\nname: \"${{ env.args.tenant }}-new\"\nagent: claude\nworkspace: ./web-app\nargs:\n  tenant: {default: web}\n"
+	w := newWorld(t, env)
+	w.strict = true
+
+	// Act
+	targets := w.discover(t, w.sbx)
+
+	// Assert: regression; the target bar showed web-app beside <redacted>-new.
+	for _, x := range targets {
+		if strings.Contains(x.Name, "web") || x.Sandbox != nil && strings.Contains(x.Sandbox.Name, "web") {
+			t.Errorf("a live name carries the hidden value: %v", names(targets))
+		}
+	}
+	if !strings.Contains(strings.Join(names(targets), " "), "<redacted>-1") {
+		t.Errorf("live-only sandboxes are numbered: %v", names(targets))
+	}
+}
+
+func TestTwoSpellingsOfOneIPv6AddressMatch(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "p", HostIP: "2001:0db8::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"},
+	}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Ports: []live.Port{{HostIP: "2001:db8::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"}}}, &live.Snapshot{}, nil)
+
+	// Assert: regression; the leading zero read as an address change.
+	if len(c.Drifts) > 0 {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+// jsonString quotes s as a JSON string, so a path with backslashes or
+// quotes (Windows, an odd TMPDIR) cannot break a fixture.
+func jsonString(t *testing.T, s string) string {
+	t.Helper()
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+func TestStrictRedactionHidesEveryLiveValueWhateverThisPlanHides(t *testing.T) {
+	t.Parallel()
+	// Arrange: this plan hides nothing, but another target of the session
+	// may hide manual.example.com or codex as an argument.
+	p := strictPlan(&sbxenv.Declared{Agent: "claude"}, sbxenv.Item{ID: "agent", Path: "agent", Value: "claude"})
+	sb := &live.Sandbox{Agent: "codex", RulesKnown: true, Rules: []live.Rule{{Decision: "allow", Resource: "manual.example.com", CreatedVia: "added"}},
+		SecretsKnown: true, Secrets: []string{"acme-token"}, Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"}}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the check looked only at this plan's values.
+	for _, d := range c.Drifts {
+		for _, leak := range []string{"codex", "manual.example.com", "acme-token", "4000"} {
+			if strings.Contains(d.Actual+d.Title, leak) {
+				t.Errorf("drift shows %q: %+v", leak, d)
+			}
+		}
+	}
+	if len(c.Drifts) != 4 {
+		t.Errorf("each difference is still reported: %v", c.Drifts)
+	}
+}
+
+func TestAnEphemeralPortTakesTheOnlyListenerBeforeAFixedMismatch(t *testing.T) {
+	t.Parallel()
+	// Arrange: 4000 -> 80/tcp and an ephemeral 80/tcp4; sbx has only
+	// 127.0.0.1:5000.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "fixed", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+		{ItemID: "eph", SandboxPort: 80, Protocol: "tcp4"},
+	}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp"}}}, &live.Snapshot{}, nil)
+
+	// Assert: regression; fixed "changed to 5000" and eph went missing.
+	if len(c.Drifts) != 1 || c.Drifts[0].ItemID != "fixed" || c.Drifts[0].Title != "宣言したポートが公開されていない" {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestStrictRedactionHidesUnknownLiveWords(t *testing.T) {
+	t.Parallel()
+	// Arrange: an MCP server of another kind whose status is free text.
+	p := strictPlan(&sbxenv.Declared{MCP: []sbxenv.DeclaredMCP{{ItemID: "m", Name: "docs", Shown: "docs", Remote: true}}}, sbxenv.Item{ID: "m", Value: "url: <redacted>"})
+	snap := &live.Snapshot{MCPKnown: true, MCP: []live.MCPServer{{Name: "docs", Type: "command", Transport: "stdio", Status: "error: /work/canary/run.sock"}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{}, snap, nil)
+
+	// Assert
+	for _, d := range c.Drifts {
+		if strings.Contains(d.Actual, "canary") || strings.Contains(d.Actual, "stdio") {
+			t.Errorf("drift copies sbx's words: %+v", d)
+		}
+	}
+	if got := live.ShownState("migrating:/work/canary", sbxenv.RedactStrict); got != "状態不明" {
+		t.Errorf("unknown state = %q", got)
+	}
+	if got := live.ShownState("running", sbxenv.RedactStrict); got != "稼働中" {
+		t.Errorf("known state = %q", got)
+	}
+}
+
+func TestShownStateCopiesAnUnknownStatusOnlyWithoutStrictRedaction(t *testing.T) {
+	t.Parallel()
+	for mode, want := range map[sbxenv.Redaction]string{
+		"":                  "状態不明", // empty means strict, as in sbxenv
+		sbxenv.RedactStrict: "状態不明",
+		sbxenv.RedactHome:   "migrating",
+	} {
+		// Act
+		got := live.ShownState("migrating", mode)
+
+		// Assert
+		if got != want {
+			t.Errorf("ShownState(migrating, %q) = %q, want %q", mode, got, want)
+		}
+	}
+}
+
+func TestStrictRedactionHidesWhatATargetTakesFromSbx(t *testing.T) {
+	t.Parallel()
+	// Arrange: no name is declared, so the declaration pairs by workspace
+	// and takes sbx's name web-app; orphan, which no file declares, runs
+	// codex.
+	w := newWorld(t, strings.Replace(matching, "name: web-app\n", "", 1))
+	w.strict = true
+
+	// Act
+	targets := w.discover(t, w.sbx)
+
+	// Assert
+	paired, orphan := find(t, targets, "<redacted>-1"), find(t, targets, "<redacted>-2")
+	if paired.Plan == nil || paired.Sandbox == nil {
+		t.Errorf("the paired target is numbered: %v", names(targets))
+	}
+	if orphan.Plan != nil || orphan.Sandbox == nil || orphan.Sandbox.Agent != "<redacted>" {
+		t.Errorf("the live-only sandbox's agent is hidden: %+v", orphan.Sandbox)
+	}
+}
+
+func TestASingleFamilyPortTakesTheRowShowingItsFamily(t *testing.T) {
+	t.Parallel()
+	// Arrange: one ephemeral 80/tcp4, so no pairing of several settles it;
+	// sbx lists a row with no address before one on 127.0.0.1.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "v4", SandboxPort: 80, Protocol: "tcp4"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostPort: 50001, SandboxPort: 80, Protocol: "tcp"},
+		{HostIP: "127.0.0.1", HostPort: 50002, SandboxPort: 80, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: the IPv4 row confirms the port; the other row is the extra one.
+	if !slices.Contains(c.Compared, "v4") || len(c.Drifts) != 1 || !strings.Contains(c.Drifts[0].Actual, ":50001 ") {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
+// reversed is a reversed copy of s.
+func reversed[T any](s []T) []T {
+	r := slices.Clone(s)
+	slices.Reverse(r)
+	return r
+}
+
+func TestPortPairingPastTheExhaustiveSearchKeepsItsOrder(t *testing.T) {
+	t.Parallel()
+	// Arrange: more listeners on one sandbox port than every assignment is
+	// tried for, so the matching's own order settles them: a declaration
+	// that can claim its exact host port first, then one that fixes its
+	// family, each taking its closest free listener. The IPv6 padding
+	// suits no tcp4 declaration and is extra in every case.
+	var pad []live.Port
+	for i := 1; i <= 5; i++ {
+		pad = append(pad, live.Port{HostIP: fmt.Sprintf("2001:db8::%d", i), HostPort: 6000 + i, SandboxPort: 80, Protocol: "tcp"})
+	}
+	cases := map[string]struct {
+		decls   []sbxenv.DeclaredPort
+		lists   []live.Port
+		extras  int
+		drifted []string
+	}{
+		"an exact host port goes first": {
+			decls:  []sbxenv.DeclaredPort{{ItemID: "fixed", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"}, {ItemID: "eph", SandboxPort: 80, Protocol: "tcp4"}},
+			lists:  []live.Port{{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"}, {HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp"}},
+			extras: 5,
+		},
+		"a fixed family goes before a neutral one": {
+			decls: []sbxenv.DeclaredPort{{ItemID: "any", SandboxPort: 80, Protocol: "tcp"}, {ItemID: "v4", SandboxPort: 80, Protocol: "tcp4"}},
+			lists: []live.Port{{HostIP: "127.0.0.1", HostPort: 50001, SandboxPort: 80, Protocol: "tcp"}, {HostIP: "::1", HostPort: 50002, SandboxPort: 80, Protocol: "tcp"},
+				{HostIP: "192.0.2.1", HostPort: 50003, SandboxPort: 80, Protocol: "tcp"}},
+			extras: 6,
+		},
+		"a fixed host port sbx lacks does not go first": {
+			decls: []sbxenv.DeclaredPort{{ItemID: "fixed", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"}, {ItemID: "v4", SandboxPort: 80, Protocol: "tcp4"}},
+			lists: []live.Port{{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp"}, {HostIP: "::1", HostPort: 5001, SandboxPort: 80, Protocol: "tcp"},
+				{HostIP: "192.0.2.1", HostPort: 5002, SandboxPort: 80, Protocol: "tcp"}},
+			extras:  6,
+			drifted: []string{"fixed"},
+		},
+	}
+	for name, tc := range cases {
+		lists := append(slices.Clone(tc.lists), pad...)
+		for _, decls := range [][]sbxenv.DeclaredPort{tc.decls, reversed(tc.decls)} {
+			for _, order := range [][]live.Port{lists, reversed(lists)} {
+				p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: decls}}
+
+				// Act
+				c := live.Compare(p, &live.Sandbox{Ports: order}, &live.Snapshot{}, nil)
+
+				// Assert: only the listeners nothing suits are extra, and
+				// only a port no listener matches drifts.
+				extras, drifted := 0, []string(nil)
+				for _, d := range c.Drifts {
+					if d.Title == "宣言にないポートが公開されている" {
+						extras++
+					} else {
+						drifted = append(drifted, d.ItemID)
+					}
+				}
+				if extras != tc.extras || !slices.Equal(drifted, tc.drifted) {
+					t.Errorf("%s (%s first, %+v first): drifts %v", name, decls[0].ItemID, order[0], c.Drifts)
+				}
+			}
+		}
+	}
+}
+
+func TestDriftManualNetworkDeny(t *testing.T) {
+	t.Parallel()
+	// Arrange: someone denied a host by hand; nothing declares it.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{}}
+	sb := &live.Sandbox{RulesKnown: true, Rules: []live.Rule{{Decision: "deny", Resource: "blocked.example.com", CreatedVia: "added"}}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert
+	if d, ok := drift(&c, "宣言にない通信の拒否がある"); !ok || d.Actual != "拒否: blocked.example.com" || d.Severity != sbxenv.SeverityLow {
+		t.Errorf("drift = %+v (%v)", d, c.Drifts)
+	}
+}
+
+func TestAnMCPKindOtherThanRemoteConfirmsNothing(t *testing.T) {
+	t.Parallel()
+	for _, remote := range []bool{false, true} {
+		// Arrange: sbx reports a kind sbxray does not know.
+		p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{MCP: []sbxenv.DeclaredMCP{{ItemID: "m", Name: "docs", Shown: "docs", Remote: remote}}}}
+		snap := &live.Snapshot{MCPKnown: true, MCP: []live.MCPServer{{Name: "docs", Type: "unknown", Status: "ready"}}}
+
+		// Act
+		c := live.Compare(p, &live.Sandbox{}, snap, nil)
+
+		// Assert: regression; any word but remote read as a command server,
+		// confirming a command declaration and drifting a url one.
+		if slices.Contains(c.Compared, "m") || len(c.Drifts) > 0 {
+			t.Errorf("remote=%v: compared %v, drifts %v", remote, c.Compared, c.Drifts)
+		}
+	}
+}
+
+func TestADualStackPortIsNotConfirmedByAnIPv4Row(t *testing.T) {
+	t.Parallel()
+	// Arrange: protocol tcp with no address asks for IPv4 and IPv6; sbx
+	// shows one IPv4 listener.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"}}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp4"}}}, &live.Snapshot{}, nil)
+
+	// Assert: regression; the IPv4 row confirmed both families.
+	if slices.Contains(c.Compared, "dual") || len(c.Drifts) > 0 {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
+func TestASkippedCommandMCPServerIsNotCompared(t *testing.T) {
+	t.Parallel()
+	// Arrange: --skip-host-commands keeps the command server from running.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{MCP: []sbxenv.DeclaredMCP{{ItemID: "m", Name: "local", Shown: "local", Skipped: true}}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{}, &live.Snapshot{MCPKnown: true}, nil)
+
+	// Assert: regression; it read as not registered, with advice to recreate.
+	if len(c.Drifts) > 0 || slices.Contains(c.Compared, "m") || !strings.Contains(strings.Join(c.Skipped, ""), "--skip-host-commands") {
+		t.Errorf("compared %v, drifts %v, skipped %v", c.Compared, c.Drifts, c.Skipped)
+	}
+}
+
+func TestPortPairingPrefersAnExactFixedPortOnATie(t *testing.T) {
+	t.Parallel()
+	// Arrange: an ephemeral 80/tcp4 declared before 4000 -> 80/tcp; sbx has
+	// only 127.0.0.1:4000, which either could take at no distance.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "eph", SandboxPort: 80, Protocol: "tcp4"},
+		{ItemID: "fixed", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+	}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"}}}, &live.Snapshot{}, nil)
+
+	// Assert: regression; declaration order gave 4000 to the ephemeral one,
+	// and 4000, which sbx lists, read as missing.
+	if len(c.Drifts) != 1 || c.Drifts[0].ItemID != "eph" {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestADualStackPortPrefersARowForBothFamilies(t *testing.T) {
+	t.Parallel()
+	// Arrange: an ephemeral 3000/tcp (both families); sbx has an IPv4-only
+	// listener and one for both.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", SandboxPort: 3000, Protocol: "tcp"}}}}
+	v4 := live.Port{HostIP: "127.0.0.1", HostPort: 50001, SandboxPort: 3000, Protocol: "tcp4"}
+	both := live.Port{HostPort: 50002, SandboxPort: 3000, Protocol: "tcp"}
+	for _, order := range [][]live.Port{{v4, both}, {both, v4}} {
+		// Act
+		c := live.Compare(p, &live.Sandbox{Ports: order}, &live.Snapshot{}, nil)
+
+		// Assert: regression; the order decided which row paired, and so
+		// whether the port was confirmed.
+		if !slices.Contains(c.Compared, "dual") || len(c.Drifts) != 1 || !strings.Contains(c.Drifts[0].Actual, "50001") {
+			t.Errorf("order %v: compared %v, drifts %v", order, c.Compared, c.Drifts)
+		}
+	}
+}
+
+func TestADualStackPortTakesItsRowForEachFamily(t *testing.T) {
+	t.Parallel()
+	// Arrange: 4000 -> 3000/tcp (both families); sbx lists it as one IPv4
+	// and one IPv6 row.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"}}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp4"},
+		{HostIP: "::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the IPv6 row read as an undeclared listener.
+	if len(c.Drifts) > 0 || !slices.Contains(c.Compared, "dual") {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
+func TestMCPIsNotCheckedWhenEveryServerIsSkipped(t *testing.T) {
+	t.Parallel()
+	// Arrange: the only server is a command one --skip-host-commands skips.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{MCP: []sbxenv.DeclaredMCP{{ItemID: "m", Name: "local", Shown: "local", Skipped: true}}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{}, &live.Snapshot{MCPKnown: true}, nil)
+
+	// Assert: regression; live.checked listed MCP with nothing compared.
+	if slices.Contains(c.Checked, "MCP サーバー") {
+		t.Errorf("checked %v", c.Checked)
+	}
+}
+
+func TestAWildcardIPv6RowDoesNotCompleteALoopbackPort(t *testing.T) {
+	t.Parallel()
+	// Arrange: 4000 -> 3000/tcp on the default loopback; sbx has it on
+	// 127.0.0.1 and on [::], every IPv6 interface.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"}}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp4"},
+		{HostIP: "::", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the [::] row was taken as the IPv6 half and the
+	// port read 一致. It is open to every network, a high drift.
+	if slices.Contains(c.Compared, "dual") {
+		t.Errorf("compared %v", c.Compared)
+	}
+	if d, ok := drift(&c, "宣言にないポート"); !ok || d.Severity != sbxenv.SeverityHigh {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestADualStackPortFindsItsPairWhateverTheOrder(t *testing.T) {
+	t.Parallel()
+	// Arrange: an ephemeral 3000/tcp; sbx has IPv4 on 50001 and the pair
+	// IPv4 and IPv6 on 50002.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", SandboxPort: 3000, Protocol: "tcp"}}}}
+	lone := live.Port{HostIP: "127.0.0.1", HostPort: 50001, SandboxPort: 3000, Protocol: "tcp4"}
+	v4 := live.Port{HostIP: "127.0.0.1", HostPort: 50002, SandboxPort: 3000, Protocol: "tcp4"}
+	v6 := live.Port{HostIP: "::1", HostPort: 50002, SandboxPort: 3000, Protocol: "tcp6"}
+	for _, order := range [][]live.Port{{lone, v4, v6}, {v4, v6, lone}} {
+		// Act
+		c := live.Compare(p, &live.Sandbox{Ports: order}, &live.Snapshot{}, nil)
+
+		// Assert: regression; with 50001 first the pair was left over.
+		if !slices.Contains(c.Compared, "dual") || len(c.Drifts) != 1 || !strings.Contains(c.Drifts[0].Actual, "50001") {
+			t.Errorf("order %v: compared %v, drifts %v", order, c.Compared, c.Drifts)
+		}
+	}
+}
+
+func TestPortPairingCountsACompanionOnlyIfItIsFree(t *testing.T) {
+	t.Parallel()
+	// Arrange: an ephemeral 80/tcp4, then 4000 -> 80/tcp (both families);
+	// sbx has IPv4 and IPv6 on 4000 and IPv4 on 5000.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "eph", SandboxPort: 80, Protocol: "tcp4"},
+		{ItemID: "dual", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+	}}}
+	v4 := live.Port{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp4"}
+	v6 := live.Port{HostIP: "::1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp6"}
+	other := live.Port{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp4"}
+	for _, order := range [][]live.Port{{v4, v6, other}, {other, v4, v6}} {
+		// Act
+		c := live.Compare(p, &live.Sandbox{Ports: order}, &live.Snapshot{}, nil)
+
+		// Assert: regression; with 4000 first, eph took the IPv4 4000 row
+		// the dual port's pair needed, and 5000 read as undeclared.
+		if len(c.Drifts) > 0 || !slices.Contains(c.Compared, "dual") {
+			t.Errorf("order %v: compared %v, drifts %v", order, c.Compared, c.Drifts)
+		}
+	}
+}
+
+func TestARowWithoutAProtocolDoesNotConfirmADualStackPort(t *testing.T) {
+	t.Parallel()
+	// Arrange: sbx gives the sandbox port only.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", SandboxPort: 80, Protocol: "tcp"}}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Ports: []live.Port{{SandboxPort: 80}}}, &live.Snapshot{}, nil)
+
+	// Assert: regression; the empty row read as one for both families.
+	if slices.Contains(c.Compared, "dual") || len(c.Drifts) > 0 {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
+func TestPortPairingGivesAPairToTheDualPortAndTheRestToTheOther(t *testing.T) {
+	t.Parallel()
+	// Arrange: ephemeral 80/tcp and 80/tcp4; sbx lists [::1]:5000,
+	// 127.0.0.1:5000 and 127.0.0.1:5001.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "dual", SandboxPort: 80, Protocol: "tcp"},
+		{ItemID: "v4", SandboxPort: 80, Protocol: "tcp4"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "::1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp6"},
+		{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp4"},
+		{HostIP: "127.0.0.1", HostPort: 5001, SandboxPort: 80, Protocol: "tcp4"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: the dual port takes the 5000 pair, tcp4 takes 5001.
+	if len(c.Drifts) > 0 || !slices.Contains(c.Compared, "dual") {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
+func TestPortPairingKeepsADualPairFromAPortOfOneFamily(t *testing.T) {
+	t.Parallel()
+	// Arrange: ephemeral 3000/tcp4 and 3000/tcp; sbx has the pair on 50001
+	// and IPv4 on 50002.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "v4", SandboxPort: 3000, Protocol: "tcp4"},
+		{ItemID: "dual", SandboxPort: 3000, Protocol: "tcp"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 50001, SandboxPort: 3000, Protocol: "tcp4"},
+		{HostIP: "::1", HostPort: 50001, SandboxPort: 3000, Protocol: "tcp6"},
+		{HostIP: "127.0.0.1", HostPort: 50002, SandboxPort: 3000, Protocol: "tcp4"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: tcp4 must not take the pair's IPv4 half and leave 50002 over.
+	if len(c.Drifts) > 0 || !slices.Contains(c.Compared, "dual") {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
+func TestPortLabel(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		p    live.Port
+		want string
+	}{
+		{live.Port{HostPort: 4000, SandboxPort: 3000}, "loopback:4000 -> sandbox:3000"}, // no transport is claimed sbx did not give
+		{live.Port{HostIP: "::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"}, "[::1]:4000 -> sandbox:3000/tcp6"},
+		{live.Port{HostIP: "0.0.0.0", HostPort: 8080, SandboxPort: 80, Protocol: "udp"}, "0.0.0.0:8080 -> sandbox:80/udp"},
+		{live.Port{HostIP: "[::1]", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"}, "[::1]:4000 -> sandbox:3000/tcp6"},
+	} {
+		if got := tc.p.Label(); got != tc.want {
+			t.Errorf("%+v: %q, want %q", tc.p, got, tc.want)
+		}
+	}
+}
+
+func TestADualStackPortPrefersARowWithAProtocol(t *testing.T) {
+	t.Parallel()
+	// Arrange: an ephemeral 80/tcp; sbx lists 50001 without a protocol and
+	// 50002 as tcp.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", SandboxPort: 80, Protocol: "tcp"}}}}
+	bare := live.Port{HostPort: 50001, SandboxPort: 80}
+	tcp := live.Port{HostPort: 50002, SandboxPort: 80, Protocol: "tcp"}
+	for _, order := range [][]live.Port{{bare, tcp}, {tcp, bare}} {
+		// Act
+		c := live.Compare(p, &live.Sandbox{Ports: order}, &live.Snapshot{}, nil)
+
+		// Assert: regression; with 50001 first the port stayed 照合なし.
+		if !slices.Contains(c.Compared, "dual") || len(c.Drifts) != 1 || !strings.Contains(c.Drifts[0].Actual, "50001") {
+			t.Errorf("order %v: compared %v, drifts %v", order, c.Compared, c.Drifts)
+		}
+	}
+}
+
+func TestARowWithoutAProtocolConfirmsNoTransport(t *testing.T) {
+	t.Parallel()
+	// Arrange: tcp4 declared; sbx gives the address but no protocol.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "v4", SandboxPort: 80, Protocol: "tcp4"}}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 50001, SandboxPort: 80}}}, &live.Snapshot{}, nil)
+
+	// Assert: regression; the address's family alone confirmed tcp.
+	if slices.Contains(c.Compared, "v4") || len(c.Drifts) > 0 {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
+func TestAProtocolLessRowIsNeitherADriftNorAMatch(t *testing.T) {
+	t.Parallel()
+	bare := live.Port{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80}
+	for name, tc := range map[string]struct {
+		decl  sbxenv.DeclaredPort
+		ports [][]live.Port
+	}{
+		// 80/udp against a row of unknown transport: neither missing nor
+		// undeclared, only unconfirmed.
+		"udp": {sbxenv.DeclaredPort{ItemID: "p", SandboxPort: 80, Protocol: "udp"}, [][]live.Port{{bare}}},
+		// A bare IPv6 row is no companion for a dual tcp port.
+		"companion": {sbxenv.DeclaredPort{ItemID: "p", SandboxPort: 80, Protocol: "tcp"}, [][]live.Port{
+			{{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp4"}, {HostIP: "::1", HostPort: 5000, SandboxPort: 80}},
+			{{HostIP: "::1", HostPort: 5000, SandboxPort: 80}, {HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp4"}},
+		}},
+	} {
+		for _, order := range tc.ports {
+			// Act
+			p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{tc.decl}}}
+			c := live.Compare(p, &live.Sandbox{Ports: order}, &live.Snapshot{}, nil)
+
+			// Assert: regression; udp drifted twice, and the bare IPv6 row
+			// confirmed the dual port in one order only.
+			if slices.Contains(c.Compared, "p") || name == "udp" && len(c.Drifts) > 0 {
+				t.Errorf("%s %v: compared %v, drifts %v", name, order, c.Compared, c.Drifts)
+			}
+		}
+	}
+}
+
+func TestAPortPrefersARowThatStatesItsProtocol(t *testing.T) {
+	t.Parallel()
+	// Arrange: an ephemeral 80/tcp4; sbx lists 5000 bare and 5001 as tcp4.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "v4", SandboxPort: 80, Protocol: "tcp4"}}}}
+	bare := live.Port{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80}
+	tcp4 := live.Port{HostIP: "127.0.0.1", HostPort: 5001, SandboxPort: 80, Protocol: "tcp4"}
+	for _, order := range [][]live.Port{{bare, tcp4}, {tcp4, bare}} {
+		// Act
+		c := live.Compare(p, &live.Sandbox{Ports: order}, &live.Snapshot{}, nil)
+
+		// Assert: regression; with 5000 first the port stayed unconfirmed.
+		if !slices.Contains(c.Compared, "v4") {
+			t.Errorf("order %v: compared %v, drifts %v", order, c.Compared, c.Drifts)
+		}
+	}
+}
+
+func TestProtocolLessRowsPairWithUDPDeclarations(t *testing.T) {
+	t.Parallel()
+	// Arrange: 53/udp4 and 53/udp6; sbx lists both listeners without a protocol.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "v4", SandboxPort: 53, Protocol: "udp4"},
+		{ItemID: "v6", SandboxPort: 53, Protocol: "udp6"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 5353, SandboxPort: 53},
+		{HostIP: "::1", HostPort: 5353, SandboxPort: 53},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the group pass took the bare rows for tcp and
+	// reported both udp ports missing. They pair, unconfirmed.
+	if len(c.Drifts) > 0 || len(c.Compared) > 0 {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
+func TestACompanionMustCarryTheDeclaredTransport(t *testing.T) {
+	t.Parallel()
+	// Arrange: 5353 -> 53/udp (both families); sbx has a bare IPv4 row and
+	// an IPv6 row that is tcp.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", HostPort: 5353, SandboxPort: 53, Protocol: "udp"}}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 5353, SandboxPort: 53},
+		{HostIP: "::1", HostPort: 5353, SandboxPort: 53, Protocol: "tcp6"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the tcp6 row was taken as the udp port's IPv6
+	// half and vanished from the report.
+	if d, ok := drift(&c, "宣言にないポート"); !ok || !strings.Contains(d.Actual, "tcp6") {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestAConfirmingRowBeatsARowWithoutAProtocol(t *testing.T) {
+	t.Parallel()
+	// Arrange: 80/tcp for both families, any host port; sbx lists a bare
+	// IPv4 row with its tcp6 half, and a row for both that is tcp.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", SandboxPort: 80, Protocol: "tcp"}}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80},
+		{HostIP: "::1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp6"},
+		{HostPort: 5001, SandboxPort: 80, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the bare row's companion made it rank first, so
+	// the port went unconfirmed and the tcp row was called undeclared.
+	if !slices.Contains(c.Compared, "dual") {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
+func TestATargetInHomeIsNotNamedAfterTheUser(t *testing.T) {
+	t.Parallel()
+	// Arrange: an unnamed file and a broken one, straight in $HOME.
+	home := filepath.Join(t.TempDir(), "someone")
+	if err := os.Mkdir(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"sbxenv.yaml": "schemaVersion: \"1\"\n", "sbxenv.broken.yaml": "name: [\n"} {
+		if err := os.WriteFile(filepath.Join(home, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	show := func(s string) string { return sbxenv.ShortenHome(s, home) }
+	resolve := func(g live.Group) (*sbxenv.Plan, error) {
+		if len(g.Paths) > 0 {
+			return nil, errors.New("yaml: bad")
+		}
+		return &sbxenv.Plan{}, nil
+	}
+
+	// Act
+	targets, _ := live.Discover(context.Background(), live.DiscoverRequest{WorkDir: home, Resolve: resolve, Show: show})
+
+	// Assert: regression; both were named someone/….
+	if len(targets) != 2 {
+		t.Fatalf("targets %v", names(targets))
+	}
+	for _, tg := range targets {
+		if strings.Contains(tg.Name, "someone") || !strings.HasPrefix(tg.Name, "~/") {
+			t.Errorf("name %q", tg.Name)
+		}
+	}
+}
+
+func TestRowsWithoutAHostPortAreNotOnePublication(t *testing.T) {
+	t.Parallel()
+	// Arrange: 80/tcp for both families, any host port; sbx lists an IPv4
+	// and an IPv6 row that both leave the host port out.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", SandboxPort: 80, Protocol: "tcp"}}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", SandboxPort: 80, Protocol: "tcp"},
+		{HostIP: "::1", SandboxPort: 80, Protocol: "tcp6"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the two zeros passed for a shared host port and
+	// confirmed the port for both families.
+	if slices.Contains(c.Compared, "dual") {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
+func TestAnUnknownProtocolIsNotConfirmedByTCP(t *testing.T) {
+	t.Parallel()
+	// Arrange: 8080 -> 80 declared as sctp, which sbx does not accept;
+	// sbx lists a tcp row on the same ports.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "p", HostPort: 8080, SandboxPort: 80, Protocol: "sctp"}}}}
+	sb := &live.Sandbox{Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 8080, SandboxPort: 80, Protocol: "tcp"}}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; anything not udp counted as tcp and matched.
+	if _, ok := drift(&c, "宣言したポートが公開されていない"); !ok {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestAnUndeclaredPortOnANetworkAddressIsMedium(t *testing.T) {
+	t.Parallel()
+	// Arrange: nothing declared; sbx lists ports on loopback, a LAN
+	// address, and every interface.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 8081, SandboxPort: 81, Protocol: "tcp"},
+		{HostIP: "127.0.0.2", HostPort: 8083, SandboxPort: 83, Protocol: "tcp"},
+		{HostIP: "192.168.1.10", HostPort: 8080, SandboxPort: 80, Protocol: "tcp4"},
+		{HostIP: "0.0.0.0", HostPort: 8082, SandboxPort: 82, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the LAN address was rated low, while the same
+	// port declared is medium.
+	want := map[string]sbxenv.Severity{"127.0.0.1": sbxenv.SeverityLow, "127.0.0.2": sbxenv.SeverityLow, "192.168.1.10": sbxenv.SeverityMedium, "0.0.0.0": sbxenv.SeverityHigh}
+	for _, d := range c.Drifts {
+		for ip, sev := range want {
+			if strings.HasPrefix(d.Actual, ip+":") && d.Severity != sev {
+				t.Errorf("%s: %s, want %s", ip, d.Severity, sev)
+			}
+		}
+	}
+	if len(c.Drifts) != 4 {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestAPortPairedWithoutAProtocolIsNotedAsUnchecked(t *testing.T) {
+	t.Parallel()
+	// Arrange: 8080 -> 80/tcp; sbx's only row leaves the protocol out.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "p", HostPort: 8080, SandboxPort: 80, Protocol: "tcp"}}}}
+	bare := &live.Sandbox{Ports: []live.Port{{HostPort: 8080, SandboxPort: 80}}}
+	full := &live.Sandbox{Ports: []live.Port{{HostPort: 8080, SandboxPort: 80, Protocol: "tcp"}}}
+	noted := func(c live.Comparison) bool {
+		return slices.ContainsFunc(c.Skipped, func(s string) bool { return strings.Contains(s, "確かめられない点") })
+	}
+
+	// Act
+	c, ok := live.Compare(p, bare, &live.Snapshot{}, nil), live.Compare(p, full, &live.Snapshot{}, nil)
+
+	// Assert: regression; text and JSON read the same as a confirmed
+	// match, with no drift and no note.
+	if len(c.Drifts) != 0 || !noted(c) {
+		t.Errorf("bare: drifts %v, skipped %v", c.Drifts, c.Skipped)
+	}
+	if noted(ok) {
+		t.Errorf("a confirmed port is noted: %v", ok.Skipped)
+	}
+}
+
+func TestRulesLeftOutOfTheComparisonAreNoted(t *testing.T) {
+	t.Parallel()
+	// Arrange: a bounded runtime rule and an install rule; sbx lists the
+	// kit's runtime hosts.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Network: []sbxenv.DeclaredRule{
+		{ItemID: "bounded", Phase: "runtime", Decision: "allow", Host: "api.example.com", Bounded: true},
+		{ItemID: "setup", Phase: "install", Decision: "allow", Host: "pkg.example.com"},
+	}}}
+	sb := &live.Sandbox{RulesKnown: true, Rules: []live.Rule{{Decision: "allow", Resource: "api.example.com", Origin: "kit"}}}
+	noted := func(c live.Comparison, s string) bool {
+		return slices.ContainsFunc(c.Skipped, func(x string) bool { return strings.Contains(x, s) })
+	}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; text and JSON read both as checked, with no
+	// drift and no note, while the TUI says 照合なし.
+	if !noted(c, "メソッドやパス") || !noted(c, "準備時") {
+		t.Errorf("skipped %v", c.Skipped)
+	}
+}
+
+func TestMCPAndKitMountsLeftOutAreNoted(t *testing.T) {
+	t.Parallel()
+	noted := func(c live.Comparison, s string) bool {
+		return slices.ContainsFunc(c.Skipped, func(x string) bool { return strings.Contains(x, s) })
+	}
+	// Arrange: a command server sbx lists as command, and a kit mount
+	// beside the workspace.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome},
+		Items: []sbxenv.Item{{ID: "mounts./data", Path: "mounts./data", Value: "/data"}},
+		Declared: &sbxenv.Declared{
+			MCP:        []sbxenv.DeclaredMCP{{ItemID: "m", Name: "docs", Shown: "docs"}},
+			Workspaces: []sbxenv.DeclaredMount{{ItemID: "workspace", Path: "/work/app", Primary: true}},
+		}}
+	sb := &live.Sandbox{Workspaces: []live.Mount{{Path: "/work/app"}}}
+	snap := &live.Snapshot{MCPKnown: true, MCP: []live.MCPServer{{Name: "docs", Type: "command", Transport: "stdio", Status: "ready"}}}
+
+	// Act
+	c := live.Compare(p, sb, snap, nil)
+
+	// Assert: regression; both read as checked with no drift and no note,
+	// while the TUI says 照合なし.
+	if len(c.Drifts) != 0 || !noted(c, "remote でない MCP") || !noted(c, "Kit が使うフォルダ") {
+		t.Errorf("drifts %v, skipped %v", c.Drifts, c.Skipped)
+	}
+
+	// Without a workspace, the kit mount is still noted.
+	if c := live.Compare(&sbxenv.Plan{Meta: p.Meta, Items: p.Items, Declared: &sbxenv.Declared{}}, &live.Sandbox{}, snap, nil); !noted(c, "Kit が使うフォルダ") {
+		t.Errorf("no workspace: skipped %v", c.Skipped)
+	}
+
+	// A remote server and no kit mount need neither note.
+	p.Items, snap.MCP[0].Type, p.Declared.MCP[0].Remote = nil, "remote", true
+	if c := live.Compare(p, sb, snap, nil); noted(c, "MCP") || noted(c, "Kit") {
+		t.Errorf("noted without cause: %v", c.Skipped)
 	}
 }

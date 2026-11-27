@@ -1,60 +1,57 @@
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ sbxray   1:Overview   2:Risk   3:Items   4:Sources                                                                               │
-│ [Host実行 2]   [Host永続 4]   [RWマウント 2]   [外への許可 3]   [エラー 0]   [警告 5]                                            │
-│宣言の静的解析（稼働中 sandbox の状態ではない） env-args: workspace=./web-app (default), channel=stable (default)                 │
-│絞り込み  全て   L1   L2   K1   K2                                                                                                │
-│╭────────────────────────────────────────────────────────╮╭──────────────────────────────────────────────────────────────────────╮│
-││● 一覧 · Risk（24 件）                                  ││  詳細                                                                ││
-││ HIGH  [WARNING] 認証情報の差し込み先が未承認           ││ 認証情報の差し込み先が未承認                                         ││
-││ HIGH  [WARNING] 共有フォルダが他の sandbox とも共有さ… ││ 重要度: 警告（危険・要確認）                                         ││
-││ HIGH  [WARNING] ポートが外部ネットワークに公開される   ││                                                                      ││
-││ HIGH  [WARNING] 中身が変わり続けるイメージを毎回取得   ││ ▍何が起きるか                                                        ││
-││ HIGH  [WARNING] SSH 鍵で何にでも署名できる             ││   Kit が認証情報を差し込みたい通信先の一部が、bindings で承認されてい││
-││ HIGH  [CRED][HOST][OPAQUE] secrets.github = command: g…││   ません。作成時に承認を求められ、自動実行では失敗します。           ││
-││ HIGH  [!] ports[3000/tcp4] = 0.0.0.0:4000 -> sandbox:3…││                                                                      ││
-││ HIGH  [HOST][OPAQUE] lifecycle.postCreate[0] = ./hooks…││ ▍どうすればよいか                                                    ││
-││ HIGH  [!][SSH][HOST] kit:egress/ssh-agent@1/runtime = …││   bindings の domains に通信先を追加してください。                   ││
-││ HIGH  [!][RW][PERSIST] kit:history/host-mount@1//home/…││                                                                      ││
-││ MED   [RW] workspace = ~/proj/web-app                  ││ ▍場所                                                                ││
-││ MED   [CRED] secrets.example = ref: op://Private/Examp…││   ~/proj/base.sbxenv.yaml の 41 行目                                 ││
-││ MED   [!][CRED][PERSIST] bindings.example.apiKey = api…││   ~/proj/kits/egress/egress.yaml の 19 行目（L1:17                   ││
-││ MED   [PERSIST] mcp.servers[docs] = url: https://mcp.e…││   kits[./kits/egress] 経由）                                         ││
-││ MED   [NET] kit:egress/network-policy@1/runtime.allow/…││                                                                      ││
-││ MED   [CRED] kit:egress/credential@1/example/runtime =…││ ▍対象の設定                                                          ││
-││ MED   [UNKNOWN] kit:egress/io.example/telemetry@2 = io…││                                                                      ││
-││ LOW   [!] sandboxOptions.template = ghcr.io/example/co…││ bindings.example.apiKey                                              ││
-││ LOW   kits[./kits/egress] = ./kits/egress {apiHost=api…││ 値: api.example.com                                                  ││
-││ LOW   kits[./kits/history] = ./kits/history            ││   承認した通信先: api.example.com                                    ││
-││ LOW   [NET] kit:egress/network-policy@1/install.allow/…││                                                                      ││
-││ LOW   [NET] kit:egress/network-policy@1/runtime.allow/…││ ▍公式の見解（Docker Sandboxes / sandbox-kit-spec）                   ││
-││ LOW   kit:egress/git-identity@1 = user.name / user.ema…││   bindings はユーザー全体の credentials.yaml に結合され、sbx env rm  ││
-││ LOW   [OPAQUE] kit:history/lifecycle@1/startup[0] = sh…││   でも既定では残ります。--prune-bindings はファイルに書かれたサービス││
-││                                                        ││   の全体の承認をまとめて削除するため、同じ承認を共有する他の sandbox ││
-││                                                        ││   にも影響し得ると警告しています。                                   ││
-││                                                        ││   出典: https://docs.docker.com/ai/sandboxes/configuration/          ││
-││                                                        ││         environment-files/#bindings                                  ││
-││                                                        ││                                                                      ││
-││                                                        ││ ▍外部セキュリティ基準の観点（OWASP 等）                              ││
-││                                                        ││   ・OWASP Top 10 for Agentic Applications 2026 ASI03 Identity and    ││
-││                                                        ││   Privilege Abuse                                                    ││
-│╰────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────╯│
-│ q  終了  ?  ヘルプ  1-4  画面  j/k  移動  Enter  詳細  h/l  ペイン  g  グループ  f  絞り込み  /  検索  マウス: クリックで選択・… │
+│ sbxray  web-app                                                                1 概要   2 リスク 24   3 設定 34   4 ファイル 9   │
+│ 静的解析   絞り込み  全て L1 L2 K1 K2                                                                                            │
+│                                                                                                                                  │
+│    危険度  内容                                           |  認証情報の差し込み先が未承認                                        │
+│ このツールの指摘（5 件）                                  |  危険度: 高（HIGH）                                                  │
+│ ✗  高      認証情報の差し込み先が未承認                   |  種類: 警告（危険・要確認）                                          │
+│ ✗  高      共有フォルダが他の sandbox とも共有される      |                                                                      │
+│ ✗  高      ポートが外部ネットワークに公開される           |  何が起きるか                                                        │
+│ ✗  高      中身が変わり続けるイメージを毎回取得           |    Kit が認証情報を差し込みたい通信先の一部が、bindings で承認されて │
+│ ✗  高      SSH 鍵で何にでも署名できる                     |    いません。作成時に承認を求められ、自動実行では失敗します。        │
+│ 設定ごとの危険度（19 件）                                 |                                                                      │
+│ ✗  高      secrets.github  command: gh auth token         |  どうすればよいか                                                    │
+│ ✗  高      ports[3000/tcp4]  0.0.0.0:4000 -> sandbox:30.. |    bindings の domains に通信先を追加してください。                  │
+│ ✗  高      lifecycle.postCreate[0]  ./hooks/load-secret.. |                                                                      │
+│ ✗  高      kit:egress/ssh-agent@1/runtime  phase=runtim.. |  場所                                                                │
+│ ✗  高      kit:hist../home/agent/.history  /home/agent/.. |    ~/proj/base.sbxenv.yaml の 41 行目                                │
+│ !  中      workspace  ~/proj/web-app                      |    ~/proj/kits/egress/egress.yaml の 19 行目（L1:17                  │
+│ !  中      secrets.example  ref: op://Private/Example/c.. |    kits[./kits/egress] 経由）                                        │
+│ !  中      bindings.example.apiKey  api.example.com       |                                                                      │
+│ !  中      mcp.servers[docs]  url: https://mcp.example... |  対象の設定                                                          │
+│ !  中      kit:egre..ow/*.cdn.example.com  runtime allo.. |    bindings.example.apiKey                                           │
+│ !  中      kit:egre..al@1/example/runtime  service=exam.. |    値: api.example.com                                               │
+│ !  中      kit:egre...example/telemetry@2  io.example/t.. |      承認した通信先: api.example.com                                 │
+│    低      sandboxOptions.template  ghcr.io/example/com.. |                                                                      │
+│    低      kits[./kits/egress]  ./kits/egress {apiHost=.. |    公式の見解（Docker Sandboxes / sandbox-kit-spec）                 │
+│    低      kits[./kits/history]  ./kits/history           |      bindings はユーザー全体の credentials.yaml に結合され、sbx env  │
+│    低      kit:egre..w/registry.npmjs.org  install allo.. |      rm でも既定では残ります。--prune-bindings はファイルに書かれた  │
+│    低      kit:egre..internal.example.com  runtime allo.. |      サービスの全体の承認をまとめて削除するため、同じ承認を共有する  │
+│    低      kit:egress/git-identity@1  user.name / user... |      他の sandbox にも影響し得ると警告しています。                   │
+│    低      kit:hist..fecycle@1/startup[0]  sh -c ln -sf.. |      出典: https://docs.docker.com/ai/sandboxes/configuration/       │
+│                                                           |            environment-files/#bindings                               │
+│                                                           |                                                                      │
+│                                                           |    外部セキュリティ基準の観点（OWASP 等）                            │
+│                                                           |      ・OWASP Top 10 for Agentic Applications 2026 ASI03 Identity and │
+│                                                           |      Privilege Abuse                                                 │
+│                                                           |        エージェントが受け継いだ認証情報や権限が悪用されると、本来の  │
+│                                                           |        範囲を超えた操作ができてしまうとし、タスク単位で短命・最小の  │
+│                                                           |        権限にすることや、セッションごとに分けた sandbox を勧めていま │
+│                                                           |  ほか 57 行（j でスクロール）                                        │
+│ j/k 移動   enter 詳細   / 検索   f 絞り込み   ? ヘルプ   q 終了                                                                  │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 {
   "colors": {
-    "0,2": {
+    "0,1": {
       "dim": true
     },
     "0,3": {
-      "dim": true
+      "underline": "single"
     },
-    "0,39": {
+    "0,5": {
       "inverse": true
     },
     "1,0": {
-      "bold": true
-    },
-    "1,1": {
       "bold": true
     },
     "1,10": {
@@ -75,11 +72,35 @@
     "1,15": {
       "bold": true
     },
-    "1,5": {
+    "1,16": {
+      "bold": true
+    },
+    "1,17": {
+      "bold": true
+    },
+    "1,18": {
+      "bold": true
+    },
+    "1,19": {
+      "bold": true
+    },
+    "1,20": {
+      "bold": true
+    },
+    "1,21": {
+      "bold": true
+    },
+    "1,22": {
+      "bold": true
+    },
+    "1,39": {
+      "bold": true
+    },
+    "1,4": {
       "bold": true
     },
     "1,6": {
-      "inverse": true
+      "bold": true
     },
     "1,7": {
       "bold": true
@@ -90,359 +111,660 @@
     "1,9": {
       "bold": true
     },
-    "10,3": {
-      "bold": true
+    "100,0": {
+      "bold": false,
+      "underline": "none"
     },
-    "11,12": {
-      "bold": false
+    "102,32": {
+      "bold": false,
+      "underline": "none"
     },
-    "11,23": {
-      "bold": false
+    "103,0": {
+      "dim": true
     },
-    "110,27": {
-      "bold": false
+    "112,0": {
+      "dim": false
     },
-    "12,16": {
-      "bold": false
+    "113,24": {
+      "bold": false,
+      "underline": "none"
+    },
+    "115,0": {
+      "dim": true
     },
     "12,39": {
-      "dim": true,
-      "inverse": false
+      "bold": true
     },
-    "129,39": {
+    "127,0": {
       "dim": false
     },
-    "13,1": {
+    "17,39": {
       "bold": false
     },
-    "13,20": {
+    "18,39": {
+      "dim": true
+    },
+    "2,11": {
       "bold": false
     },
-    "13,26": {
+    "2,12": {
       "bold": false
     },
-    "13,27": {
+    "2,13": {
       "bold": false
     },
-    "14,17": {
+    "2,14": {
       "bold": false
     },
-    "14,21": {
+    "2,15": {
       "bold": false
     },
-    "14,3": {
+    "2,16": {
       "bold": false
     },
-    "15,3": {
-      "inverse": false
-    },
-    "16,1": {
-      "bold": true
-    },
-    "16,29": {
+    "2,17": {
       "bold": false
     },
-    "17,10": {
+    "2,18": {
       "bold": false
     },
-    "17,19": {
+    "2,19": {
       "bold": false
     },
-    "17,22": {
+    "2,20": {
       "bold": false
     },
-    "17,7": {
+    "2,21": {
       "bold": false
     },
-    "17,8": {
+    "2,22": {
       "bold": false
     },
-    "17,9": {
+    "2,6": {
       "bold": false
     },
-    "20,39": {
-      "dim": false,
-      "inverse": true
-    },
-    "22,0": {
-      "inverse": true
-    },
-    "22,13": {
+    "2,7": {
       "bold": false
     },
-    "22,14": {
+    "2,8": {
       "bold": false
     },
-    "23,0": {
-      "bold": true
-    },
-    "23,5": {
+    "2,9": {
       "bold": false
     },
-    "24,15": {
-      "bold": false
+    "21,1": {
+      "dim": false
+    },
+    "22,1": {
+      "bold": true,
+      "underline": "single"
+    },
+    "22,39": {
+      "dim": false
+    },
+    "23,16": {
+      "dim": true
     },
     "25,39": {
-      "dim": true,
-      "inverse": false
+      "bold": true
     },
-    "26,18": {
+    "25,4": {
       "bold": false
     },
-    "28,1": {
+    "26,1": {
+      "bold": false,
+      "underline": "none"
+    },
+    "26,10": {
       "bold": false
+    },
+    "26,39": {
+      "bold": false
+    },
+    "27,1": {
+      "dim": true
+    },
+    "27,39": {
+      "dim": true
     },
     "28,11": {
-      "bold": false
+      "dim": true
     },
-    "29,0": {
-      "bold": false
+    "29,1": {
+      "dim": false
     },
-    "3,39": {
-      "dim": true,
-      "inverse": false
+    "29,17": {
+      "dim": true
     },
-    "30,0": {
-      "inverse": false
+    "30,1": {
+      "dim": true
     },
-    "31,1": {
-      "bold": true
+    "30,12": {
+      "dim": true
+    },
+    "31,19": {
+      "dim": true
     },
     "31,39": {
-      "dim": false,
-      "inverse": true
+      "dim": false
+    },
+    "32,1": {
+      "dim": false
+    },
+    "33,1": {
+      "dim": true
+    },
+    "33,24": {
+      "dim": true
+    },
+    "34,25": {
+      "dim": true
+    },
+    "34,39": {
+      "bold": true
+    },
+    "35,1": {
+      "dim": false
+    },
+    "35,39": {
+      "bold": false
+    },
+    "36,1": {
+      "dim": true
     },
     "36,39": {
-      "dim": true,
-      "inverse": false
+      "dim": true
     },
-    "42,39": {
-      "dim": false,
-      "inverse": true
+    "37,13": {
+      "dim": true
     },
-    "45,1": {
+    "37,16": {
+      "dim": false
+    },
+    "37,18": {
+      "dim": true
+    },
+    "37,23": {
+      "dim": true
+    },
+    "38,1": {
+      "dim": false
+    },
+    "39,28": {
+      "dim": true
+    },
+    "4,39": {
       "bold": false
     },
-    "48,2": {
+    "44,14": {
+      "dim": true
+    },
+    "44,15": {
+      "dim": true
+    },
+    "44,20": {
+      "dim": true
+    },
+    "44,21": {
+      "dim": true
+    },
+    "44,22": {
+      "dim": true
+    },
+    "44,26": {
+      "dim": true
+    },
+    "44,27": {
+      "dim": true
+    },
+    "44,29": {
+      "dim": true
+    },
+    "44,39": {
       "dim": false
+    },
+    "47,39": {
+      "bold": true
+    },
+    "48,25": {
+      "dim": false
+    },
+    "48,39": {
+      "bold": false
     },
     "49,39": {
-      "dim": true,
-      "inverse": false
+      "dim": true
+    },
+    "5,39": {
+      "dim": true
+    },
+    "50,11": {
+      "dim": false
+    },
+    "52,18": {
+      "dim": false
     },
     "55,39": {
-      "dim": false,
-      "inverse": true
+      "dim": false
     },
-    "57,6": {
+    "57,3": {
+      "underline": "none"
+    },
+    "57,5": {
       "inverse": false
+    },
+    "58,12": {
+      "dim": false
+    },
+    "58,13": {
+      "dim": false
+    },
+    "58,14": {
+      "dim": false
+    },
+    "58,15": {
+      "dim": false
+    },
+    "58,17": {
+      "dim": false
+    },
+    "58,19": {
+      "dim": false
+    },
+    "58,20": {
+      "dim": false
+    },
+    "58,21": {
+      "dim": false
+    },
+    "58,22": {
+      "dim": false
+    },
+    "58,23": {
+      "dim": false
+    },
+    "58,24": {
+      "dim": false
+    },
+    "58,26": {
+      "dim": false
+    },
+    "58,27": {
+      "dim": false
+    },
+    "58,28": {
+      "dim": false
+    },
+    "58,29": {
+      "dim": false
+    },
+    "58,39": {
+      "bold": true
+    },
+    "59,10": {
+      "dim": true
+    },
+    "59,11": {
+      "dim": true
+    },
+    "59,12": {
+      "dim": true
+    },
+    "59,13": {
+      "dim": true
+    },
+    "59,14": {
+      "dim": true
+    },
+    "59,15": {
+      "dim": true
+    },
+    "59,16": {
+      "dim": true
+    },
+    "59,17": {
+      "dim": true
+    },
+    "59,18": {
+      "dim": true
+    },
+    "59,19": {
+      "dim": true
+    },
+    "59,20": {
+      "dim": true
+    },
+    "59,21": {
+      "dim": true
+    },
+    "59,22": {
+      "dim": true
+    },
+    "59,23": {
+      "dim": true
+    },
+    "59,24": {
+      "dim": true
+    },
+    "59,25": {
+      "dim": true
+    },
+    "59,26": {
+      "dim": true
+    },
+    "59,27": {
+      "dim": true
+    },
+    "59,28": {
+      "dim": true
+    },
+    "59,29": {
+      "dim": true
+    },
+    "59,3": {
+      "dim": true
+    },
+    "59,30": {
+      "dim": true
+    },
+    "59,31": {
+      "dim": true
+    },
+    "59,32": {
+      "dim": true
+    },
+    "59,33": {
+      "dim": true
+    },
+    "59,34": {
+      "dim": true
+    },
+    "59,35": {
+      "dim": true
+    },
+    "59,36": {
+      "dim": true
+    },
+    "59,37": {
+      "dim": true
+    },
+    "59,38": {
+      "dim": true
+    },
+    "59,39": {
+      "bold": false
+    },
+    "59,4": {
+      "dim": true
     },
     "59,5": {
-      "bold": true
+      "dim": true
+    },
+    "59,6": {
+      "dim": true
+    },
+    "59,7": {
+      "dim": true
+    },
+    "59,8": {
+      "dim": true
+    },
+    "59,9": {
+      "dim": true
+    },
+    "60,10": {
+      "dim": false
+    },
+    "60,11": {
+      "dim": false
+    },
+    "60,12": {
+      "dim": false
     },
     "60,13": {
-      "bold": true
+      "dim": false
+    },
+    "60,14": {
+      "dim": false
+    },
+    "60,15": {
+      "dim": false
     },
     "60,16": {
-      "bold": true
+      "dim": false
+    },
+    "60,17": {
+      "dim": false
+    },
+    "60,18": {
+      "dim": false
+    },
+    "60,19": {
+      "dim": false
+    },
+    "60,20": {
+      "dim": false
     },
     "60,21": {
-      "bold": true
+      "dim": false
+    },
+    "60,22": {
+      "dim": false
     },
     "60,23": {
-      "bold": true
+      "dim": false
     },
     "60,24": {
-      "dim": true
+      "dim": false
     },
     "60,25": {
-      "dim": true
+      "dim": false
+    },
+    "60,26": {
+      "dim": false
     },
     "60,27": {
-      "bold": true
+      "dim": false
+    },
+    "60,28": {
+      "dim": false
+    },
+    "60,29": {
+      "dim": false
+    },
+    "60,3": {
+      "dim": false
+    },
+    "60,30": {
+      "dim": false
+    },
+    "60,31": {
+      "dim": false
     },
     "60,32": {
-      "dim": true
+      "dim": false
+    },
+    "60,33": {
+      "dim": false
+    },
+    "60,34": {
+      "dim": false
     },
     "60,35": {
-      "bold": true
+      "dim": false
+    },
+    "60,36": {
+      "dim": false
+    },
+    "60,37": {
+      "dim": false
+    },
+    "60,38": {
+      "dim": false
     },
     "60,39": {
-      "dim": true,
-      "inverse": false
-    },
-    "60,6": {
-      "bold": true
-    },
-    "60,7": {
       "dim": true
     },
+    "60,4": {
+      "dim": false
+    },
+    "60,5": {
+      "dim": false
+    },
+    "60,6": {
+      "dim": false
+    },
+    "60,7": {
+      "dim": false
+    },
+    "60,8": {
+      "dim": false
+    },
     "60,9": {
+      "dim": false
+    },
+    "62,11": {
+      "bold": true,
+      "underline": "single"
+    },
+    "62,14": {
+      "bold": true,
+      "underline": "single"
+    },
+    "62,19": {
+      "bold": true,
+      "underline": "single"
+    },
+    "62,3": {
       "bold": true
     },
+    "62,38": {
+      "dim": true
+    },
+    "62,4": {
+      "dim": true
+    },
+    "62,5": {
+      "dim": true
+    },
+    "62,7": {
+      "bold": true,
+      "underline": "single"
+    },
+    "64,20": {
+      "bold": true
+    },
+    "64,21": {
+      "dim": true
+    },
+    "64,22": {
+      "dim": true
+    },
     "64,24": {
+      "bold": true,
+      "underline": "single"
+    },
+    "64,29": {
+      "dim": true
+    },
+    "64,32": {
+      "bold": true,
+      "underline": "single"
+    },
+    "64,39": {
       "dim": false
     },
-    "65,16": {
-      "bold": false
+    "66,14": {
+      "bold": false,
+      "underline": "none"
     },
-    "65,5": {
-      "bold": false
-    },
-    "68,32": {
+    "68,21": {
       "dim": false
     },
-    "68,39": {
-      "dim": false,
-      "inverse": true
-    },
-    "68,7": {
+    "68,5": {
       "dim": false
     },
     "7,0": {
       "bold": false
     },
-    "7,10": {
-      "bold": false
-    },
-    "7,11": {
-      "bold": false
-    },
-    "7,12": {
-      "bold": false
-    },
-    "7,13": {
-      "bold": false
-    },
-    "7,14": {
-      "bold": false
-    },
-    "7,15": {
-      "bold": false
-    },
-    "7,7": {
-      "bold": false
-    },
-    "7,8": {
-      "bold": false
-    },
-    "7,9": {
-      "bold": false
-    },
-    "71,21": {
-      "bold": false
-    },
-    "71,39": {
-      "dim": true,
-      "inverse": false
-    },
-    "73,9": {
-      "bold": false
-    },
-    "77,13": {
-      "bold": false
-    },
-    "78,1": {
-      "bold": true
-    },
-    "78,25": {
+    "70,4": {
       "dim": false
     },
-    "8,10": {
-      "bold": true
+    "72,19": {
+      "bold": false,
+      "underline": "none"
     },
-    "8,11": {
-      "bold": true
+    "72,29": {
+      "dim": false
     },
-    "8,12": {
-      "bold": true
+    "74,7": {
+      "bold": false,
+      "underline": "none"
     },
-    "8,13": {
-      "bold": true
+    "78,11": {
+      "bold": false,
+      "underline": "none"
     },
-    "8,14": {
-      "bold": true
+    "80,0": {
+      "dim": true
     },
-    "8,15": {
-      "bold": true
+    "82,22": {
+      "dim": false
     },
-    "8,16": {
-      "bold": true
-    },
-    "8,17": {
-      "bold": true
-    },
-    "8,18": {
-      "bold": true
-    },
-    "8,19": {
-      "bold": true
-    },
-    "8,20": {
-      "bold": true
-    },
-    "8,21": {
-      "bold": true
-    },
-    "8,22": {
-      "bold": true
-    },
-    "8,23": {
-      "bold": true
-    },
-    "8,26": {
-      "bold": true
-    },
-    "8,27": {
-      "bold": true
-    },
-    "8,29": {
-      "bold": true
-    },
-    "8,7": {
-      "bold": true
-    },
-    "8,8": {
-      "bold": true
-    },
-    "8,9": {
-      "bold": true
-    },
-    "81,39": {
-      "dim": false,
-      "inverse": true
-    },
-    "83,23": {
+    "82,24": {
       "bold": false
     },
-    "84,39": {
-      "dim": true,
-      "inverse": false
+    "83,24": {
+      "bold": true
     },
-    "86,1": {
+    "86,0": {
+      "dim": false
+    },
+    "87,20": {
       "bold": false
     },
-    "88,6": {
-      "bold": false
-    },
-    "9,3": {
-      "dim": false,
-      "inverse": true
+    "89,0": {
+      "bold": true,
+      "underline": "single"
     },
     "9,39": {
-      "dim": false,
-      "inverse": true
+      "dim": false
     },
-    "94,39": {
-      "dim": false,
-      "inverse": true
-    },
-    "97,39": {
-      "dim": true,
-      "inverse": false
-    },
-    "99,35": {
+    "90,0": {
       "bold": false
+    },
+    "90,3": {
+      "bold": false
+    },
+    "90,38": {
+      "dim": false
+    },
+    "91,0": {
+      "bold": true
+    },
+    "92,24": {
+      "bold": false
+    },
+    "93,24": {
+      "bold": true
+    },
+    "94,24": {
+      "bold": false
+    },
+    "95,24": {
+      "bold": true
+    },
+    "97,0": {
+      "bold": false
+    },
+    "97,32": {
+      "bold": false
+    },
+    "98,0": {
+      "bold": true
+    },
+    "98,32": {
+      "bold": true
     }
   }
 }
