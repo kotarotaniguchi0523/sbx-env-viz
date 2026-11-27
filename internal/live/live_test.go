@@ -1775,3 +1775,42 @@ func TestPortPairingGivesAPairToTheDualPortAndTheRestToTheOther(t *testing.T) {
 		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
 	}
 }
+
+func TestPortPairingKeepsADualPairFromAPortOfOneFamily(t *testing.T) {
+	t.Parallel()
+	// Arrange: ephemeral 3000/tcp4 and 3000/tcp; sbx has the pair on 50001
+	// and IPv4 on 50002.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "v4", SandboxPort: 3000, Protocol: "tcp4"},
+		{ItemID: "dual", SandboxPort: 3000, Protocol: "tcp"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 50001, SandboxPort: 3000, Protocol: "tcp4"},
+		{HostIP: "::1", HostPort: 50001, SandboxPort: 3000, Protocol: "tcp6"},
+		{HostIP: "127.0.0.1", HostPort: 50002, SandboxPort: 3000, Protocol: "tcp4"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: tcp4 must not take the pair's IPv4 half and leave 50002 over.
+	if len(c.Drifts) > 0 || !slices.Contains(c.Compared, "dual") {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
+func TestPortLabel(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		p    live.Port
+		want string
+	}{
+		{live.Port{HostPort: 4000, SandboxPort: 3000}, "loopback:4000 -> sandbox:3000/tcp"},
+		{live.Port{HostIP: "::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"}, "[::1]:4000 -> sandbox:3000/tcp6"},
+		{live.Port{HostIP: "0.0.0.0", HostPort: 8080, SandboxPort: 80, Protocol: "udp"}, "0.0.0.0:8080 -> sandbox:80/udp"},
+	} {
+		if got := tc.p.Label(); got != tc.want {
+			t.Errorf("%+v: %q, want %q", tc.p, got, tc.want)
+		}
+	}
+}

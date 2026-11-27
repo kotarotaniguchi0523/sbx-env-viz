@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -74,6 +75,23 @@ type Port struct {
 	HostPort    int
 	SandboxPort int
 	Protocol    string
+}
+
+// Label is the port as a person reads it: loopback for no address, an
+// IPv6 address in brackets, tcp for no protocol.
+func (p Port) Label() string {
+	ip := p.HostIP
+	if ip == "" {
+		ip = "loopback"
+	}
+	if strings.Contains(ip, ":") {
+		ip = "[" + ip + "]"
+	}
+	proto := p.Protocol
+	if proto == "" {
+		proto = "tcp"
+	}
+	return fmt.Sprintf("%s:%d -> sandbox:%d/%s", ip, p.HostPort, p.SandboxPort, proto)
 }
 
 // Rule is one effective network rule.

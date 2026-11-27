@@ -511,11 +511,13 @@ func (m *Model) listLines(iw, ih, x0, top int) []string {
 	for i := start; i < len(m.rows) && len(lines) <= vis; i++ {
 		r := m.rows[i]
 		y := top + len(lines)
-		m.addZone(x0, y, x0+iw, y+1, zoneRow, i)
 		if r.header {
+			// A header is not a row to select: a click there falls
+			// through to the pane and gives it the focus.
 			lines = append(lines, trunc(" "+p.strong.Render(r.label), iw))
 			continue
 		}
+		m.addZone(x0, y, x0+iw, y+1, zoneRow, i)
 		text, note := r.label, r.note
 		if m.view == viewItems && keyW > 0 {
 			if v, ok := strings.CutPrefix(r.label, r.key+" = "); ok && r.key != "" {

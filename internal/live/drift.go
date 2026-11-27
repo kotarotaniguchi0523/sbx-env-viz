@@ -421,7 +421,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				if wider {
 					sev = sbxenv.SeverityHigh
 				}
-				actual := portLabel(lp)
+				actual := lp.Label()
 				if hide {
 					actual = "<redacted>"
 				}
@@ -437,7 +437,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			if isAll(lp.HostIP) {
 				sev = sbxenv.SeverityHigh
 			}
-			actual := portLabel(lp)
+			actual := lp.Label()
 			if strict {
 				actual = "<redacted>"
 			}
@@ -681,21 +681,6 @@ func orDefault(s, d string) string {
 		return d
 	}
 	return s
-}
-
-func portLabel(p Port) string {
-	ip := p.HostIP
-	if ip == "" {
-		ip = "loopback"
-	}
-	if strings.Contains(ip, ":") {
-		ip = "[" + ip + "]"
-	}
-	proto := p.Protocol
-	if proto == "" {
-		proto = "tcp"
-	}
-	return fmt.Sprintf("%s:%d -> sandbox:%d/%s", ip, p.HostPort, p.SandboxPort, proto)
 }
 
 func needsAuth(status string) bool {

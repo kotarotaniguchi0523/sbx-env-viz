@@ -479,7 +479,7 @@ func (m *Model) liveOnly(sb *live.Sandbox, section func(string), info func(strin
 			info("ポート公開: <redacted>")
 			continue
 		}
-		info(fmt.Sprintf("ポート公開: %s:%d -> sandbox:%d/%s", orNone(p.HostIP), p.HostPort, p.SandboxPort, orNone(p.Protocol)))
+		info("ポート公開: " + p.Label())
 	}
 	if sb.RulesKnown {
 		info(fmt.Sprintf("通信ルール: %d 件", len(sb.Rules)))

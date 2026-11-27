@@ -3252,3 +3252,33 @@ func TestTUIClickOnEmptySpaceClosesThePicker(t *testing.T) {
 		t.Errorf("the picker is still open:\n%s", u.text())
 	}
 }
+
+func TestTUILiveOnlyPortsReadLikeTheOtherScreens(t *testing.T) {
+	t.Parallel()
+	// Arrange: a sandbox no file declares, with an IPv6 and an empty row.
+	sb := &live.Sandbox{Name: "orphan", Status: "stopped", Ports: []live.Port{
+		{HostIP: "::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"},
+		{HostPort: 5000, SandboxPort: 80},
+	}}
+
+	// Act
+	u := targetUI(t, 120, 30, live.Target{Name: "orphan", State: "停止中・宣言ファイル未検出", Sandbox: sb})
+
+	// Assert: regression; ::1:4000 unbracketed and （なし）:5000 -> sandbox:80/（なし）.
+	u.want("ポート公開: [::1]:4000 -> sandbox:3000/tcp6", "ポート公開: loopback:5000 -> sandbox:80/tcp")
+}
+
+func TestTUIClickOnASectionHeaderFocusesTheList(t *testing.T) {
+	t.Parallel()
+	// Arrange: two panes, the detail focused.
+	u := newUI(t, 130, 40, true).press("2", "l")
+
+	// Act: click the first section header of the Risk list.
+	x, y := u.find("このツールの指摘", 0)
+	u.click(x+1, y)
+
+	// Assert: regression; the header's row zone swallowed the click.
+	if f := u.footer(); !strings.Contains(f, "j/k 移動") {
+		t.Errorf("footer = %q", f)
+	}
+}
