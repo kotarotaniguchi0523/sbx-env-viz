@@ -1673,3 +1673,45 @@ func TestMCPIsNotCheckedWhenEveryServerIsSkipped(t *testing.T) {
 		t.Errorf("checked %v", c.Checked)
 	}
 }
+
+func TestAWildcardIPv6RowDoesNotCompleteALoopbackPort(t *testing.T) {
+	t.Parallel()
+	// Arrange: 4000 -> 3000/tcp on the default loopback; sbx has it on
+	// 127.0.0.1 and on [::], every IPv6 interface.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"}}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp4"},
+		{HostIP: "::", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the [::] row was taken as the IPv6 half and the
+	// port read 一致. It is open to every network, a high drift.
+	if slices.Contains(c.Compared, "dual") {
+		t.Errorf("compared %v", c.Compared)
+	}
+	if d, ok := drift(&c, "宣言にないポート"); !ok || d.Severity != sbxenv.SeverityHigh {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestADualStackPortFindsItsPairWhateverTheOrder(t *testing.T) {
+	t.Parallel()
+	// Arrange: an ephemeral 3000/tcp; sbx has IPv4 on 50001 and the pair
+	// IPv4 and IPv6 on 50002.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", SandboxPort: 3000, Protocol: "tcp"}}}}
+	lone := live.Port{HostIP: "127.0.0.1", HostPort: 50001, SandboxPort: 3000, Protocol: "tcp4"}
+	v4 := live.Port{HostIP: "127.0.0.1", HostPort: 50002, SandboxPort: 3000, Protocol: "tcp4"}
+	v6 := live.Port{HostIP: "::1", HostPort: 50002, SandboxPort: 3000, Protocol: "tcp6"}
+	for _, order := range [][]live.Port{{lone, v4, v6}, {v4, v6, lone}} {
+		// Act
+		c := live.Compare(p, &live.Sandbox{Ports: order}, &live.Snapshot{}, nil)
+
+		// Assert: regression; with 50001 first the pair was left over.
+		if !slices.Contains(c.Compared, "dual") || len(c.Drifts) != 1 || !strings.Contains(c.Drifts[0].Actual, "50001") {
+			t.Errorf("order %v: compared %v, drifts %v", order, c.Compared, c.Drifts)
+		}
+	}
+}

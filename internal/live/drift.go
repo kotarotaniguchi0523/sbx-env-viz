@@ -191,6 +191,20 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			return lp.SandboxPort == dp.SandboxPort && baseProto(lp.Protocol) == baseProto(dp.Protocol) &&
 				sameFamily(portFamily(lp.Protocol, lp.HostIP), portFamily(dp.Protocol, dp.HostIP))
 		}
+		// companion finds the row of the other family that, with lp, makes
+		// up a port declared for both families (sbx may list one row per
+		// family): same ports and protocol, on the declared address too, so
+		// a [::] row never passes for loopback. skip leaves out rows taken.
+		companion := func(dp sbxenv.DeclaredPort, lp Port, skip func(int) bool) int {
+			other := map[string]string{"4": "6", "6": "4"}[portFamily(lp.Protocol, lp.HostIP)]
+			for i, x := range sb.Ports {
+				if other != "" && !skip(i) && x.SandboxPort == lp.SandboxPort && x.HostPort == lp.HostPort &&
+					baseProto(x.Protocol) == baseProto(lp.Protocol) && portFamily(x.Protocol, x.HostIP) == other && sameIP(dp.HostIP, x.HostIP) {
+					return i
+				}
+			}
+			return -1
+		}
 		distance := func(dp sbxenv.DeclaredPort, lp Port) int {
 			// A fixed host port that differs costs most (it is a drift);
 			// an ephemeral one accepts any host port.
@@ -202,6 +216,11 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			// port declared for both (tcp, no address) that is a row for both
 			// too, which is also the only one that can confirm it.
 			shows := portFamily(lp.Protocol, lp.HostIP) == portFamily(dp.Protocol, dp.HostIP)
+			// A row of one family with its companion shows both, as a row
+			// for both does, whatever order sbx lists them in.
+			if !shows && portFamily(dp.Protocol, dp.HostIP) == "" && companion(dp, lp, func(int) bool { return false }) >= 0 {
+				shows = true
+			}
 			switch same := sameIP(dp.HostIP, lp.HostIP); {
 			case same && shows:
 			case same:
@@ -353,13 +372,8 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			// family: the other row is this declaration's too, not an
 			// undeclared listener, and the two together show both.
 			if df == "" && lf != "" {
-				other := map[string]string{"4": "6", "6": "4"}[lf]
-				for i, x := range sb.Ports {
-					if !used[i] && x.SandboxPort == lp.SandboxPort && x.HostPort == lp.HostPort &&
-						baseProto(x.Protocol) == baseProto(lp.Protocol) && portFamily(x.Protocol, x.HostIP) == other {
-						used[i], lf = true, ""
-						break
-					}
+				if i := companion(dp, lp, func(i int) bool { return used[i] }); i >= 0 {
+					used[i], lf = true, ""
 				}
 			}
 			if (dp.HostPort == 0 || lp.HostPort != 0) && (df == "" && lf == "" || df != "" && lf != "") {
