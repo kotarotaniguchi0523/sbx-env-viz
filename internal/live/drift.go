@@ -270,7 +270,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				continue
 			}
 			resource := r.Resource
-			if hidden[strings.ToLower(resource)] {
+			if host := strings.ToLower(resource); hidden[host] || hidden[stripRulePort(host)] {
 				resource = "<redacted>"
 			}
 			how := "sbx policy allow などで手動追加"
@@ -430,6 +430,15 @@ func protoFamily(p string) string {
 		return p[len(p)-1:]
 	}
 	return ""
+}
+
+// stripRulePort drops a :port suffix from a rule's resource
+// (private.example:443), leaving a bracketed IPv6 address whole.
+func stripRulePort(r string) string {
+	if i := strings.LastIndex(r, ":"); i > 0 && !strings.Contains(r[i:], "]") {
+		return r[:i]
+	}
+	return r
 }
 
 // sameFamily tells whether two families can meet: an unfixed one meets

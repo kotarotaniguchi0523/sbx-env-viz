@@ -884,3 +884,19 @@ func TestABoundedRuleIsNotConfirmedByItsHost(t *testing.T) {
 		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
 	}
 }
+
+func TestStrictRedactionHidesAHiddenHostWithAPort(t *testing.T) {
+	t.Parallel()
+	// Arrange: the manual rule names the hidden host with a port.
+	p := strictPlan(&sbxenv.Declared{Network: []sbxenv.DeclaredRule{{ItemID: "r1", Phase: "runtime", Decision: "deny", Host: "private.example"}}},
+		sbxenv.Item{ID: "r1", Value: "runtime deny <redacted>"})
+	sb := &live.Sandbox{RulesKnown: true, Rules: []live.Rule{{Decision: "allow", Resource: "private.example:443", CreatedVia: "added"}}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the whole resource was looked up, port and all.
+	if d, ok := drift(&c, "宣言にない通信許可"); !ok || d.Actual != "許可: <redacted>" {
+		t.Errorf("drift = %+v (%v)", d, c.Drifts)
+	}
+}
