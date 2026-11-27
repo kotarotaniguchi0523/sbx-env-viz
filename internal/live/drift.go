@@ -505,12 +505,13 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 					Fix: fixRecreate, Severity: sbxenv.SeverityMedium, ItemID: m.ItemID, Source: "sbx mcp ls --json"})
 				continue
 			}
-			// The kind sbx reports ("remote", or another for a command
-			// server) is held against url versus command; without it only
-			// the registration is known, which does not confirm the row.
-			if row.Type != "" {
+			// The kind sbx reports is held against url versus command, but
+			// only "remote" is known to mean a url server: another word
+			// (unknown, a newer kind) shows neither, so it confirms nothing
+			// and is no drift; only the registration is known then.
+			if row.Type == "remote" {
 				c.Compared = append(c.Compared, m.ItemID)
-				if remote := row.Type == "remote"; remote != m.Remote {
+				if !m.Remote {
 					add(Drift{Kind: "MCP サーバー", Title: "同じ名前の MCP サーバーが、宣言と違う種類で登録されている", Declared: item(m.ItemID),
 						Actual: "種類: " + shown(row.Type) + "（" + shown(orDefault(row.Transport, "接続方式不明")) + "）",
 						Fix:    "別の設定で登録された可能性があります。sbx mcp inspect " + m.Shown + " で確認してください。", Severity: sbxenv.SeverityMedium,

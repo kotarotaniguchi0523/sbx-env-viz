@@ -1555,3 +1555,21 @@ func TestDriftManualNetworkDeny(t *testing.T) {
 		t.Errorf("drift = %+v (%v)", d, c.Drifts)
 	}
 }
+
+func TestAnMCPKindOtherThanRemoteConfirmsNothing(t *testing.T) {
+	t.Parallel()
+	for _, remote := range []bool{false, true} {
+		// Arrange: sbx reports a kind sbxray does not know.
+		p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{MCP: []sbxenv.DeclaredMCP{{ItemID: "m", Name: "docs", Shown: "docs", Remote: remote}}}}
+		snap := &live.Snapshot{MCPKnown: true, MCP: []live.MCPServer{{Name: "docs", Type: "unknown", Status: "ready"}}}
+
+		// Act
+		c := live.Compare(p, &live.Sandbox{}, snap, nil)
+
+		// Assert: regression; any word but remote read as a command server,
+		// confirming a command declaration and drifting a url one.
+		if slices.Contains(c.Compared, "m") || len(c.Drifts) > 0 {
+			t.Errorf("remote=%v: compared %v, drifts %v", remote, c.Compared, c.Drifts)
+		}
+	}
+}
