@@ -2288,3 +2288,19 @@ func TestTUILiveOnlyOverviewHidesPortsAndSecretsWhenRedacted(t *testing.T) {
 		t.Errorf("a live value leaked:\n%s", u.text())
 	}
 }
+
+func TestTUITabsShrinkBeforeTheyAreCut(t *testing.T) {
+	t.Parallel()
+	// Arrange / Act: 45 columns cannot hold the four tabs with counts.
+	u := newUI(t, 45, 24, true).press("4")
+
+	// Assert: regression; 4 ファイル, the active tab, was cut off.
+	l := u.lines()[0]
+	if !strings.Contains(l, "4 ファイル") || !strings.Contains(l, "1") || !strings.Contains(l, "3") {
+		t.Errorf("title bar = %q", l)
+	}
+	// A one-cell tab is still a click target.
+	x, y := u.find("1   2", 0)
+	u.click(x, y)
+	u.wantView("概要")
+}

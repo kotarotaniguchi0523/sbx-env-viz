@@ -99,7 +99,7 @@ Exit codes: `0` OK, `1` `--fail-on` threshold reached, `2` invalid arguments or 
 | View | Description |
 |---|---|
 | `1 概要` (Overview) | A manifest of the configuration: what the files declare and, with live data, what `sbx` actually has, stamped where they differ |
-| `2 リスク` (Risk) | Diagnostics, risky items, and live drift sorted by severity |
+| `2 リスク` (Risk) | Live drift, then diagnostics, then risky items, each section sorted by severity |
 | `3 設定` (Items) | All resolved items (`g` toggles grouping by Layer / Boundary / Kit) |
 | `4 ファイル` (Sources) | Input files and kits with SHA-256 digests and unexpanded remote markers |
 

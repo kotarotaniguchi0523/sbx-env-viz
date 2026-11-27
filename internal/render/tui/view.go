@@ -145,17 +145,27 @@ func (m *Model) titleBar(w int) string {
 			}
 		}
 	}
+	// The tabs shrink before they are cut: first the counts go, then the
+	// names of the tabs not shown, so every tab and the active one's name
+	// stay on screen and clickable.
 	var tabs []string
-	for i, n := range viewNames {
-		label := fmt.Sprintf("%d %s", i+1, n)
-		if c := m.viewTotal(viewID(i)); c >= 0 {
-			label += fmt.Sprintf(" %d", c)
-		}
-		tabs = append(tabs, label)
-	}
 	tabW := 0
-	for _, t := range tabs {
-		tabW += lipgloss.Width(t) + 3
+	for level := 0; level < 3; level++ {
+		tabs, tabW = tabs[:0], 0
+		for i, n := range viewNames {
+			label := fmt.Sprintf("%d %s", i+1, n)
+			if level == 2 && viewID(i) != m.view {
+				label = fmt.Sprint(i + 1)
+			}
+			if c := m.viewTotal(viewID(i)); c >= 0 && level == 0 {
+				label += fmt.Sprintf(" %d", c)
+			}
+			tabs = append(tabs, label)
+			tabW += lipgloss.Width(label) + 3
+		}
+		if tabW+3+lipgloss.Width(" sbxray") <= w {
+			break
+		}
 	}
 	// The tabs keep their place. When the rest does not fit beside them,
 	// the name gives way first, shortened in the middle down to 8 cells,
