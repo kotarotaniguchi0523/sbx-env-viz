@@ -1640,3 +1640,22 @@ func TestADualStackPortPrefersARowForBothFamilies(t *testing.T) {
 		}
 	}
 }
+
+func TestADualStackPortTakesItsRowForEachFamily(t *testing.T) {
+	t.Parallel()
+	// Arrange: 4000 -> 3000/tcp (both families); sbx lists it as one IPv4
+	// and one IPv6 row.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"}}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp4"},
+		{HostIP: "::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the IPv6 row read as an undeclared listener.
+	if len(c.Drifts) > 0 || !slices.Contains(c.Compared, "dual") {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}

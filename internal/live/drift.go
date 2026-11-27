@@ -349,6 +349,19 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			// a port for both families (tcp, no address) only by a row for
 			// both: one IPv4 listener does not show the IPv6 one.
 			df, lf := portFamily(dp.Protocol, dp.HostIP), portFamily(lp.Protocol, lp.HostIP)
+			// sbx may list a port for both families as two rows, one per
+			// family: the other row is this declaration's too, not an
+			// undeclared listener, and the two together show both.
+			if df == "" && lf != "" {
+				other := map[string]string{"4": "6", "6": "4"}[lf]
+				for i, x := range sb.Ports {
+					if !used[i] && x.SandboxPort == lp.SandboxPort && x.HostPort == lp.HostPort &&
+						baseProto(x.Protocol) == baseProto(lp.Protocol) && portFamily(x.Protocol, x.HostIP) == other {
+						used[i], lf = true, ""
+						break
+					}
+				}
+			}
 			if (dp.HostPort == 0 || lp.HostPort != 0) && (df == "" && lf == "" || df != "" && lf != "") {
 				c.Compared = append(c.Compared, dp.ItemID)
 			}
