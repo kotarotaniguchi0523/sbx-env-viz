@@ -102,7 +102,10 @@ type Model struct {
 	oScroll, hScroll int
 	// oExtra is how far the Overview is scrolled beyond the position that
 	// keeps the cursor in view: j past the last entry, or k past the first.
-	oExtra int
+	// oCursorShown tells whether the cursor row was on the last frame;
+	// Enter opens nothing the user cannot see.
+	oExtra       int
+	oCursorShown bool
 	// zones are the clickable regions of the last frame; mouse events are
 	// resolved against them so drawing and hit-testing never disagree.
 	zones []zone
@@ -352,6 +355,13 @@ func (m *Model) groupKey(it *sbxenv.Item) string {
 }
 
 func (m *Model) move(delta int) {
+	// On the Overview, a move back toward the cursor first undoes a scroll
+	// past the ends, so k after j past the end returns through the lines
+	// it passed instead of jumping to the entry above.
+	if m.view == viewOverview && (m.oExtra > 0 && delta < 0 || m.oExtra < 0 && delta > 0) {
+		m.oExtra += delta
+		return
+	}
 	before, step := m.cursor[m.view], delta
 	defer func() {
 		if m.view == viewOverview {

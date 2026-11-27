@@ -275,11 +275,17 @@ func (m *Model) buildOverview() {
 				drifted = append(drifted, it)
 				continue
 			}
+			// A rule that will not take effect (an optional group whose
+			// condition fails) gets a row of its own, marked as such.
 			label, host := ruleLabel(it)
-			g := find[label]
+			key := label
+			if hasBadge(it, sbxenv.BadgeSkip) {
+				key += "\x00skip"
+			}
+			g := find[key]
 			if g == nil {
 				g = &group{label: label}
-				find[label] = g
+				find[key] = g
 				groups = append(groups, g)
 			}
 			g.hosts = append(g.hosts, host)
@@ -425,7 +431,7 @@ func hasBadge(it *sbxenv.Item, b string) bool {
 // jump opens the Items or Risk detail of the selected Overview entry.
 func (m *Model) jump() {
 	r := m.current()
-	if r == nil || m.view != viewOverview {
+	if r == nil || m.view != viewOverview || !m.oCursorShown {
 		return
 	}
 	// A drifted entry opens the drift, whose detail sets the declaration
@@ -478,6 +484,11 @@ func (m *Model) overviewPanes(w, top, ph int) string {
 	var head []string
 	summary := p.stamp.Render("✗") + " 最重要・高 " + p.strong.Render(fmt.Sprint(m.tally.high)) + "    " +
 		p.caution.Render("!") + " 中 " + p.strong.Render(fmt.Sprint(m.tally.medium))
+	assessed := true
+	if t := m.target(); t != nil && t.Plan == nil {
+		// Nothing was assessed, which is not the same as nothing found.
+		summary, assessed = p.muted.Render("宣言がないため、危険度は評価していません"), false
+	}
 	if t := m.target(); t != nil && t.Comparison != nil {
 		n := p.strong.Render(fmt.Sprint(len(m.drifts)))
 		if len(m.drifts) > 0 {
@@ -486,7 +497,9 @@ func (m *Model) overviewPanes(w, top, ph int) string {
 			summary += "    ズレ " + n
 		}
 	}
-	summary += p.muted.Render("    印なしでも問題がないとは限りません")
+	if assessed {
+		summary += p.muted.Render("    印なしでも問題がないとは限りません")
+	}
 	head = append(head, " "+summary, "")
 
 	live := false
@@ -604,6 +617,9 @@ func (m *Model) overviewPanes(w, top, ph int) string {
 		// counts never point at rows the user cannot see.
 		out[len(out)-1] = strings.Repeat(" ", indent) + p.muted.Render(fmt.Sprintf("ほか %d 行（j で下へ）", rest+1))
 		visible = bh - 1
+	}
+	if y := cursorY - scroll; len(zs) > 0 {
+		m.oCursorShown = y >= 0 && y < visible
 	}
 	m.addZone(0, top, w, top+ph, zoneListPane, 0)
 	for _, z := range zs {

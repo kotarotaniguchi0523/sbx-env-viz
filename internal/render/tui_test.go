@@ -1798,3 +1798,65 @@ func TestTUIFrameFitsAShortTerminal(t *testing.T) {
 		}
 	}
 }
+
+func TestTUIOverviewKeepsASkippedRuleOffTheActiveRow(t *testing.T) {
+	t.Parallel()
+	// Arrange: one active runtime allow, and one from an optional group
+	// whose condition fails.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{
+		{ID: "kit:a/network-policy@1/runtime.allow/on.test", Path: "cap:network-policy@1", Value: "on.test"},
+		{ID: "kit:b/network-policy@1/runtime.allow/off.test", Path: "cap:network-policy@1", Value: "off.test", Badges: []string{sbxenv.BadgeSkip}},
+	}}
+	m := tui.New(p, true)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	u := &ui{t: t, m: m}
+
+	// Assert: regression; both hosts read as allowed at runtime.
+	u.wantRe(`^ {4}許可（実行中） +1 件  on\.test *$`, `^ {4}許可（実行中） +1 件  off\.test（実行されない） *$`)
+}
+
+func TestTUIOverviewDoesNotCountRisksWithoutADeclaration(t *testing.T) {
+	t.Parallel()
+	// Act: a sandbox no file declares.
+	u := targetUI(t, 120, 30, live.Target{Name: "orphan", State: "停止中・宣言ファイル未検出", Sandbox: &live.Sandbox{Name: "orphan",
+		Ports: []live.Port{{HostIP: "0.0.0.0", HostPort: 8080, SandboxPort: 80, Protocol: "tcp"}}}})
+
+	// Assert: regression; 最重要・高 0 read as nothing found.
+	u.want("宣言がないため、危険度は評価していません")
+	if u.has("最重要・高 0") {
+		t.Errorf("no count without an assessment:\n%s", u.text())
+	}
+}
+
+func TestTUIOverviewEnterIgnoresACursorRowScrolledAway(t *testing.T) {
+	t.Parallel()
+	// Arrange: one entry, then many comparison notes, on a short screen.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: "agent", Path: "agent", Value: "claude"}}}
+	cmp := &live.Comparison{}
+	for i := range 20 {
+		cmp.Skipped = append(cmp.Skipped, fmt.Sprintf("比較していない項目 %02d", i))
+	}
+	u := targetUI(t, 100, 14, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: &live.Sandbox{Name: "web"}, Comparison: cmp})
+
+	// Act: scroll the notes until the entry has left the screen.
+	for range 30 {
+		u.press("j")
+	}
+	u.want("比較していない項目 19")
+	if u.has("エージェント") {
+		t.Fatalf("the entry should have scrolled away:\n%s", u.text())
+	}
+	u.press("enter")
+
+	// Assert: regression; Enter opened the unseen entry.
+	u.wantView("概要")
+	if u.has(backLink) {
+		t.Errorf("Enter opened a row that is not on screen:\n%s", u.text())
+	}
+
+	// Act / Assert: k scrolls back toward the entry.
+	for range 30 {
+		u.press("k")
+	}
+	u.want("エージェント")
+}
