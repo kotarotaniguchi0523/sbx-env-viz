@@ -1602,3 +1602,22 @@ func TestASkippedCommandMCPServerIsNotCompared(t *testing.T) {
 		t.Errorf("compared %v, drifts %v, skipped %v", c.Compared, c.Drifts, c.Skipped)
 	}
 }
+
+func TestPortPairingPrefersAnExactFixedPortOnATie(t *testing.T) {
+	t.Parallel()
+	// Arrange: an ephemeral 80/tcp4 declared before 4000 -> 80/tcp; sbx has
+	// only 127.0.0.1:4000, which either could take at no distance.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "eph", SandboxPort: 80, Protocol: "tcp4"},
+		{ItemID: "fixed", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+	}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"}}}, &live.Snapshot{}, nil)
+
+	// Assert: regression; declaration order gave 4000 to the ephemeral one,
+	// and 4000, which sbx lists, read as missing.
+	if len(c.Drifts) != 1 || c.Drifts[0].ItemID != "eph" {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}

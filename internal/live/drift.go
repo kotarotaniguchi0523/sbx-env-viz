@@ -288,29 +288,36 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			if len(g.decls) < 2 || len(g.decls) > 5 || len(g.lists) > 6 {
 				continue
 			}
-			best, bestN, bestCost := []int(nil), -1, 0
+			// Best: the most pairs, then the most fixed host ports met
+			// exactly (a listener on 4000 is 4000's, not an ephemeral
+			// one's), then the least distance.
+			best, bestN, bestExact, bestCost := []int(nil), -1, 0, 0
 			cur := make([]int, len(g.decls))
 			taken := map[int]bool{}
-			var try func(k, n, cost int)
-			try = func(k, n, cost int) {
+			var try func(k, n, exact, cost int)
+			try = func(k, n, exact, cost int) {
 				if k == len(g.decls) {
-					if n > bestN || n == bestN && cost < bestCost {
-						best, bestN, bestCost = slices.Clone(cur), n, cost
+					if n > bestN || n == bestN && (exact > bestExact || exact == bestExact && cost < bestCost) {
+						best, bestN, bestExact, bestCost = slices.Clone(cur), n, exact, cost
 					}
 					return
 				}
 				dp := d.Ports[g.decls[k]]
 				for _, i := range g.lists {
-					if !taken[i] && compatible(dp, sb.Ports[i]) {
+					if lp := sb.Ports[i]; !taken[i] && compatible(dp, lp) {
+						hit := 0
+						if dp.HostPort != 0 && lp.HostPort == dp.HostPort {
+							hit = 1
+						}
 						taken[i], cur[k] = true, i
-						try(k+1, n+1, cost+distance(dp, sb.Ports[i]))
+						try(k+1, n+1, exact+hit, cost+distance(dp, lp))
 						taken[i] = false
 					}
 				}
 				cur[k] = -1
-				try(k+1, n, cost)
+				try(k+1, n, exact, cost)
 			}
-			try(0, 0, 0)
+			try(0, 0, 0, 0)
 			for _, i := range g.lists {
 				owner[i] = -1
 			}
