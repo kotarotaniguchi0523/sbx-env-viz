@@ -192,8 +192,10 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				sameFamily(portFamily(lp.Protocol, lp.HostIP), portFamily(dp.Protocol, dp.HostIP))
 		}
 		distance := func(dp sbxenv.DeclaredPort, lp Port) int {
+			// A fixed host port that differs costs most (it is a drift);
+			// an ephemeral one accepts any host port.
 			n := 0
-			if dp.HostPort == 0 || lp.HostPort != dp.HostPort {
+			if dp.HostPort != 0 && lp.HostPort != dp.HostPort {
 				n += 4
 			}
 			f := portFamily(dp.Protocol, dp.HostIP)

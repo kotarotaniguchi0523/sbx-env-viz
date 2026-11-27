@@ -1361,3 +1361,21 @@ func TestStrictRedactionHidesEveryLiveValueWhateverThisPlanHides(t *testing.T) {
 		t.Errorf("each difference is still reported: %v", c.Drifts)
 	}
 }
+
+func TestAnEphemeralPortTakesTheOnlyListenerBeforeAFixedMismatch(t *testing.T) {
+	t.Parallel()
+	// Arrange: 4000 -> 80/tcp and an ephemeral 80/tcp4; sbx has only
+	// 127.0.0.1:5000.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "fixed", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+		{ItemID: "eph", SandboxPort: 80, Protocol: "tcp4"},
+	}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp"}}}, &live.Snapshot{}, nil)
+
+	// Assert: regression; fixed "changed to 5000" and eph went missing.
+	if len(c.Drifts) != 1 || c.Drifts[0].ItemID != "fixed" || c.Drifts[0].Title != "宣言したポートが公開されていない" {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
