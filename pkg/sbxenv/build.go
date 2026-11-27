@@ -595,18 +595,31 @@ func (rs *resolver) buildMCP() {
 	}
 }
 
+// PortExposure rates a port by the host address it is published on: every
+// interface high, a specific network address medium, loopback (all of
+// 127.0.0.0/8, ::1, localhost, or none given) low. A declared port and a
+// live one sbx reports are rated alike.
+func PortExposure(hostIP string) Severity {
+	ip := strings.Trim(hostIP, "[]")
+	switch a, err := netip.ParseAddr(ip); {
+	case ip == "0.0.0.0" || ip == "::":
+		return SeverityHigh
+	case ip == "" || ip == "localhost" || err == nil && a.IsLoopback():
+		return SeverityLow
+	}
+	return SeverityMedium
+}
+
 func (rs *resolver) buildPorts() {
 	for _, e := range rs.root.get("ports").list() {
 		it := rs.addItem(Item{ID: "ports[" + rs.portKey(e) + "]", Path: "ports[]", Section: SectionPorts, Risk: SeverityLow,
 			RiskReason: "あなたの PC の中からだけ接続できるポートです。"}, e, rs.fmtPort)
-		ip := e.str("hostIP")
 		reason := "publishes a sandbox port on the host loopback interface"
-		if ip == "0.0.0.0" || ip == "::" || ip == "[::]" {
-			it.Risk = SeverityHigh
+		switch it.Risk = PortExposure(e.str("hostIP")); it.Risk {
+		case SeverityHigh:
 			it.RiskReason = "LAN など外部のネットワークから、このポートに接続できます。"
 			reason = "publishes a sandbox port on every host interface, reachable from the network"
-		} else if a, err := netip.ParseAddr(strings.Trim(ip, "[]")); ip != "" && ip != "localhost" && (err != nil || !a.IsLoopback()) {
-			it.Risk = SeverityMedium
+		case SeverityMedium:
 			it.RiskReason = "特定のネットワークアドレスに公開されるため、そのネットワーク上の他の機械から接続できる場合があります。"
 			reason = "publishes a sandbox port on a non-loopback host address"
 		}

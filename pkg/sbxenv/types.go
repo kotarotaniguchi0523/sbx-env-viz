@@ -73,6 +73,10 @@ const (
 	RedactStrict Redaction = "strict"
 )
 
+// Strict reports whether r hides every value: strict itself, or empty,
+// which means strict.
+func (r Redaction) Strict() bool { return r == "" || r == RedactStrict }
+
 // ResolveOptions mirrors the `sbx env create` flags plus analysis settings.
 type ResolveOptions struct {
 	// ProjectDir is ${{ env.projectDir }}: the first path's directory, or the

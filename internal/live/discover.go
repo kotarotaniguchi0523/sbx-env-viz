@@ -128,7 +128,7 @@ func Discover(ctx context.Context, req DiscoverRequest) ([]Target, Snapshot) {
 	// ports and secret names of the sandboxes no file declares, and the
 	// name a pairing took from sbx, are hidden; names are numbered so the
 	// picker still tells them apart.
-	strict := req.Redaction == "" || req.Redaction == sbxenv.RedactStrict
+	strict := req.Redaction.Strict()
 	n := 0
 	shownName := func() string {
 		n++
@@ -297,7 +297,7 @@ func StateLabel(status string) string {
 // redaction, since it is copied from sbx verbatim.
 func ShownState(status string, mode sbxenv.Redaction) string {
 	label := StateLabel(status)
-	if label == status && status != "" && (mode == "" || mode == sbxenv.RedactStrict) {
+	if label == status && status != "" && mode.Strict() {
 		return "状態不明"
 	}
 	return label

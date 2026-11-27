@@ -58,7 +58,7 @@ type Paths func(string) string
 //
 //declscope:shared // discover.go shows the paths of a sandbox no file declares with it
 func livePath(mode sbxenv.Redaction, show Paths, path string) string {
-	if mode == "" || mode == sbxenv.RedactStrict {
+	if mode.Strict() {
 		return "<redacted>"
 	}
 	return show(path)
@@ -96,7 +96,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 	// the session (this one or another target's) can come back inside a
 	// live name, agent, port, host or secret name in any form, so no live
 	// value is held to be safe. What differs is still said, by kind.
-	strict := p.Meta.Redaction == "" || p.Meta.Redaction == sbxenv.RedactStrict
+	strict := p.Meta.Redaction.Strict()
 	shown := func(v string) string {
 		if strict {
 			return "<redacted>"
@@ -464,15 +464,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			if used[i] {
 				continue
 			}
-			// As a declared port is rated: every interface high, a
-			// specific network address medium, loopback low.
-			sev := sbxenv.SeverityLow
-			switch {
-			case isAll(lp.HostIP):
-				sev = sbxenv.SeverityHigh
-			case !loopbackRange(lp.HostIP):
-				sev = sbxenv.SeverityMedium
-			}
+			sev := sbxenv.PortExposure(lp.HostIP)
 			actual := lp.Label()
 			if strict {
 				actual = "<redacted>"
@@ -662,13 +654,6 @@ func baseProto(p string) string {
 	// Anything else (sctp, a typo) is its own transport: tcp does not
 	// confirm it.
 	return p
-}
-
-// loopbackRange tells whether ip is on the loopback interface (all of
-// 127.0.0.0/8 too), for rating exposure; matching addresses stays exact.
-func loopbackRange(ip string) bool {
-	a, err := netip.ParseAddr(strings.Trim(ip, "[]"))
-	return isLoopback(ip) || err == nil && a.IsLoopback()
 }
 
 func isLoopback(ip string) bool {

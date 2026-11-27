@@ -481,7 +481,7 @@ func liveTarget(plan *sbxenv.Plan, r live.Runner, show live.Paths) *live.Target 
 			// sbx's name, paired by workspace; under strict redaction it
 			// is hidden like every value sbx reports.
 			t.Name = sb.Name
-			if r := plan.Meta.Redaction; r == "" || r == sbxenv.RedactStrict {
+			if plan.Meta.Redaction.Strict() {
 				t.Name = "<redacted>-1"
 			}
 		}

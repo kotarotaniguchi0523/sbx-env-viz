@@ -84,8 +84,7 @@ func (rs *resolver) checkValues() {
 		if !e.has("sandbox") {
 			rs.diag("PORT_SANDBOX_MISSING", LevelError, "schema", "ports[] entries require sandbox", "", e.origin())
 		}
-		ip := e.str("hostIP")
-		if ip == "0.0.0.0" || ip == "::" || ip == "[::]" {
+		if PortExposure(e.str("hostIP")) == SeverityHigh {
 			rs.diag("PORT_ALL_INTERFACES", LevelWarning, "boundary", fmt.Sprintf("%s binds every host interface, so other machines on the network can reach the sandbox service", key), key, e.origin())
 		}
 	}

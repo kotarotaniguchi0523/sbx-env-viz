@@ -140,7 +140,7 @@ func CollectMatched(ctx context.Context, r Runner, d *sbxenv.Declared) Snapshot 
 // Reason is Problem with sbx's error text, which is left out under strict
 // redaction (mode, where empty means strict), since it can name paths.
 func (s Snapshot) Reason(mode sbxenv.Redaction) string {
-	if s.Detail == "" || mode == "" || mode == sbxenv.RedactStrict {
+	if s.Detail == "" || mode.Strict() {
 		return s.Problem
 	}
 	return s.Problem + " " + s.Detail
