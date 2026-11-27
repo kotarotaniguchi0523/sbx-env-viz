@@ -979,3 +979,25 @@ func TestStrictRedactionHidesAHiddenHostOnAnotherPort(t *testing.T) {
 		t.Errorf("drift = %+v (%v)", d, c.Drifts)
 	}
 }
+
+func TestPortsPairByHostPortWhateverTheOrder(t *testing.T) {
+	t.Parallel()
+	// Arrange: one sandbox port declared twice, on host ports 4000 and 5000.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "a", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+		{ItemID: "b", HostPort: 5000, SandboxPort: 80, Protocol: "tcp4"},
+	}}}
+	listeners := []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp"},
+		{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+	}
+	for _, order := range [][]live.Port{listeners, {listeners[1], listeners[0]}} {
+		// Act
+		c := live.Compare(p, &live.Sandbox{Ports: order}, &live.Snapshot{}, nil)
+
+		// Assert: regression; the first compatible listener was taken.
+		if len(c.Drifts) > 0 {
+			t.Errorf("order %v: drifts %v", order, c.Drifts)
+		}
+	}
+}

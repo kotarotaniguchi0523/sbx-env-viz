@@ -171,12 +171,20 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		used := map[int]bool{}
 		for _, dp := range d.Ports {
 			decl := item(dp.ItemID)
+			// The listener that also has the declared host port wins over
+			// the first compatible one, so the order sbx lists them in
+			// cannot swap two declarations of one sandbox port.
 			found := -1
 			for i, lp := range sb.Ports {
 				if !used[i] && lp.SandboxPort == dp.SandboxPort && baseProto(lp.Protocol) == baseProto(dp.Protocol) &&
 					sameFamily(portFamily(lp.Protocol, lp.HostIP), portFamily(dp.Protocol, dp.HostIP)) {
-					found = i
-					break
+					if found < 0 {
+						found = i
+					}
+					if dp.HostPort != 0 && lp.HostPort == dp.HostPort {
+						found = i
+						break
+					}
 				}
 			}
 			if found < 0 {
