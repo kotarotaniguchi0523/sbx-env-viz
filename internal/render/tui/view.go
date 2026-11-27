@@ -240,15 +240,19 @@ func (m *Model) contextBar(w, y int) string {
 			kits++
 		}
 	}
+	// notice says where the screen's data comes from; the other views
+	// end their line with its short form, so no screen loses it.
 	notice := fmt.Sprintf(" 宣言 %d ファイル・Kit %d を静的に解析（稼働中の状態ではありません）", files, kits)
+	short := "静的解析"
 	if t := m.target(); t != nil {
 		switch {
 		case t.Comparison != nil:
 			notice = fmt.Sprintf(" 宣言 %d ファイルと sbx の sandbox（読み取り専用コマンド）を照合", files)
+			short = "sbx と照合"
 		case t.Plan == nil && t.Sandbox != nil:
-			notice = " sbx の sandbox のみ（宣言ファイル未検出）"
+			notice, short = " sbx の sandbox のみ（宣言ファイル未検出）", "宣言ファイルなし"
 		case t.Plan == nil:
-			notice = " 設定ファイルを解析できませんでした"
+			notice, short = " 設定ファイルを解析できませんでした", "解析エラー"
 		}
 	}
 	if m.view == viewOverview {
@@ -280,6 +284,7 @@ func (m *Model) contextBar(w, y int) string {
 		s.text(" ", lipgloss.NewStyle())
 		s.zone(label, st, zoneFilter, i)
 	}
+	s.text("    "+short, m.pal.muted)
 	return trunc(s.b.String(), w)
 }
 

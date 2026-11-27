@@ -1828,6 +1828,23 @@ func TestTUIOverviewDoesNotCountRisksWithoutADeclaration(t *testing.T) {
 	}
 }
 
+func TestTUIEveryViewSaysWhereItsDataComesFrom(t *testing.T) {
+	t.Parallel()
+	for _, view := range []string{"2", "3", "4"} {
+		// Act
+		u := newUI(t, 130, 40, true).press(view)
+
+		// Assert: regression; the filter line replaced the notice.
+		if l := u.lines()[1]; !strings.Contains(l, "静的解析") {
+			t.Errorf("view %s: context line = %q", view, l)
+		}
+	}
+	u := newTargetsUI(t, 160, 50).press("2")
+	if l := u.lines()[2]; !strings.Contains(l, "sbx と照合") {
+		t.Errorf("a live target's context line = %q", l)
+	}
+}
+
 func TestTUIOverviewEnterIgnoresACursorRowScrolledAway(t *testing.T) {
 	t.Parallel()
 	// Arrange: one entry, then many comparison notes, on a short screen.
