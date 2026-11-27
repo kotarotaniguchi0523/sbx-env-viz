@@ -1279,3 +1279,25 @@ func TestPortPairingSettlesASmallGroupByTryingEveryAssignment(t *testing.T) {
 		t.Errorf("drifts %v", c.Drifts)
 	}
 }
+
+func TestStrictRedactionHidesLiveNamesBesideAHiddenOne(t *testing.T) {
+	t.Parallel()
+	// Arrange: the declaration is named ${{ env.args.tenant }}-new
+	// (tenant=web); sbx still has the old web-app on the same workspace.
+	env := "schemaVersion: \"1\"\nname: \"${{ env.args.tenant }}-new\"\nagent: claude\nworkspace: ./web-app\nargs:\n  tenant: {default: web}\n"
+	w := newWorld(t, env)
+	w.strict = true
+
+	// Act
+	targets := w.discover(t, w.sbx)
+
+	// Assert: regression; the target bar showed web-app beside <redacted>-new.
+	for _, x := range targets {
+		if strings.Contains(x.Name, "web") || x.Sandbox != nil && strings.Contains(x.Sandbox.Name, "web") {
+			t.Errorf("a live name carries the hidden value: %v", names(targets))
+		}
+	}
+	if !strings.Contains(strings.Join(names(targets), " "), "<redacted>-1") {
+		t.Errorf("live-only sandboxes are numbered: %v", names(targets))
+	}
+}
