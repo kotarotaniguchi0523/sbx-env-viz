@@ -2,6 +2,7 @@ package live_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -1192,10 +1193,13 @@ func TestWorkspacesMatchByThePathSbxReported(t *testing.T) {
 	// Neither exists, under a fresh directory, so no alias can join them.
 	dir := t.TempDir()
 	r := &fakeSbx{out: map[string]string{
-		"ls --json": `[{"name": "web", "status": "running", "workspaces": ["` + dir + `/a\tb"]}]`, "policy ls web --json": `{"rules": []}`,
+		"ls --json": `[{"name": "web", "status": "running", "workspaces": [` + jsonString(t, dir+"/a\tb") + `]}]`, "policy ls web --json": `{"rules": []}`,
 		"secret ls --sandbox web --json": `{"secrets": []}`, "mcp ls --json": "[]",
 	}}
 	snap := live.Collect(context.Background(), r)
+	if len(snap.Sandboxes) != 1 {
+		t.Fatalf("the fixture did not load: %+v", snap)
+	}
 	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Workspaces: []sbxenv.DeclaredMount{
 		{ItemID: "tab", Path: dir + "/a\tb"}, {ItemID: "literal", Path: dir + `/a\tb`},
 	}}}
@@ -1316,4 +1320,15 @@ func TestTwoSpellingsOfOneIPv6AddressMatch(t *testing.T) {
 	if len(c.Drifts) > 0 {
 		t.Errorf("drifts %v", c.Drifts)
 	}
+}
+
+// jsonString quotes s as a JSON string, so a path with backslashes or
+// quotes (Windows, an odd TMPDIR) cannot break a fixture.
+func jsonString(t *testing.T, s string) string {
+	t.Helper()
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }
