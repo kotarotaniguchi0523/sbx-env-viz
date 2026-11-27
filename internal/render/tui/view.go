@@ -342,7 +342,12 @@ func (m *Model) stateLine() []string {
 	if m.searching {
 		state = append(state, "検索: "+query+"_")
 	} else if m.query != "" && !overview {
-		state = append(state, "検索: "+query+"（Esc で解除）")
+		// In a detail Esc goes back first, so the hint waits for the list.
+		hint := "（Esc で解除）"
+		if m.inDetail() {
+			hint = ""
+		}
+		state = append(state, "検索: "+query+hint)
 	}
 	// This target's error comes next; when it is also the standing notice
 	// (--live with one target), it is shown here, once.

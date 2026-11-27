@@ -3010,6 +3010,10 @@ func TestTUIEscLeavesTheDetailBeforeClearingTheSearch(t *testing.T) {
 	}
 	u.press("enter", "enter")
 	u.want(backLink)
+	// In the detail, Esc goes back, so the search line does not offer it.
+	if u.has("Esc で解除") {
+		t.Errorf("the search line offers Esc inside a detail:\n%s", u.text())
+	}
 
 	// Act
 	u.press("esc")
