@@ -1311,7 +1311,7 @@ func TestTUIRiskIsSectionedAndSortedByRisk(t *testing.T) {
 
 	// Assert: each section counts its rows, which run from the highest risk down.
 	rank := map[string]int{"最重要": 4, "高": 3, "中": 2, "低": 1, "情報": 0}
-	headRe := regexp.MustCompile(`^ (\S+)（(\d+) 件） *$`)
+	headRe := regexp.MustCompile(`^ (\S[^（]*)（(\d+) 件） *$`) // "sbx とのズレ" holds a space
 	rowRe := regexp.MustCompile(`^ [✗! ]  (最重要|高|中|低|情報) `)
 	var names []string
 	counts := map[string]int{}
@@ -1573,8 +1573,9 @@ func TestTUITitleBarKeepsTheTabsBesideALongName(t *testing.T) {
 	long := strings.Repeat("very-long-sandbox-name-", 4)
 	u := targetUI(t, 80, 24, live.Target{Name: long, State: "停止中・宣言ファイル未検出", Sandbox: &live.Sandbox{Name: long}})
 
-	// Assert: regression; the name pushed the tabs off the right edge.
-	if l := u.lines()[0]; !strings.Contains(l, "4 ファイル") || !strings.Contains(l, "1 概要") {
+	// Assert: regression; the name pushed the tabs off the right edge. A
+	// lone target has no position to name.
+	if l := u.lines()[0]; !strings.Contains(l, "4 ファイル") || !strings.Contains(l, "1 概要") || strings.Contains(l, "1/1") {
 		t.Errorf("title bar = %q", l)
 	}
 	u.clickOn("4 ファイル", 0)
@@ -2325,6 +2326,53 @@ func TestTUITabsMakeRoomForTheTargetPosition(t *testing.T) {
 	}
 }
 
+// --- counts, hints and edges ---------------------------------------------------
+
+// cursorLine is the plain text of the reverse-video cursor row, or "".
+func (u *ui) cursorLine() string {
+	for _, l := range strings.Split(u.frame(), "\n") {
+		if strings.Contains(l, "\x1b[7m") {
+			return strings.TrimSpace(ansi.Strip(l))
+		}
+	}
+	return ""
+}
+
+// overviewBody returns the Overview's canvas rows, between the column
+// header and the footer, and the index of the cursor row among them (-1
+// when it is not drawn).
+func (u *ui) overviewBody() (rows []string, cur int) {
+	raw := strings.Split(u.frame(), "\n")
+	head := len(raw)
+	for y, l := range raw {
+		if viewHeads[0].re.MatchString(ansi.Strip(l)) {
+			head = y
+			break
+		}
+	}
+	cur = -1
+	for y := head + 1; y < len(raw)-1; y++ {
+		if strings.Contains(raw[y], "\x1b[7m") {
+			cur = len(rows)
+		}
+		rows = append(rows, ansi.Strip(raw[y]))
+	}
+	return rows, cur
+}
+
+var hintRe = regexp.MustCompile(`ほか (\d+) 行（j で(下へ|スクロール)）`)
+
+// hint returns the count of the overflow hint on screen, and its row.
+func (u *ui) hint() (n, y int, ok bool) {
+	for y, l := range u.lines() {
+		if m := hintRe.FindStringSubmatch(l); m != nil {
+			n, _ = strconv.Atoi(m[1])
+			return n, y, true
+		}
+	}
+	return 0, 0, false
+}
+
 func TestTUIOverviewHeadsOnlyTheSectionsItDraws(t *testing.T) {
 	t.Parallel()
 	sections := []string{"基本", "Kit", "フォルダの共有", "ポート公開", "通信", "資格情報", "コマンドの実行"}
@@ -2365,4 +2413,460 @@ func TestTUIOverviewHeadsOnlyTheSectionsItDraws(t *testing.T) {
 			u.wantRe(tc.want...)
 		})
 	}
+}
+
+func TestTUIFooterOffersTheKeysOfEachView(t *testing.T) {
+	t.Parallel()
+	// The footer offers g only where it groups and f only where it filters.
+	for _, tc := range []struct{ key, want string }{
+		{"1", " j/k 移動   enter 詳細   / 設定を検索   ? ヘルプ   q 終了"},
+		{"2", " j/k 移動   enter 詳細   / 検索   f 絞り込み   ? ヘルプ   q 終了"},
+		{"3", " j/k 移動   enter 詳細   / 検索   g グループ   f 絞り込み   ? ヘルプ   q 終了"},
+		{"4", " j/k 移動   enter 詳細   / 検索   f 絞り込み   ? ヘルプ   q 終了"},
+	} {
+		// Act
+		u := newUI(t, 140, 30, true).press(tc.key)
+
+		// Assert
+		if got := strings.TrimRight(u.footer(), " "); got != tc.want {
+			t.Errorf("view %s footer = %q, want %q", tc.key, got, tc.want)
+		}
+	}
+}
+
+func TestTUIStateLineKeepsTheLiveNoteBesideATargetError(t *testing.T) {
+	t.Parallel()
+	const note = "sbx policy ls が失敗しました"
+	for _, tc := range []struct {
+		name, err string
+		want      []string
+	}{
+		{"no target error", "", []string{note}},
+		{"a different target error", "sbx ls が失敗しました", []string{"sbx ls が失敗しました", note}},
+		{"the same message", note, []string{note}},
+	} {
+		// Arrange / Act
+		p, _ := newPlan(t, sbxenv.RedactHome)
+		m := tui.NewTargets([]live.Target{{Name: "web", State: "宣言", Plan: p, Err: tc.err}}, note, true)
+		m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+		u := &ui{t: t, m: m}
+
+		// Assert: neither message hides the other, and one shared message
+		// is shown once.
+		l := u.lines()[2]
+		for _, w := range tc.want {
+			if strings.Count(l, w) != 1 {
+				t.Errorf("%s: state line = %q, want %q once", tc.name, l, w)
+			}
+		}
+	}
+}
+
+func TestTUITargetBarUnderlinesTheShownTarget(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	u := newTargetsUI(t, 160, 50)
+
+	// Act / Assert: the active target is the underlined one, before and
+	// after switching.
+	for _, tc := range []struct{ key, on, off string }{{"", "web", "orphan"}, {">", "orphan", "web"}} {
+		if tc.key != "" {
+			u.press(tc.key)
+		}
+		raw := u.lines2raw(1)
+		if !attrsAt(raw, tc.on)["4"] || attrsAt(raw, tc.off)["4"] {
+			t.Errorf("after %q only %s is underlined: %q", tc.key, tc.on, raw)
+		}
+	}
+}
+
+func TestTUITitleBarOfASinglePlanNamesItAndCountsZero(t *testing.T) {
+	t.Parallel()
+	// Arrange / Act: a declared name after another setting, and nothing risky.
+	m := tui.New(&sbxenv.Plan{Items: []sbxenv.Item{{ID: "agent", Path: "agent", Value: "claude", Risk: sbxenv.SeverityInfo},
+		{ID: "name", Path: "name", Value: "web", Risk: sbxenv.SeverityInfo}}}, true)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	u := &ui{t: t, m: m}
+
+	// Assert: the title names the sandbox, and an empty tab still says 0.
+	l := u.lines()[0]
+	if !strings.HasPrefix(l, " sbxray  web ") || !strings.Contains(l, "2 リスク 0") || !strings.Contains(l, "4 ファイル 0") {
+		t.Errorf("title bar = %q", l)
+	}
+}
+
+func TestTUIOverviewJAndKMoveTheCursorAndUndoAScrollPastTheEnd(t *testing.T) {
+	t.Parallel()
+	// Arrange: comparison notes below the last entry, on a short screen.
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	cmp := &live.Comparison{}
+	for i := range 12 {
+		cmp.Skipped = append(cmp.Skipped, fmt.Sprintf("比較していない項目 %02d", i))
+	}
+	u := targetUI(t, 80, 16, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: &live.Sandbox{Name: "web"}, Comparison: cmp})
+	first := u.cursorLine()
+
+	// Act / Assert: j and k step between entries, back to the first one.
+	if u.press("j"); !strings.HasPrefix(u.cursorLine(), "テンプレート") {
+		t.Fatalf("j moves to the second entry: %q", u.cursorLine())
+	}
+	if u.press("k"); u.cursorLine() != first {
+		t.Fatalf("k returns to the first entry: %q, want %q", u.cursorLine(), first)
+	}
+
+	// Act: j well past the last entry, then k once.
+	for range 40 {
+		u.press("j")
+	}
+	last := u.cursorLine()
+	before, _ := u.overviewBody()
+	u.press("k")
+
+	// Assert: k first scrolls back through the notes it passed; the
+	// cursor stays on the last entry.
+	if after, _ := u.overviewBody(); u.cursorLine() != last || slices.Equal(after, before) {
+		t.Errorf("k after j past the end scrolls back and keeps %q; cursor %q\n%s", last, u.cursorLine(), u.text())
+	}
+}
+
+func TestTUIOverviewJUndoesAScrollAboveTheFirstEntry(t *testing.T) {
+	t.Parallel()
+	// Arrange: a sandbox not yet created has two lines above its first
+	// entry. Walk down and back so those lines are scrolled away.
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	u := targetUI(t, 80, 16, live.Target{Name: "api", State: "宣言のみ（未作成）", Plan: p})
+	first := u.cursorLine()
+	for _, k := range []string{"j", "k"} {
+		for range 40 {
+			u.press(k)
+		}
+	}
+	if u.cursorLine() != first || !u.hasLine("sbx の sandbox") {
+		t.Fatalf("k past the first entry shows the lines above it:\n%s", u.text())
+	}
+	before, _ := u.overviewBody()
+
+	// Act
+	u.press("j")
+
+	// Assert: j first scrolls back through the lines k passed; the cursor
+	// stays on the first entry.
+	if after, _ := u.overviewBody(); u.cursorLine() != first || slices.Equal(after, before) {
+		t.Errorf("j after k past the first entry scrolls back and keeps %q; cursor %q\n%s", first, u.cursorLine(), u.text())
+	}
+}
+
+func TestTUIOverviewKeepsALineOfContextAroundTheCursor(t *testing.T) {
+	t.Parallel()
+	// Arrange: a manifest taller than the pane, two sections and a run of
+	// rows in one, with notes after its last entry.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: "agent", Path: "agent", Value: "claude"}, {ID: "sandboxOptions.template", Path: "sandboxOptions.template", Value: "x:dev"}}}
+	for i := range 12 {
+		id := fmt.Sprintf("secrets.s%02d", i)
+		p.Items = append(p.Items, sbxenv.Item{ID: id, Path: id, Value: "ref: op://x"})
+	}
+	cmp := &live.Comparison{Skipped: []string{"比較していない項目 A", "比較していない項目 B"}}
+	u := targetUI(t, 80, 16, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: &live.Sandbox{Name: "web"}, Comparison: cmp})
+
+	// Act / Assert: walking down and back up, the cursor always has a line
+	// above and below it, and the canvas scrolls only when the cursor
+	// reaches that margin (to the last-but-one row going down, the second
+	// row going up).
+	check := func(key string, edge func(n int) int) {
+		for range 30 {
+			prev, _ := u.overviewBody()
+			was := u.cursorLine()
+			u.press(key)
+			if u.cursorLine() == was {
+				return
+			}
+			rows, cur := u.overviewBody()
+			if cur < 1 || cur > len(rows)-2 {
+				t.Fatalf("%s: cursor row %d of %d has no context line:\n%s", key, cur, len(rows), u.text())
+			}
+			if !slices.Equal(rows, prev) && cur != edge(len(rows)) {
+				t.Fatalf("%s: the canvas scrolled with the cursor at row %d of %d:\n%s", key, cur, len(rows), u.text())
+			}
+		}
+		t.Fatalf("%s never reached the end", key)
+	}
+	check("j", func(n int) int { return n - 2 })
+	u.press("k") // undo the scroll past the end
+	check("k", func(int) int { return 1 })
+}
+
+func TestTUIOverviewRowsAndPaneAnswerTheMouseOnASmallScreen(t *testing.T) {
+	t.Parallel()
+	// Arrange: the body has room for one row; the second entry is scrolled
+	// to its top.
+	u := newUI(t, 80, 8, true).press("j")
+	_, y := u.find("テンプレート", 0)
+
+	// Act
+	u.click(2, y)
+
+	// Assert: regression guard; the row under the pointer is the one opened.
+	if got := u.detailFirstLine(); got != "sandboxOptions.template" {
+		t.Errorf("detail = %q\n%s", got, u.text())
+	}
+
+	// Arrange / Act: the wheel over the summary line, which is not a row.
+	u = newUI(t, 80, 24, true)
+	_, y = u.find("最重要・高", 0)
+	u.wheel(2, y, true).press("enter")
+
+	// Assert: it still moves the cursor.
+	if got := u.detailFirstLine(); got != "sandboxOptions.template" {
+		t.Errorf("detail after the wheel = %q\n%s", got, u.text())
+	}
+}
+
+func TestTUIOverflowHintsCountWhatIsHidden(t *testing.T) {
+	t.Parallel()
+	// The Overview: rows above the hint plus its count are the whole canvas.
+	full, _ := newUI(t, 80, 200, true).overviewBody()
+	for len(full) > 0 && strings.TrimSpace(full[len(full)-1]) == "" {
+		full = full[:len(full)-1]
+	}
+	for _, h := range []int{10, 16, 24} {
+		u := newUI(t, 80, h, true)
+		n, y, ok := u.hint()
+		if !ok {
+			t.Fatalf("height %d: no hint\n%s", h, u.text())
+		}
+		rows, _ := u.overviewBody()
+		if shown := len(rows) - (len(u.lines()) - 1 - y); shown+n != len(full) {
+			t.Errorf("height %d: %d rows shown and ほか %d, of %d", h, shown, n, len(full))
+		}
+	}
+
+	// A list, scrolled or not, and one that just fits.
+	var srcs []sbxenv.Source
+	for i := range 30 {
+		srcs = append(srcs, sbxenv.Source{ID: fmt.Sprintf("S%02d", i), Kind: sbxenv.SourceEnv, Path: fmt.Sprintf("/work/s%02d.yaml", i), Expanded: true})
+	}
+	rowRe := regexp.MustCompile(`^ {4}S(\d\d) `)
+	sources := func(h int) *ui {
+		m := tui.New(&sbxenv.Plan{Meta: sbxenv.Meta{Sources: srcs}}, true)
+		m.Update(tea.WindowSizeMsg{Width: 80, Height: h})
+		return (&ui{t: t, m: m}).press("4")
+	}
+	u := sources(16)
+	for _, j := range []int{0, 15, 14} {
+		for range j {
+			u.press("j")
+		}
+		last := -1
+		for _, l := range u.lines() {
+			if m := rowRe.FindStringSubmatch(l); m != nil {
+				last, _ = strconv.Atoi(m[1])
+			}
+		}
+		if n, _, _ := u.hint(); n != len(srcs)-1-last {
+			t.Errorf("after %d j: last row S%02d, ほか %d", j, last, n)
+		}
+	}
+	if u := sources(len(srcs) + 5); strings.Count(u.text(), "/work/s") != len(srcs) || u.has("ほか ") {
+		t.Errorf("a list that just fits is drawn whole:\n%s", u.text())
+	}
+
+	// The detail and the help: the count is how many more lines j reveals.
+	for name, u := range map[string]*ui{"detail": newUI(t, 80, 16, true).press("2", "enter"), "help": newUI(t, 80, 16, true).press("?")} {
+		n, y, ok := u.hint()
+		if !ok || y != len(u.lines())-2 {
+			t.Fatalf("%s: the hint ends the pane\n%s", name, u.text())
+		}
+		for range n - 2 {
+			u.press("j")
+		}
+		if got, _, _ := u.hint(); got != 2 {
+			t.Errorf("%s: after %d j, ほか %d, want 2", name, n-2, got)
+		}
+		if u.press("j"); u.has("ほか ") {
+			t.Errorf("%s: after %d j everything is shown\n%s", name, n-1, u.text())
+		}
+	}
+}
+
+func TestTUIScreensFitTheirLinesWithoutCuttingThem(t *testing.T) {
+	t.Parallel()
+	// Short values, so only a layout error would cut a line at an edge.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{
+		{ID: "agent", Path: "agent", Value: "claude"},
+		{ID: "ports[0]", Path: "ports[]", Value: "0.0.0.0:3000", Risk: sbxenv.SeverityHigh},
+	}}
+	cmp := &live.Comparison{Skipped: []string{strings.Repeat("この項目は sbx の出力に含まれないため比較していません。", 4)}}
+	single := func(w int) *ui {
+		m := tui.New(p, true)
+		m.Update(tea.WindowSizeMsg{Width: w, Height: 30})
+		return &ui{t: t, m: m}
+	}
+	for _, tc := range []struct {
+		name string
+		u    *ui
+	}{
+		{"overview", targetUI(t, 80, 30, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: &live.Sandbox{Name: "web"}, Comparison: cmp})},
+		{"risk list", single(80).press("2")},
+		{"risk list beside its detail", single(130).press("2")},
+		{"detail", single(80).press("2", "enter")},
+		{"help", single(80).press("?")},
+		{"picker", newTargetsUI(t, 100, 30).press("s")},
+	} {
+		// Assert: no line (or pane of a line) ends in the cut mark.
+		for _, l := range tc.u.lines() {
+			left, right, _ := splitPanes(l)
+			for _, s := range []string{left, right} {
+				if strings.HasSuffix(strings.TrimRight(s, " "), "..") {
+					t.Errorf("%s: line cut at the edge: %q\n%s", tc.name, l, tc.u.text())
+				}
+			}
+		}
+	}
+}
+
+func TestTUIRiskRowKeepsTheValueBesideALongID(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: "kit:playwright-browsers/network-policy@1/runtime.allow/*.cdn.example.com", Path: "cap:network-policy@1",
+		Kit: "playwright-browsers", Value: "*.cdn.example.com", Risk: sbxenv.SeverityMedium}}}
+	m := tui.New(p, true)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	u := &ui{t: t, m: m}
+
+	// Act
+	u.press("2")
+
+	// Assert: the ID is shortened in the middle, so the value stays on the row.
+	u.wantRe(`^ !  中 +kit:playwright.*\.\..*\.cdn\.example\.com  \*\.cdn\.example\.com *$`)
+}
+
+func TestTUIPickerKeepsTheStateAndTheFirstRowInView(t *testing.T) {
+	t.Parallel()
+	// Arrange: a very long first name, then many targets on a short screen.
+	ts := []live.Target{{Name: strings.Repeat("x", 120), State: "稼働中", Sandbox: &live.Sandbox{Name: "x"}}}
+	for i := range 10 {
+		ts = append(ts, live.Target{Name: fmt.Sprintf("box-%02d", i), State: "停止中", Sandbox: &live.Sandbox{Name: "y"}})
+	}
+	u := targetUI(t, 100, 12, ts...)
+
+	// Act
+	u.press("s")
+
+	// Assert: the name column stops at two fifths of the pane, so the
+	// state stays on the row; the picker opens at the top.
+	u.wantRe(`^ +x+\.\.x+ +稼働中 `)
+	if !strings.Contains(u.cursorLine(), "xxxx") {
+		t.Errorf("the cursor row (the shown target) is on screen:\n%s", u.text())
+	}
+
+	// Act / Assert: a click below the drawn rows switches to no unseen target.
+	u.click(10, len(u.lines())-1)
+	if !strings.HasPrefix(u.lines()[0], " sbxray  xxxx") {
+		t.Errorf("title bar = %q", u.lines()[0])
+	}
+}
+
+func TestTUIBackLinkIsClickableAcrossItsText(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		dx   int // from the link's first cell
+		back bool
+	}{
+		{"first cell", 0, true},
+		{"last cell", ansi.StringWidth(backLink) - 1, true},
+		{"the margin before it", -1, false},
+	} {
+		// Arrange
+		u := newUI(t, 80, 30, true).press("3", "enter")
+		x, y := u.find(backLink, 0)
+
+		// Act
+		u.click(x+tc.dx, y)
+
+		// Assert
+		if got := !u.has(backLink); got != tc.back {
+			t.Errorf("%s: back to the list = %v, want %v\n%s", tc.name, got, tc.back, u.text())
+		}
+	}
+}
+
+func TestTUIStateLineGivesTheQueryAQuarterOfTheWidth(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		width       int
+		query, want string
+	}{
+		{80, "abcdefghijklmnopqrst", "abcdefghijklmnopqrst"},            // 20 cells fit
+		{80, "abcdefghijklmnopqrstu", "..defghijklmnopqrstu"},           // 21 do not
+		{40, "abcdefghijklmnopqrstuvwxyz", "..stuvwxyz"},                // a quarter of 40
+		{200, "abcdefghijklmnopqrstuvwxyz", "..efghijklmnopqrstuvwxyz"}, // at most 24
+	} {
+		// Arrange
+		m := tui.New(&sbxenv.Plan{}, true)
+		m.Update(tea.WindowSizeMsg{Width: tc.width, Height: 30})
+		u := &ui{t: t, m: m}
+
+		// Act
+		u.press("/")
+		for _, r := range tc.query {
+			u.press(string(r))
+		}
+
+		// Assert
+		if l := u.lines()[2]; strings.TrimSpace(l) != "検索: "+tc.want+"_" {
+			t.Errorf("width %d: state line = %q, want 検索: %s_", tc.width, l, tc.want)
+		}
+	}
+}
+
+func TestTUIOverviewStampsTheDriftCountOnlyWhenThereAreDrifts(t *testing.T) {
+	t.Parallel()
+	// Arrange / Act
+	none := targetUI(t, 120, 40, live.Target{Name: "web", State: "稼働中", Plan: &sbxenv.Plan{}, Sandbox: &live.Sandbox{Name: "web"}, Comparison: &live.Comparison{}})
+	some := liveDriftUI(t)
+
+	// Assert: ズレ is bold beside a count above zero, plain beside 0.
+	if a := attrsAt(none.rawLine("ズレ 0"), "ズレ"); a["1"] {
+		t.Errorf("ズレ 0 attrs = %v", a)
+	}
+	if a := attrsAt(some.rawLine("ズレ 1"), "ズレ"); !a["1"] {
+		t.Errorf("ズレ 1 attrs = %v", a)
+	}
+}
+
+func TestTUIOverviewKeepsTheDeclarationBesideALongActualValue(t *testing.T) {
+	t.Parallel()
+	// Arrange: sbx reports far more than the declaration says.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: "ports[0]", Path: "ports[]", Value: "127.0.0.1:3000"}}}
+	cmp := &live.Comparison{Checked: []string{"ポート公開"}, Compared: []string{"ports[0]"}, Drifts: []live.Drift{{Kind: "ポート公開",
+		Title: "公開先が宣言と違う", Declared: "127.0.0.1:3000", Actual: strings.Repeat("0.0.0.0:3000 -> sandbox:3000/tcp, ", 3), Severity: sbxenv.SeverityHigh, ItemID: "ports[0]"}}}
+
+	// Act
+	u := targetUI(t, 120, 40, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: &live.Sandbox{Name: "web"}, Comparison: cmp})
+
+	// Assert: the 実体 column stops at 30% of the width.
+	u.wantRe(`^ ✗  ポート +127\.0\.0\.1:3000 +0\.0\.0\.0:3000`)
+}
+
+func TestTUIOverviewSummaryCountsFindingsAndDriftsByLevel(t *testing.T) {
+	t.Parallel()
+	// Arrange: declared settings and drifts, one high, two medium and one
+	// low of each.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{
+		{ID: "ports[0]", Path: "ports[]", Value: "0.0.0.0:3000", Risk: sbxenv.SeverityHigh},
+		{ID: "secrets.a", Path: "secrets.a", Value: "ref: op://a", Risk: sbxenv.SeverityMedium},
+		{ID: "secrets.b", Path: "secrets.b", Value: "ref: op://b", Risk: sbxenv.SeverityMedium},
+		{ID: "agent", Path: "agent", Value: "claude", Risk: sbxenv.SeverityLow},
+	}}
+	drift := func(sev sbxenv.Severity) live.Drift {
+		return live.Drift{Kind: "ポート公開", Title: "宣言にないポートが公開されている", Declared: "（宣言なし）", Actual: string(sev), Severity: sev}
+	}
+	cmp := &live.Comparison{Drifts: []live.Drift{drift(sbxenv.SeverityHigh), drift(sbxenv.SeverityMedium), drift(sbxenv.SeverityMedium), drift(sbxenv.SeverityLow)}}
+
+	// Act
+	u := targetUI(t, 120, 40, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: &live.Sandbox{Name: "web"}, Comparison: cmp})
+
+	// Assert: high counts the high ones, medium the medium ones; low is in neither.
+	u.wantRe(`^ ✗ 最重要・高 2    ! 中 4    ズレ 4 `)
 }
