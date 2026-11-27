@@ -519,16 +519,22 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				c.Skipped = append(c.Skipped, "sbx policy ls の結果に Kit 由来のルールが含まれていないため、宣言した通信ルールが反映済みかは比較していません。")
 			}
 		} else {
+			// The TUI marks what is left out 照合なし; text and JSON say so
+			// in a note.
+			install, bounded := false, false
 			for _, r := range d.Network {
 				// sbx policy ls lists the rules in force now, so only
 				// runtime rules can be held against it.
 				if r.Phase != "runtime" {
+					install = true
 					continue
 				}
 				// A rule bounded to methods or paths is listed by host
 				// alone, so its host being there confirms no more than that.
 				if !r.Bounded {
 					c.Compared = append(c.Compared, r.ItemID)
+				} else {
+					bounded = true
 				}
 				if live[r.Decision+" "+r.Host] {
 					continue
@@ -536,6 +542,12 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				label := map[string]string{"allow": "許可", "deny": "拒否"}[r.Decision]
 				add(Drift{Kind: "通信の許可・拒否", Title: "宣言した通信の" + label + "が反映されていない", Declared: item(r.ItemID), Actual: "（該当するルールなし）",
 					Fix: fixRecreate, Severity: sbxenv.SeverityMedium, ItemID: r.ItemID, Source: "sbx policy ls <name> --json"})
+			}
+			if install {
+				c.Skipped = append(c.Skipped, "sbx policy ls はいま有効なルールだけを出力するため、準備時（install）の通信ルールは比較していません。")
+			}
+			if bounded {
+				c.Skipped = append(c.Skipped, "sbx policy ls はホストだけを出力するため、メソッドやパスで絞った通信ルールは、ホスト以外を照合していません。")
 			}
 		}
 	}

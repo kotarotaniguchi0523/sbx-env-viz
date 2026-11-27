@@ -2080,3 +2080,26 @@ func TestAPortPairedWithoutAProtocolIsNotedAsUnchecked(t *testing.T) {
 		t.Errorf("a confirmed port is noted: %v", ok.Skipped)
 	}
 }
+
+func TestRulesLeftOutOfTheComparisonAreNoted(t *testing.T) {
+	t.Parallel()
+	// Arrange: a bounded runtime rule and an install rule; sbx lists the
+	// kit's runtime hosts.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Network: []sbxenv.DeclaredRule{
+		{ItemID: "bounded", Phase: "runtime", Decision: "allow", Host: "api.example.com", Bounded: true},
+		{ItemID: "setup", Phase: "install", Decision: "allow", Host: "pkg.example.com"},
+	}}}
+	sb := &live.Sandbox{RulesKnown: true, Rules: []live.Rule{{Decision: "allow", Resource: "api.example.com", Origin: "kit"}}}
+	noted := func(c live.Comparison, s string) bool {
+		return slices.ContainsFunc(c.Skipped, func(x string) bool { return strings.Contains(x, s) })
+	}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; text and JSON read both as checked, with no
+	// drift and no note, while the TUI says 照合なし.
+	if !noted(c, "メソッドやパス") || !noted(c, "準備時") {
+		t.Errorf("skipped %v", c.Skipped)
+	}
+}
