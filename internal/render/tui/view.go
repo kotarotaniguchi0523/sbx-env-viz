@@ -163,7 +163,8 @@ func (m *Model) titleBar(w int) string {
 			tabs = append(tabs, label)
 			tabW += lipgloss.Width(label) + 3
 		}
-		if tabW+3+lipgloss.Width(" sbxray") <= w {
+		// The position (" 1/3") stays beside the brand, so it counts too.
+		if tabW+3+lipgloss.Width(" sbxray")+lipgloss.Width(pos) <= w {
 			break
 		}
 	}

@@ -2304,3 +2304,22 @@ func TestTUITabsShrinkBeforeTheyAreCut(t *testing.T) {
 	u.click(x, y)
 	u.wantView("概要")
 }
+
+func TestTUITabsMakeRoomForTheTargetPosition(t *testing.T) {
+	t.Parallel()
+	// Arrange: three targets at 52 columns; the target line does not fit,
+	// so the title bar names the position.
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	var ts []live.Target
+	for _, n := range []string{"alpha", "bravo", "charlie"} {
+		ts = append(ts, live.Target{Name: n, State: "宣言", Plan: p})
+	}
+
+	// Act
+	u := targetUI(t, 52, 24, ts...).press("4")
+
+	// Assert: regression; " 1/3" clipped the last tab.
+	if l := u.lines()[0]; !strings.Contains(l, "1/3") || !strings.Contains(l, "4 ファイル") {
+		t.Errorf("title bar = %q", l)
+	}
+}
