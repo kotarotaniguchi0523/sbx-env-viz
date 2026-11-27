@@ -230,20 +230,12 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			}
 			// A row shows the declared family when it is that family; for a
 			// port declared for both (tcp, no address) that is a row for both
-			// too, which is also the only one that can confirm it.
-			shows := portFamily(lp.Protocol, lp.HostIP) == portFamily(dp.Protocol, dp.HostIP)
-			// A row without a protocol says nothing of its transport (nor,
-			// for a port declared for both, its families), so it shows
-			// nothing and comes after a row that can confirm the port.
-			if lp.Protocol == "" {
-				shows = false
-			}
-			// A row of one family with its companion shows both, as a row
-			// for both does, whatever order sbx lists them in; a row
-			// without a protocol still cannot confirm the port.
-			if !shows && lp.Protocol != "" && portFamily(dp.Protocol, dp.HostIP) == "" && companion(dp, lp, skip) >= 0 {
-				shows = true
-			}
+			// too, or a row of one family with its companion, whatever order
+			// sbx lists them in. A row without a protocol says nothing of its
+			// transport (nor its families), so it shows nothing and comes
+			// after a row that can confirm the port.
+			df := portFamily(dp.Protocol, dp.HostIP)
+			shows := lp.Protocol != "" && (portFamily(lp.Protocol, lp.HostIP) == df || df == "" && companion(dp, lp, skip) >= 0)
 			switch same := sameIP(dp.HostIP, lp.HostIP); {
 			case same && shows:
 			case same:
@@ -314,20 +306,19 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		// ones have, is settled by trying every assignment: the most pairs,
 		// then the least total distance.
 		type group struct{ decls, lists []int }
-		groups := map[string]*group{}
+		groups := map[int]*group{}
 		// Groups are by sandbox port alone: a row without a protocol may
 		// belong to a tcp or a udp declaration, and compatible tells which
 		// pairs can be made.
-		key := func(port int) string { return fmt.Sprint(port) }
 		for j, dp := range d.Ports {
-			k := key(dp.SandboxPort)
+			k := dp.SandboxPort
 			if groups[k] == nil {
 				groups[k] = &group{}
 			}
 			groups[k].decls = append(groups[k].decls, j)
 		}
 		for i, lp := range sb.Ports {
-			if g := groups[key(lp.SandboxPort)]; g != nil {
+			if g := groups[lp.SandboxPort]; g != nil {
 				g.lists = append(g.lists, i)
 			}
 		}
