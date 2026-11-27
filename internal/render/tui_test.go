@@ -1656,6 +1656,20 @@ func TestTUISearchFromTheOverviewSearchesTheSettings(t *testing.T) {
 	}
 }
 
+func TestTUIOverviewSecretMatchesByNameOnly(t *testing.T) {
+	t.Parallel()
+	// Arrange: sbx secret ls confirmed the name; where the value comes
+	// from is not something it reports.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: "secrets.github", Path: "secrets.github", Value: "ref: op://Private/GitHub/token", Risk: sbxenv.SeverityMedium}}}
+	cmp := &live.Comparison{Checked: []string{"シークレット（名前のみ）"}, Compared: []string{"secrets.github"}}
+
+	// Act
+	u := targetUI(t, 120, 40, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: &live.Sandbox{Name: "web"}, Comparison: cmp})
+
+	// Assert: regression; the row read 一致 beside the vault reference.
+	u.wantRe(`^ !  秘密 github +ref: op://Private/GitHub/token +名前は一致 *$`)
+}
+
 // liveDriftUI shows a plan without findings beside a sandbox that
 // publishes a port to every network, which no file declares.
 func liveDriftUI(t *testing.T) *ui {
@@ -1664,6 +1678,31 @@ func liveDriftUI(t *testing.T) *ui {
 	cmp := &live.Comparison{Checked: []string{"ポート公開"}, Drifts: []live.Drift{{Kind: "ポート公開", Title: "宣言にないポートが公開されている",
 		Declared: "（宣言なし）", Actual: "0.0.0.0:8080 -> sandbox:80/tcp", Severity: sbxenv.SeverityHigh}}}
 	return targetUI(t, 120, 40, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: &live.Sandbox{Name: "web"}, Comparison: cmp})
+}
+
+func TestTUIOverviewSummaryCountsTheDrifts(t *testing.T) {
+	t.Parallel()
+	// Act
+	u := liveDriftUI(t)
+
+	// Assert: regression; 最重要・高 0 sat above a high drift row.
+	u.want("✗ 最重要・高 1")
+	u.wantRe(`^ ✗  ポート公開 +（宣言なし） +0\.0\.0\.0:8080`)
+}
+
+func TestTUIOverviewSelectedDriftKeepsItsUnderline(t *testing.T) {
+	t.Parallel()
+	// Arrange: the drift row is the second entry.
+	u := liveDriftUI(t)
+
+	// Act
+	u.press("j")
+
+	// Assert: regression; reverse video replaced the bold underline.
+	a := attrsAt(u.rawLine("0.0.0.0:8080"), "0.0.0.0:8080")
+	if !a["7"] || !a["1"] || !a["4"] {
+		t.Errorf("selected drift value attrs = %v", a)
+	}
 }
 
 func TestTUIRiskSearchForTheSectionWordFindsTheDrifts(t *testing.T) {

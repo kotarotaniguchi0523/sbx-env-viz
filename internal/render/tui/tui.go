@@ -155,7 +155,6 @@ func (m *Model) setTarget(i int) {
 	}
 	m.plan = model.ForTerminal(p)
 	m.idx = model.SourceIndex(m.plan)
-	m.tally = tallyRisks(m.plan)
 	m.drifts, m.compared = nil, map[string]bool{}
 	if t.Comparison != nil {
 		// ItemIDs too: ForTerminal escaped the plan's, and a drift must
@@ -168,6 +167,17 @@ func (m *Model) setTarget(i int) {
 		}
 		for _, id := range t.Comparison.Compared {
 			m.compared[model.EscapeControl(id)] = true
+		}
+	}
+	m.tally = tallyRisks(m.plan)
+	// The summary's counts take in the drifts too: a port open to every
+	// network is as high a risk found live as declared.
+	for _, d := range m.drifts {
+		switch {
+		case d.Severity.Rank() >= sbxenv.SeverityHigh.Rank():
+			m.tally.high++
+		case d.Severity == sbxenv.SeverityMedium:
+			m.tally.medium++
 		}
 	}
 	m.resetFilters()

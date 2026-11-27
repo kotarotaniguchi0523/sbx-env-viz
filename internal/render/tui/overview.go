@@ -115,11 +115,12 @@ func (m *Model) buildOverview() {
 		l.row = len(rows) - 1
 		m.manifest = append(m.manifest, l)
 	}
-	// pathOnly qualifies the match of the entry just added: sbx ls reports
-	// a mount's host path only, not its mode or its place in the sandbox.
-	pathOnly := func() {
+	// partly qualifies the match of the entry just added, for what sbx
+	// reports only in part: a mount's host path (not its mode or its place
+	// in the sandbox), a secret's name (not where its value comes from).
+	partly := func(text string) {
 		if l := &m.manifest[len(m.manifest)-1]; l.check == checkMatch {
-			l.actual = "パスは一致"
+			l.actual = text
 		}
 	}
 	items := func(match func(*sbxenv.Item) bool) []*sbxenv.Item {
@@ -212,7 +213,7 @@ func (m *Model) buildOverview() {
 				mode = "コピーして使う"
 			}
 			entry("ワークスペース", it.Value+"（"+mode+"）", it)
-			pathOnly()
+			partly("パスは一致")
 		}
 		for _, it := range extra {
 			mode := "読み書き"
@@ -220,7 +221,7 @@ func (m *Model) buildOverview() {
 				mode = "読み取り専用"
 			}
 			entry("追加フォルダ", it.Value+"（"+mode+"）", it)
-			pathOnly()
+			partly("パスは一致")
 		}
 		for _, it := range kitMounts {
 			entry("Kit 用フォルダ", it.Value, it)
@@ -304,7 +305,12 @@ func (m *Model) buildOverview() {
 			if i := strings.Index(it.ID, "."); i >= 0 && (strings.HasPrefix(it.ID, "secrets.") || strings.HasPrefix(it.ID, "bindings.") || strings.HasPrefix(it.ID, "registries.")) {
 				label += " " + it.ID[i+1:]
 			}
-			creds = append(creds, func() { entry(label, it.Value, it) })
+			creds = append(creds, func() {
+				entry(label, it.Value, it)
+				if g.label == "秘密" {
+					partly("名前は一致")
+				}
+			})
 		}
 	}
 	if len(creds) > 0 {
@@ -436,9 +442,10 @@ func (m *Model) jump() {
 	}
 }
 
-// riskTally is what the summary line and the リスク tab count: the
-// findings (coverage notes aside), and those rated high or above, and
-// medium. It is counted once per plan, not on every frame.
+// riskTally is what the summary line and the リスク tab count: the plan's
+// findings (coverage notes aside), and how many findings and drifts are
+// rated high or above, and medium. It is counted once per target, not on
+// every frame.
 type riskTally struct{ findings, high, medium int }
 
 func tallyRisks(p *sbxenv.Plan) riskTally {
@@ -528,6 +535,15 @@ func (m *Model) overviewPanes(w, top, ph int) string {
 			zs = append(zs, rowZone{len(body), l.row})
 			if l.row == cur {
 				cursorY = len(body)
+				if l.check == checkDrift {
+					// The drifted value keeps its bold underline inside
+					// the reverse video, so selecting it hides nothing.
+					a := trunc(actualText(l), actualW)
+					lead := cols(markText(l.sev), l.label, l.declared, "")
+					tail := strings.Repeat(" ", max(w-1-widthOf(lead)-widthOf(a), 0))
+					body = append(body, p.selected.Render(lead)+p.selected.Bold(true).Underline(true).Render(a)+p.selected.Render(tail))
+					continue
+				}
 				body = append(body, p.selected.Render(pad(cols(markText(l.sev), l.label, l.declared, actualText(l)), w-1)))
 				continue
 			}
