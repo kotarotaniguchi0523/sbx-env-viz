@@ -3265,7 +3265,7 @@ func TestTUILiveOnlyPortsReadLikeTheOtherScreens(t *testing.T) {
 	u := targetUI(t, 120, 30, live.Target{Name: "orphan", State: "停止中・宣言ファイル未検出", Sandbox: sb})
 
 	// Assert: regression; ::1:4000 unbracketed and （なし）:5000 -> sandbox:80/（なし）.
-	u.want("ポート公開: [::1]:4000 -> sandbox:3000/tcp6", "ポート公開: loopback:5000 -> sandbox:80/tcp")
+	u.want("ポート公開: [::1]:4000 -> sandbox:3000/tcp6", "ポート公開: loopback:5000 -> sandbox:80")
 }
 
 func TestTUIClickOnASectionHeaderFocusesTheList(t *testing.T) {

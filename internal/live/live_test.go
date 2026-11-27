@@ -1805,7 +1805,7 @@ func TestPortLabel(t *testing.T) {
 		p    live.Port
 		want string
 	}{
-		{live.Port{HostPort: 4000, SandboxPort: 3000}, "loopback:4000 -> sandbox:3000/tcp"},
+		{live.Port{HostPort: 4000, SandboxPort: 3000}, "loopback:4000 -> sandbox:3000"}, // no transport is claimed sbx did not give
 		{live.Port{HostIP: "::1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"}, "[::1]:4000 -> sandbox:3000/tcp6"},
 		{live.Port{HostIP: "0.0.0.0", HostPort: 8080, SandboxPort: 80, Protocol: "udp"}, "0.0.0.0:8080 -> sandbox:80/udp"},
 		{live.Port{HostIP: "[::1]", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp6"}, "[::1]:4000 -> sandbox:3000/tcp6"},
@@ -1892,5 +1892,27 @@ func TestAPortPrefersARowThatStatesItsProtocol(t *testing.T) {
 		if !slices.Contains(c.Compared, "v4") {
 			t.Errorf("order %v: compared %v, drifts %v", order, c.Compared, c.Drifts)
 		}
+	}
+}
+
+func TestProtocolLessRowsPairWithUDPDeclarations(t *testing.T) {
+	t.Parallel()
+	// Arrange: 53/udp4 and 53/udp6; sbx lists both listeners without a protocol.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "v4", SandboxPort: 53, Protocol: "udp4"},
+		{ItemID: "v6", SandboxPort: 53, Protocol: "udp6"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 5353, SandboxPort: 53},
+		{HostIP: "::1", HostPort: 5353, SandboxPort: 53},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the group pass took the bare rows for tcp and
+	// reported both udp ports missing. They pair, unconfirmed.
+	if len(c.Drifts) > 0 || len(c.Compared) > 0 {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
 	}
 }

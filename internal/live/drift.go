@@ -303,16 +303,19 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		// then the least total distance.
 		type group struct{ decls, lists []int }
 		groups := map[string]*group{}
-		key := func(port int, proto string) string { return fmt.Sprint(port, "/", baseProto(proto)) }
+		// Groups are by sandbox port alone: a row without a protocol may
+		// belong to a tcp or a udp declaration, and compatible tells which
+		// pairs can be made.
+		key := func(port int) string { return fmt.Sprint(port) }
 		for j, dp := range d.Ports {
-			k := key(dp.SandboxPort, dp.Protocol)
+			k := key(dp.SandboxPort)
 			if groups[k] == nil {
 				groups[k] = &group{}
 			}
 			groups[k].decls = append(groups[k].decls, j)
 		}
 		for i, lp := range sb.Ports {
-			if g := groups[key(lp.SandboxPort, lp.Protocol)]; g != nil {
+			if g := groups[key(lp.SandboxPort)]; g != nil {
 				g.lists = append(g.lists, i)
 			}
 		}

@@ -78,7 +78,8 @@ type Port struct {
 }
 
 // Label is the port as a person reads it: loopback for no address, an
-// IPv6 address in brackets, tcp for no protocol.
+// IPv6 address in brackets, and no transport when sbx gave none (it is
+// not known to be tcp).
 func (p Port) Label() string {
 	ip := p.HostIP
 	if ip == "" {
@@ -87,11 +88,11 @@ func (p Port) Label() string {
 	if strings.Contains(ip, ":") && !strings.HasPrefix(ip, "[") {
 		ip = "[" + ip + "]"
 	}
-	proto := p.Protocol
-	if proto == "" {
-		proto = "tcp"
+	label := fmt.Sprintf("%s:%d -> sandbox:%d", ip, p.HostPort, p.SandboxPort)
+	if p.Protocol != "" {
+		label += "/" + p.Protocol
 	}
-	return fmt.Sprintf("%s:%d -> sandbox:%d/%s", ip, p.HostPort, p.SandboxPort, proto)
+	return label
 }
 
 // Rule is one effective network rule.
