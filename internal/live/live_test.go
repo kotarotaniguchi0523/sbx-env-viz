@@ -827,7 +827,7 @@ func TestStrictRedactionHidesALiveRuleForAHiddenHost(t *testing.T) {
 	// Arrange: a Kit denies a host set by an argument; someone allowed the
 	// same host by hand.
 	p := strictPlan(&sbxenv.Declared{Network: []sbxenv.DeclaredRule{{ItemID: "r1", Phase: "runtime", Decision: "deny", Host: "acme.example.com"}}},
-		sbxenv.Item{ID: "r1", Value: "runtime deny <redacted>.example.com"})
+		sbxenv.Item{ID: "r1", Path: "cap:network-policy@1", Value: "runtime deny <redacted>.example.com"})
 	sb := &live.Sandbox{RulesKnown: true, Rules: []live.Rule{
 		{Decision: "allow", Resource: "acme.example.com", CreatedVia: "added"},
 		{Decision: "allow", Resource: "other.example.com", CreatedVia: "added"},
@@ -837,11 +837,12 @@ func TestStrictRedactionHidesALiveRuleForAHiddenHost(t *testing.T) {
 	c := live.Compare(p, sb, &live.Snapshot{}, nil)
 
 	// Assert: regression; 許可: acme.example.com revealed the argument.
+	// A live host may name a hidden one in any form, so all are hidden.
 	var actuals []string
 	for _, d := range c.Drifts {
 		actuals = append(actuals, d.Actual)
 	}
-	if got := strings.Join(actuals, " "); strings.Contains(got, "acme") || !strings.Contains(got, "許可: <redacted>") || !strings.Contains(got, "許可: other.example.com") {
+	if got := strings.Join(actuals, " "); got != "許可: <redacted> 許可: <redacted>" {
 		t.Errorf("drifts = %v", actuals)
 	}
 }
@@ -889,7 +890,7 @@ func TestStrictRedactionHidesAHiddenHostWithAPort(t *testing.T) {
 	t.Parallel()
 	// Arrange: the manual rule names the hidden host with a port.
 	p := strictPlan(&sbxenv.Declared{Network: []sbxenv.DeclaredRule{{ItemID: "r1", Phase: "runtime", Decision: "deny", Host: "private.example"}}},
-		sbxenv.Item{ID: "r1", Value: "runtime deny <redacted>"})
+		sbxenv.Item{ID: "r1", Path: "cap:network-policy@1", Value: "runtime deny <redacted>"})
 	sb := &live.Sandbox{RulesKnown: true, Rules: []live.Rule{{Decision: "allow", Resource: "private.example:443", CreatedVia: "added"}}}
 
 	// Act
@@ -968,7 +969,7 @@ func TestStrictRedactionHidesAHiddenHostOnAnotherPort(t *testing.T) {
 	t.Parallel()
 	// Arrange: the hidden host is declared on 443; the manual rule uses 8443.
 	p := strictPlan(&sbxenv.Declared{Network: []sbxenv.DeclaredRule{{ItemID: "r1", Phase: "runtime", Decision: "deny", Host: "private.example:443"}}},
-		sbxenv.Item{ID: "r1", Value: "runtime deny <redacted>:443"})
+		sbxenv.Item{ID: "r1", Path: "cap:network-policy@1", Value: "runtime deny <redacted>:443"})
 	sb := &live.Sandbox{RulesKnown: true, Rules: []live.Rule{{Decision: "allow", Resource: "private.example:8443", CreatedVia: "added"}}}
 
 	// Act
@@ -1013,5 +1014,28 @@ func TestAnIPv6PortIsNotConfirmedWithoutALiveFamily(t *testing.T) {
 	// Assert: regression; nothing showed the listener is IPv6.
 	if slices.Contains(c.Compared, "v6") || len(c.Drifts) > 0 {
 		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
+func TestStrictRedactionHidesLiveHostsBesideAWildcardOrSkippedRule(t *testing.T) {
+	t.Parallel()
+	for name, it := range map[string]sbxenv.Item{
+		// *.${{ kit.args.host }}.example.com, active.
+		"wildcard": {ID: "w", Path: "cap:network-policy@1", Value: "runtime allow *.<redacted>.example.com"},
+		// A rule of an optional group whose condition fails: Declared
+		// leaves it out, but its host is hidden all the same.
+		"skipped": {ID: "s", Path: "cap:network-policy@1", Value: "runtime allow <redacted>.example.com", Badges: []string{sbxenv.BadgeSkip}},
+	} {
+		// Arrange
+		p := strictPlan(&sbxenv.Declared{}, it)
+		sb := &live.Sandbox{RulesKnown: true, Rules: []live.Rule{{Decision: "allow", Resource: "api.acme.example.com", CreatedVia: "approval"}}}
+
+		// Act
+		c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+		// Assert: regression; the exact-host lookup missed both.
+		if d, ok := drift(&c, "宣言にない通信許可"); !ok || d.Actual != "許可: <redacted>" {
+			t.Errorf("%s: drift = %+v (%v)", name, d, c.Drifts)
+		}
 	}
 }

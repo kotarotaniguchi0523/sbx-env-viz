@@ -273,21 +273,20 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				kitVisible = true
 			}
 		}
-		// A host the plan hides (set by an argument) stays hidden when sbx
-		// has a rule for it that the files do not declare.
-		hidden := map[string]bool{}
-		for _, r := range d.Network {
-			if strict && !strings.Contains(strings.ToLower(item(r.ItemID)), r.Host) {
-				hidden[stripRulePort(r.Host)] = true
-			}
-		}
+		// When the plan hides part of any rule's host (an argument, in an
+		// active or a skipped rule), a live rule the files do not declare
+		// may name it in any form (with a port, under a wildcard), so under
+		// strict redaction every such live host is hidden.
+		hideHosts := strict && slices.ContainsFunc(p.Items, func(it sbxenv.Item) bool {
+			return strings.HasPrefix(it.Path, "cap:network-policy") && strings.Contains(it.Value, "<redacted>")
+		})
 		for _, r := range sb.Rules {
 			manual := r.CreatedVia == "added" || r.CreatedVia == "approval"
 			if !manual || declared[r.Decision+" "+r.Resource] {
 				continue
 			}
 			resource := r.Resource
-			if hidden[stripRulePort(strings.ToLower(resource))] {
+			if hideHosts {
 				resource = "<redacted>"
 			}
 			how := "sbx policy allow などで手動追加"
@@ -456,15 +455,6 @@ func portFamily(proto, ip string) string {
 		return f
 	}
 	return ipFamily(ip)
-}
-
-// stripRulePort drops a :port suffix from a rule's resource
-// (private.example:443), leaving a bracketed IPv6 address whole.
-func stripRulePort(r string) string {
-	if i := strings.LastIndex(r, ":"); i > 0 && !strings.Contains(r[i:], "]") {
-		return r[:i]
-	}
-	return r
 }
 
 // sameFamily tells whether two families can meet: an unfixed one meets
