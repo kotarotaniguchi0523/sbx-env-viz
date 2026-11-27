@@ -467,7 +467,8 @@ func frame(content []string, ww, hh int) string {
 // the first column takes.
 func (m *Model) listColumns(iw int) (string, int) {
 	if m.view == viewItems {
-		keyW := min(m.keyW, iw*50/100)
+		// Never narrower than its own heading, even with no row to measure.
+		keyW := max(min(m.keyW, iw*50/100), widthOf("設定"))
 		return "    " + pad("設定", keyW) + "  値", keyW
 	}
 	switch m.view {
@@ -639,7 +640,7 @@ func (m *Model) pickerLines(iw, top, ih int) []string {
 // more follows.
 func (m *Model) helpLines(iw, ih int) []string {
 	body := helpDoc().render(m.pal, iw-1)
-	if limit := max(0, len(body)-ih+1); m.hScroll > limit {
+	if limit := max(0, len(body)-ih); m.hScroll > limit {
 		m.hScroll = limit
 	}
 	body = body[m.hScroll:]

@@ -2985,3 +2985,102 @@ func TestTUIStateLinesKeepTheNoticeBeforeAFilter(t *testing.T) {
 		t.Errorf("the notice is on screen:\n%s", u.text())
 	}
 }
+
+func TestTUIClickingARowEndsTypingASearch(t *testing.T) {
+	t.Parallel()
+	// Arrange: type a search on 設定 at 80 columns.
+	u := newUI(t, 80, 30, true).press("3", "/", "a")
+
+	// Act: open a row by click, then scroll.
+	u.clickRow(`^ +agent`)
+	u.press("j")
+
+	// Assert: regression; j was typed into the search and the detail vanished.
+	if u.has("検索: aj") || !u.has(backLink) {
+		t.Errorf("keys still edit the search:\n%s", u.text())
+	}
+}
+
+func TestTUIEscLeavesTheDetailBeforeClearingTheSearch(t *testing.T) {
+	t.Parallel()
+	// Arrange: a confirmed search, then a detail opened from it.
+	u := newUI(t, 80, 30, true).press("3", "/")
+	for _, r := range "agent" {
+		u.press(string(r))
+	}
+	u.press("enter", "enter")
+	u.want(backLink)
+
+	// Act
+	u.press("esc")
+
+	// Assert: regression; Esc cleared the search inside the detail and
+	// swapped the item shown.
+	if u.has(backLink) || !u.has("検索: agent") {
+		t.Errorf("Esc did not go back to the filtered list:\n%s", u.text())
+	}
+	u.press("esc")
+	if u.has("検索: agent") {
+		t.Errorf("a second Esc clears the search:\n%s", u.text())
+	}
+}
+
+func TestTUISettingsHeaderKeepsItsWidth(t *testing.T) {
+	t.Parallel()
+	// Arrange / Act: a search that matches nothing, so no key is measured.
+	u := newUI(t, 130, 30, true).press("3", "/", "z", "z", "z", "enter")
+
+	// Assert: regression; the 設定 heading shrank to nothing.
+	u.wantRe(`^ {4}設定 +値`)
+}
+
+func TestTUIHelpDoesNotScrollPastItsEnd(t *testing.T) {
+	t.Parallel()
+	// Arrange: the shortest screen on which the whole help fits, no hint.
+	h := 20
+	for ; h < 300; h++ {
+		if !newUI(t, 130, h, true).press("?").has("ほか ") {
+			break
+		}
+	}
+	u := newUI(t, 130, h, true).press("?")
+	u.want("このツールについて")
+
+	// Act
+	u.press("j")
+
+	// Assert: regression; j scrolled the title off a help that fits.
+	u.want("このツールについて")
+}
+
+func TestTUIClickOnTheHelpTextClosesIt(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	u := newUI(t, 130, 40, true).press("?")
+
+	// Act: click on the help body, where no zone lies.
+	x, y := u.find("このツールについて", 0)
+	u.click(x+2, y)
+
+	// Assert: regression; only tabs and switches closed it.
+	if u.has("このツールについて") {
+		t.Errorf("help is still open:\n%s", u.text())
+	}
+}
+
+func TestTUIOverviewNamesARepeatedMCPServerWithoutTheBracket(t *testing.T) {
+	t.Parallel()
+	// Arrange: two servers redacted alike; the second ID gets #2.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{
+		{ID: "mcp.servers[<redacted>]", Path: "mcp.servers[]", Value: "url: <redacted>"},
+		{ID: "mcp.servers[<redacted>]#2", Path: "mcp.servers[]", Value: "url: <redacted>"},
+	}}
+	m := tui.New(p, true)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	u := &ui{t: t, m: m}
+
+	// Assert: regression; the second read MCP <redacted>]#2.
+	if u.has("]#2") {
+		t.Errorf("a stray bracket:\n%s", u.text())
+	}
+}

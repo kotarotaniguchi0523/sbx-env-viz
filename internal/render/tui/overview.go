@@ -273,7 +273,8 @@ func (m *Model) buildOverview() {
 	if len(mcp)+len(net) > 0 {
 		section("通信")
 		for _, it := range mcp {
-			name := strings.TrimSuffix(strings.TrimPrefix(it.ID, "mcp.servers["), "]")
+			// mcp.servers[<name>], or mcp.servers[<name>]#2 for a repeat.
+			name, _, _ := strings.Cut(strings.TrimPrefix(it.ID, "mcp.servers["), "]")
 			where := "リモート（URL に接続）"
 			if strings.HasPrefix(it.Value, "command:") {
 				where = "あなたの PC 上で起動（stdio）"

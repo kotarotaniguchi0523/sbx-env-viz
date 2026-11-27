@@ -457,12 +457,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // click acts on the zone under (x, y) in the last frame.
 func (m *Model) click(x, y int) {
-	z, ok := m.zoneAt(x, y)
-	if !ok {
-		return
-	}
+	// Any click closes the help, its text included, and ends typing a
+	// search, so keys move the cursor again wherever the click lands.
 	if m.help {
 		m.help = false
+		return
+	}
+	m.searching = false
+	z, ok := m.zoneAt(x, y)
+	if !ok {
 		return
 	}
 	if m.picker && z.kind != zoneTarget && z.kind != zoneTargetRow {
@@ -666,13 +669,16 @@ func (m *Model) key(k string) (tea.Model, tea.Cmd) {
 			m.detail = false
 		}
 	case "esc":
-		if m.query != "" {
+		// Esc steps back one level: out of the detail first (as its back
+		// link and footer say), then out of a confirmed search.
+		switch {
+		case m.inDetail() && m.twoPane():
+			m.focus = 0
+		case m.inDetail():
+			m.detail = false
+		case m.query != "":
 			m.query = ""
 			m.rebuild()
-		} else if m.twoPane() {
-			m.focus = 0
-		} else {
-			m.detail = false
 		}
 	}
 	return m, nil
