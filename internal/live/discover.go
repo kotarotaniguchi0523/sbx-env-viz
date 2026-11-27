@@ -55,6 +55,9 @@ type DiscoverRequest struct {
 	Resolve Resolver
 	// Show formats a host path for display (home shortened).
 	Show Paths
+	// Redaction is the plans' mode; under strict (or empty) the paths of
+	// a sandbox no file declares are hidden too.
+	Redaction sbxenv.Redaction
 }
 
 // Discover finds environment files in the working directory and next to
@@ -124,6 +127,7 @@ func Discover(ctx context.Context, req DiscoverRequest) ([]Target, Snapshot) {
 			continue
 		}
 		sb := sb
+		sb.Workspaces, sb.Mounts = shownMounts(sb.Workspaces, req.Redaction, show), shownMounts(sb.Mounts, req.Redaction, show)
 		targets = append(targets, Target{Name: sb.Name, State: StateLabel(sb.Status) + "・宣言ファイル未検出", Sandbox: &sb})
 	}
 	rank := func(t Target) int {
@@ -262,4 +266,15 @@ func StateLabel(status string) string {
 		return "状態不明"
 	}
 	return status
+}
+
+// shownMounts is mounts with each path as a person reads it: a sandbox no
+// file declares is drawn from sbx's paths alone, so they go through the
+// same livePath as a drift's.
+func shownMounts(mounts []Mount, mode sbxenv.Redaction, show Paths) []Mount {
+	out := make([]Mount, len(mounts))
+	for i, w := range mounts {
+		out[i] = Mount{Path: livePath(mode, show, w.Path)}
+	}
+	return out
 }

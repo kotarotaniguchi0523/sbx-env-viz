@@ -86,21 +86,24 @@ func newWorld(t *testing.T, env string) *world {
 	}}
 }
 
+func (w *world) redaction() sbxenv.Redaction {
+	if w.strict {
+		return sbxenv.RedactStrict
+	}
+	return sbxenv.RedactHome
+}
+
 func (w *world) resolve(g live.Group) (*sbxenv.Plan, error) {
 	res, err := loader.Load(loader.Request{Paths: g.Paths, WorkDir: g.Dir, HomeDir: filepath.Join(w.dir, "no-home")})
 	if err != nil {
 		return nil, err
 	}
-	redaction := sbxenv.RedactHome
-	if w.strict {
-		redaction = sbxenv.RedactStrict
-	}
-	return sbxenv.Resolve(res.Layers, sbxenv.ResolveOptions{ProjectDir: res.ProjectDir, HomeDir: filepath.Join(w.dir, "no-home"), Kits: loader.FSKits{}, Redaction: redaction})
+	return sbxenv.Resolve(res.Layers, sbxenv.ResolveOptions{ProjectDir: res.ProjectDir, HomeDir: filepath.Join(w.dir, "no-home"), Kits: loader.FSKits{}, Redaction: w.redaction()})
 }
 
 func (w *world) discover(t *testing.T, r live.Runner) []live.Target {
 	t.Helper()
-	targets, _ := live.Discover(context.Background(), live.DiscoverRequest{WorkDir: w.dir, Runner: r, Resolve: w.resolve})
+	targets, _ := live.Discover(context.Background(), live.DiscoverRequest{WorkDir: w.dir, Runner: r, Resolve: w.resolve, Redaction: w.redaction()})
 	return targets
 }
 
@@ -483,6 +486,29 @@ func TestStrictRedactionHidesAnUndeclaredWorkspacePath(t *testing.T) {
 	d, ok := drift(c, "宣言にないフォルダ")
 	if !ok || !strings.HasPrefix(d.Actual, "<redacted>") || strings.Contains(d.Actual, "web-app") {
 		t.Errorf("undeclared workspace under strict redaction: %+v (%v)", d, c.Drifts)
+	}
+}
+
+func TestStrictRedactionHidesTheMountsOfAnUndeclaredSandbox(t *testing.T) {
+	t.Parallel()
+	for _, strict := range []bool{false, true} {
+		// Arrange: no file declares the sandbox "orphan", so its Overview
+		// is drawn from sbx's own paths.
+		w := newWorld(t, matching)
+		w.strict = strict
+
+		// Act
+		orphan := find(t, w.discover(t, w.sbx), "orphan")
+
+		// Assert
+		if len(orphan.Sandbox.Workspaces) == 0 {
+			t.Fatalf("the fixture's orphan mounts a workspace: %+v", orphan.Sandbox)
+		}
+		for _, m := range append(orphan.Sandbox.Workspaces, orphan.Sandbox.Mounts...) {
+			if hidden := m.Path == "<redacted>"; hidden != strict {
+				t.Errorf("strict=%v: path %q", strict, m.Path)
+			}
+		}
 	}
 }
 

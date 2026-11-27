@@ -47,11 +47,14 @@ const (
 // Paths turns a host path into what a person reads (home shortened).
 type Paths func(string) string
 
-// livePath shows a path sbx reports. Under strict redaction a workspace
-// path is hidden like the declared ones, since it can carry the very
-// argument values the plan redacts (a name, a project directory).
-func livePath(p *sbxenv.Plan, show Paths, path string) string {
-	if p.Meta.Redaction == sbxenv.RedactStrict {
+// livePath shows a path sbx reports. Under strict redaction (mode, where
+// empty means strict, as in sbxenv) a workspace path is hidden like the
+// declared ones, since it can carry the very argument values the plan
+// redacts (a name, a project directory).
+//
+//declscope:shared // discover.go shows the paths of a sandbox no file declares with it
+func livePath(mode sbxenv.Redaction, show Paths, path string) string {
+	if mode == "" || mode == sbxenv.RedactStrict {
 		return "<redacted>"
 	}
 	return show(path)
@@ -144,7 +147,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				continue
 			}
 			add(Drift{Kind: "ワークスペース・マウント", Title: "宣言にないフォルダがマウントされている", Declared: "（宣言なし）",
-				Actual:   livePath(p, show, m.Path) + "（読み書きの区別は sbx から取得できません）",
+				Actual:   livePath(p.Meta.Redaction, show, m.Path) + "（読み書きの区別は sbx から取得できません）",
 				Fix:      "sbx の操作で後から追加された可能性があります。不要なら作り直して宣言どおりにし、必要なら設定ファイルの additionalWorkspaces に書いてください。",
 				Severity: sbxenv.SeverityMedium, Source: srcLs})
 		}
