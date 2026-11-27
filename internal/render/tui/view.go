@@ -581,7 +581,9 @@ func (m *Model) detailLines(iw, ih, top, x0 int) []string {
 	for len(body) > 0 && strings.TrimSpace(ansi.Strip(body[len(body)-1])) == "" {
 		body = body[:len(body)-1]
 	}
-	vis := ih - len(lines)
+	// A pane shorter than its back link has no row for the text; the
+	// scroll limit must not then run past the end of the text.
+	vis := max(ih-len(lines), 0)
 	if limit := max(0, len(body)-vis); m.dScroll > limit {
 		m.dScroll = limit
 	}

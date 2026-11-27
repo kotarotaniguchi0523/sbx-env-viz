@@ -3088,3 +3088,42 @@ func TestTUIOverviewNamesARepeatedMCPServerWithoutTheBracket(t *testing.T) {
 		t.Errorf("a stray bracket:\n%s", u.text())
 	}
 }
+
+func TestTUIOverviewKeepsABracketInAnMCPName(t *testing.T) {
+	t.Parallel()
+	// Arrange: a server named docs]staging beside one named docs.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{
+		{ID: "mcp.servers[docs]", Path: "mcp.servers[]", Value: "url: https://a.example.com"},
+		{ID: "mcp.servers[docs]staging]", Path: "mcp.servers[]", Value: "url: https://b.example.com"},
+	}}
+	m := tui.New(p, true)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	u := &ui{t: t, m: m}
+
+	// Assert: regression; both rows read MCP docs.
+	u.want("MCP docs]staging")
+}
+
+func TestTUIDetailOnATinyPaneDoesNotPanic(t *testing.T) {
+	t.Parallel()
+	// Arrange: 8 rows, a target line and three state lines leave the
+	// single-pane detail no row.
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	const parse = "設定ファイルを解析できませんでした: line 3: mapping values are not allowed in this context near the second key"
+	m := tui.NewTargets([]live.Target{{Name: "a", State: "宣言", Plan: p, Err: parse}, {Name: "b", State: "宣言", Plan: p}},
+		"sbx から sandbox の一覧を取得できませんでした（デーモンが停止している可能性があります）", true)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 8})
+	u := &ui{t: t, m: m}
+
+	// Act: open a detail, then scroll it as far as it goes.
+	u.press("3", "/", "a", "enter", "enter")
+	for range 50 {
+		u.press("j")
+	}
+
+	// Assert: the detail scrolls within its text and the frame keeps its
+	// height, with no row left for the text at all.
+	if n := len(u.lines()); n != 8 {
+		t.Errorf("%d lines", n)
+	}
+}
