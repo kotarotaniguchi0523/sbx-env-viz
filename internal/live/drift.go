@@ -198,8 +198,10 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			if dp.HostPort != 0 && lp.HostPort != dp.HostPort {
 				n += 4
 			}
-			f := portFamily(dp.Protocol, dp.HostIP)
-			shows := f == "" || portFamily(lp.Protocol, lp.HostIP) == f
+			// A row shows the declared family when it is that family; for a
+			// port declared for both (tcp, no address) that is a row for both
+			// too, which is also the only one that can confirm it.
+			shows := portFamily(lp.Protocol, lp.HostIP) == portFamily(dp.Protocol, dp.HostIP)
 			switch same := sameIP(dp.HostIP, lp.HostIP); {
 			case same && shows:
 			case same:

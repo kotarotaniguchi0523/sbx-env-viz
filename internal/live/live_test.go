@@ -1621,3 +1621,22 @@ func TestPortPairingPrefersAnExactFixedPortOnATie(t *testing.T) {
 		t.Errorf("drifts %v", c.Drifts)
 	}
 }
+
+func TestADualStackPortPrefersARowForBothFamilies(t *testing.T) {
+	t.Parallel()
+	// Arrange: an ephemeral 3000/tcp (both families); sbx has an IPv4-only
+	// listener and one for both.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", SandboxPort: 3000, Protocol: "tcp"}}}}
+	v4 := live.Port{HostIP: "127.0.0.1", HostPort: 50001, SandboxPort: 3000, Protocol: "tcp4"}
+	both := live.Port{HostPort: 50002, SandboxPort: 3000, Protocol: "tcp"}
+	for _, order := range [][]live.Port{{v4, both}, {both, v4}} {
+		// Act
+		c := live.Compare(p, &live.Sandbox{Ports: order}, &live.Snapshot{}, nil)
+
+		// Assert: regression; the order decided which row paired, and so
+		// whether the port was confirmed.
+		if !slices.Contains(c.Compared, "dual") || len(c.Drifts) != 1 || !strings.Contains(c.Drifts[0].Actual, "50001") {
+			t.Errorf("order %v: compared %v, drifts %v", order, c.Compared, c.Drifts)
+		}
+	}
+}
