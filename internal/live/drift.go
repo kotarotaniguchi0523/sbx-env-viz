@@ -448,9 +448,14 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			if used[i] {
 				continue
 			}
+			// As a declared port is rated: every interface high, a
+			// specific network address medium, loopback low.
 			sev := sbxenv.SeverityLow
-			if isAll(lp.HostIP) {
+			switch {
+			case isAll(lp.HostIP):
 				sev = sbxenv.SeverityHigh
+			case !isLoopback(lp.HostIP):
+				sev = sbxenv.SeverityMedium
 			}
 			actual := lp.Label()
 			if strict {

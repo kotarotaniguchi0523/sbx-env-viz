@@ -2027,3 +2027,32 @@ func TestAnUnknownProtocolIsNotConfirmedByTCP(t *testing.T) {
 		t.Errorf("drifts %v", c.Drifts)
 	}
 }
+
+func TestAnUndeclaredPortOnANetworkAddressIsMedium(t *testing.T) {
+	t.Parallel()
+	// Arrange: nothing declared; sbx lists ports on loopback, a LAN
+	// address, and every interface.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 8081, SandboxPort: 81, Protocol: "tcp"},
+		{HostIP: "192.168.1.10", HostPort: 8080, SandboxPort: 80, Protocol: "tcp4"},
+		{HostIP: "0.0.0.0", HostPort: 8082, SandboxPort: 82, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the LAN address was rated low, while the same
+	// port declared is medium.
+	want := map[string]sbxenv.Severity{"127.0.0.1": sbxenv.SeverityLow, "192.168.1.10": sbxenv.SeverityMedium, "0.0.0.0": sbxenv.SeverityHigh}
+	for _, d := range c.Drifts {
+		for ip, sev := range want {
+			if strings.HasPrefix(d.Actual, ip+":") && d.Severity != sev {
+				t.Errorf("%s: %s, want %s", ip, d.Severity, sev)
+			}
+		}
+	}
+	if len(c.Drifts) != 3 {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
