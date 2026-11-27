@@ -1655,3 +1655,25 @@ func TestTUISearchFromTheOverviewSearchesTheSettings(t *testing.T) {
 		t.Errorf("the settings are filtered:\n%s", u.text())
 	}
 }
+
+// liveDriftUI shows a plan without findings beside a sandbox that
+// publishes a port to every network, which no file declares.
+func liveDriftUI(t *testing.T) *ui {
+	t.Helper()
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: "agent", Path: "agent", Value: "claude"}}}
+	cmp := &live.Comparison{Checked: []string{"ポート公開"}, Drifts: []live.Drift{{Kind: "ポート公開", Title: "宣言にないポートが公開されている",
+		Declared: "（宣言なし）", Actual: "0.0.0.0:8080 -> sandbox:80/tcp", Severity: sbxenv.SeverityHigh}}}
+	return targetUI(t, 120, 40, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: &live.Sandbox{Name: "web"}, Comparison: cmp})
+}
+
+func TestTUIRiskSearchForTheSectionWordFindsTheDrifts(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	u := liveDriftUI(t)
+
+	// Act
+	u.press("2", "/", "ズ", "レ", "enter")
+
+	// Assert: regression; the section's own word found nothing.
+	u.want("稼働中とのズレ（1 件）", "ポート公開: 宣言にないポート")
+}

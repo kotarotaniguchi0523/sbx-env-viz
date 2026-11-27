@@ -210,7 +210,8 @@ func (m *Model) rebuild() {
 		if m.filter() == "" {
 			for i := range m.drifts {
 				d := &m.drifts[i]
-				if m.matches(d.Title + " " + d.Kind) {
+				// The section's own word (ズレ) finds them, as do both sides.
+				if m.matches("ズレ DRIFT " + d.Kind + " " + d.Title + " " + d.Declared + " " + d.Actual) {
 					drifts = append(drifts, row{label: d.Kind + ": " + d.Title, badges: []string{"[DRIFT]"}, sev: d.Severity, drift: d})
 				}
 			}
