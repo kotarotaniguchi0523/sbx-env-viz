@@ -55,7 +55,7 @@
 <rect x="797.2" y="56" width="50.4" height="1" fill="#61afef"/>
 <text y="53.5" fill="#61afef" text-decoration="underline"><tspan x="847.6"> </tspan></text>
 <rect x="847.6" y="56" width="8.4" height="1" fill="#61afef"/>
-<text y="53.5" fill="#61afef" font-weight="bold" text-decoration="underline"><tspan x="856.0">7</tspan></text>
+<text y="53.5" fill="#61afef" font-weight="bold" text-decoration="underline"><tspan x="856.0">6</tspan></text>
 <rect x="856" y="56" width="8.4" height="1" fill="#61afef"/>
 <text y="53.5" fill="#7f848e"><tspan x="889.6">3</tspan></text>
 <text y="53.5" fill="#7f848e"><tspan x="906.4">設</tspan><tspan x="923.2">定</tspan></text>
@@ -67,22 +67,25 @@
 <text y="71.5" fill="#61afef" font-weight="bold" text-decoration="underline"><tspan x="74.8">w</tspan><tspan x="83.2">e</tspan><tspan x="91.6">b</tspan><tspan x="100.0">-</tspan><tspan x="108.4">a</tspan><tspan x="116.8">p</tspan><tspan x="125.2">p</tspan></text>
 <rect x="74.8" y="74" width="58.8" height="1" fill="#61afef"/>
 <text y="71.5" fill="#7f848e"><tspan x="133.6">（</tspan><tspan x="150.4">稼</tspan><tspan x="167.2">働</tspan><tspan x="184.0">中</tspan><tspan x="200.8">・</tspan><tspan x="217.6">ズ</tspan><tspan x="234.4">レ</tspan></text>
-<text y="71.5" fill="#7f848e"><tspan x="259.6">3</tspan><tspan x="268.0">）</tspan></text>
-<text y="71.5" fill="#d6d9e0"><tspan x="301.6">o</tspan><tspan x="310.0">r</tspan><tspan x="318.4">p</tspan><tspan x="326.8">h</tspan><tspan x="335.2">a</tspan><tspan x="343.6">n</tspan></text>
-<text y="71.5" fill="#7f848e"><tspan x="352.0">（</tspan><tspan x="368.8">停</tspan><tspan x="385.6">止</tspan><tspan x="402.4">中</tspan><tspan x="419.2">・</tspan><tspan x="436.0">宣</tspan><tspan x="452.8">言</tspan><tspan x="469.6">フ</tspan><tspan x="486.4">ァ</tspan><tspan x="503.2">イ</tspan><tspan x="520.0">ル</tspan><tspan x="536.8">未</tspan><tspan x="553.6">検</tspan><tspan x="570.4">出</tspan><tspan x="587.2">）</tspan></text>
-<text y="71.5" fill="#d6d9e0"><tspan x="620.8">a</tspan><tspan x="629.2">p</tspan><tspan x="637.6">i</tspan></text>
-<text y="71.5" fill="#7f848e"><tspan x="646.0">（</tspan><tspan x="662.8">宣</tspan><tspan x="679.6">言</tspan><tspan x="696.4">の</tspan><tspan x="713.2">み</tspan><tspan x="730.0">（</tspan><tspan x="746.8">未</tspan><tspan x="763.6">作</tspan><tspan x="780.4">成</tspan><tspan x="797.2">）</tspan><tspan x="814.0">）</tspan></text>
-<text y="89.5" fill="#7f848e"><tspan x="24.4">絞</tspan><tspan x="41.2">り</tspan><tspan x="58.0">込</tspan><tspan x="74.8">み</tspan></text>
-<text y="89.5" fill="#61afef" font-weight="bold" text-decoration="underline"><tspan x="108.4">全</tspan><tspan x="125.2">て</tspan></text>
-<rect x="108.4" y="92" width="33.6" height="1" fill="#61afef"/>
-<text y="89.5" fill="#7f848e"><tspan x="150.4">L</tspan><tspan x="158.8">1</tspan></text>
+<text y="71.5" fill="#7f848e"><tspan x="259.6">2</tspan><tspan x="268.0">）</tspan></text>
+<text y="71.5" fill="#d6d9e0"><tspan x="301.6">&lt;</tspan><tspan x="310.0">r</tspan><tspan x="318.4">e</tspan><tspan x="326.8">d</tspan><tspan x="335.2">a</tspan><tspan x="343.6">c</tspan><tspan x="352.0">t</tspan><tspan x="360.4">e</tspan><tspan x="368.8">d</tspan><tspan x="377.2">&gt;</tspan><tspan x="385.6">-</tspan><tspan x="394.0">1</tspan></text>
+<text y="71.5" fill="#7f848e"><tspan x="402.4">（</tspan><tspan x="419.2">停</tspan><tspan x="436.0">止</tspan><tspan x="452.8">中</tspan><tspan x="469.6">・</tspan><tspan x="486.4">宣</tspan><tspan x="503.2">言</tspan><tspan x="520.0">フ</tspan><tspan x="536.8">ァ</tspan><tspan x="553.6">イ</tspan><tspan x="570.4">ル</tspan><tspan x="587.2">未</tspan><tspan x="604.0">検</tspan><tspan x="620.8">出</tspan><tspan x="637.6">）</tspan></text>
+<text y="71.5" fill="#d6d9e0"><tspan x="671.2">a</tspan><tspan x="679.6">p</tspan><tspan x="688.0">i</tspan></text>
+<text y="71.5" fill="#7f848e"><tspan x="696.4">（</tspan><tspan x="713.2">宣</tspan><tspan x="730.0">言</tspan><tspan x="746.8">の</tspan><tspan x="763.6">み</tspan><tspan x="780.4">（</tspan><tspan x="797.2">未</tspan><tspan x="814.0">作</tspan><tspan x="830.8">成</tspan><tspan x="847.6">）</tspan><tspan x="864.4">）</tspan></text>
+<text y="89.5" fill="#7f848e"><tspan x="24.4">s</tspan><tspan x="32.8">b</tspan><tspan x="41.2">x</tspan></text>
+<text y="89.5" fill="#7f848e"><tspan x="58.0">と</tspan><tspan x="74.8">照</tspan><tspan x="91.6">合</tspan></text>
+<text y="89.5" fill="#7f848e"><tspan x="133.6">絞</tspan><tspan x="150.4">り</tspan><tspan x="167.2">込</tspan><tspan x="184.0">み</tspan></text>
+<text y="89.5" fill="#61afef" font-weight="bold" text-decoration="underline"><tspan x="217.6">全</tspan><tspan x="234.4">て</tspan></text>
+<rect x="217.6" y="92" width="33.6" height="1" fill="#61afef"/>
+<text y="89.5" fill="#7f848e"><tspan x="259.6">L</tspan><tspan x="268.0">1</tspan></text>
 <text y="125.5" fill="#7f848e" text-decoration="underline"><tspan x="16.0"> </tspan><tspan x="24.4"> </tspan><tspan x="32.8"> </tspan><tspan x="41.2"> </tspan><tspan x="49.6">危</tspan><tspan x="66.4">険</tspan><tspan x="83.2">度</tspan><tspan x="100.0"> </tspan><tspan x="108.4"> </tspan><tspan x="116.8">内</tspan><tspan x="133.6">容</tspan><tspan x="150.4"> </tspan><tspan x="158.8"> </tspan><tspan x="167.2"> </tspan><tspan x="175.6"> </tspan><tspan x="184.0"> </tspan><tspan x="192.4"> </tspan><tspan x="200.8"> </tspan><tspan x="209.2"> </tspan><tspan x="217.6"> </tspan><tspan x="226.0"> </tspan><tspan x="234.4"> </tspan><tspan x="242.8"> </tspan><tspan x="251.2"> </tspan><tspan x="259.6"> </tspan><tspan x="268.0"> </tspan><tspan x="276.4"> </tspan><tspan x="284.8"> </tspan><tspan x="293.2"> </tspan><tspan x="301.6"> </tspan><tspan x="310.0"> </tspan><tspan x="318.4"> </tspan><tspan x="326.8"> </tspan><tspan x="335.2"> </tspan><tspan x="343.6"> </tspan><tspan x="352.0"> </tspan><tspan x="360.4"> </tspan><tspan x="368.8"> </tspan><tspan x="377.2"> </tspan><tspan x="385.6"> </tspan><tspan x="394.0"> </tspan><tspan x="402.4"> </tspan><tspan x="410.8"> </tspan><tspan x="419.2"> </tspan><tspan x="427.6"> </tspan><tspan x="436.0"> </tspan><tspan x="444.4"> </tspan><tspan x="452.8"> </tspan><tspan x="461.2"> </tspan><tspan x="469.6"> </tspan><tspan x="478.0"> </tspan><tspan x="486.4"> </tspan></text>
 <rect x="16" y="128" width="478.8" height="1" fill="#7f848e"/>
 <text y="125.5" fill="#7f848e"><tspan x="511.6">|</tspan></text>
 <text y="125.5" fill="#d6d9e0" font-weight="bold"><tspan x="536.8">ズ</tspan><tspan x="553.6">レ</tspan><tspan x="570.4">:</tspan></text>
 <text y="125.5" fill="#d6d9e0" font-weight="bold"><tspan x="587.2">宣</tspan><tspan x="604.0">言</tspan><tspan x="620.8">と</tspan><tspan x="637.6">違</tspan><tspan x="654.4">う</tspan><tspan x="671.2">エ</tspan><tspan x="688.0">ー</tspan><tspan x="704.8">ジ</tspan><tspan x="721.6">ェ</tspan><tspan x="738.4">ン</tspan><tspan x="755.2">ト</tspan><tspan x="772.0">で</tspan><tspan x="788.8">動</tspan><tspan x="805.6">い</tspan><tspan x="822.4">て</tspan><tspan x="839.2">い</tspan><tspan x="856.0">る</tspan></text>
-<text y="143.5" fill="#d6d9e0" font-weight="bold"><tspan x="24.4">稼</tspan><tspan x="41.2">働</tspan><tspan x="58.0">中</tspan><tspan x="74.8">と</tspan><tspan x="91.6">の</tspan><tspan x="108.4">ズ</tspan><tspan x="125.2">レ</tspan><tspan x="142.0">（</tspan><tspan x="158.8">3</tspan></text>
-<text y="143.5" fill="#d6d9e0" font-weight="bold"><tspan x="175.6">件</tspan><tspan x="192.4">）</tspan></text>
+<text y="143.5" fill="#d6d9e0" font-weight="bold"><tspan x="24.4">s</tspan><tspan x="32.8">b</tspan><tspan x="41.2">x</tspan></text>
+<text y="143.5" fill="#d6d9e0" font-weight="bold"><tspan x="58.0">と</tspan><tspan x="74.8">の</tspan><tspan x="91.6">ズ</tspan><tspan x="108.4">レ</tspan><tspan x="125.2">（</tspan><tspan x="142.0">2</tspan></text>
+<text y="143.5" fill="#d6d9e0" font-weight="bold"><tspan x="158.8">件</tspan><tspan x="175.6">）</tspan></text>
 <text y="143.5" fill="#7f848e"><tspan x="511.6">|</tspan></text>
 <text y="143.5" fill="#7f848e"><tspan x="536.8">分</tspan><tspan x="553.6">類</tspan><tspan x="570.4">:</tspan></text>
 <text y="143.5" fill="#d6d9e0"><tspan x="587.2">エ</tspan><tspan x="604.0">ー</tspan><tspan x="620.8">ジ</tspan><tspan x="637.6">ェ</tspan><tspan x="654.4">ン</tspan><tspan x="671.2">ト</tspan></text>
@@ -97,42 +100,38 @@
 <text y="179.5" fill="#d6d9e0"><tspan x="268.0">宣</tspan><tspan x="284.8">言</tspan><tspan x="301.6">に</tspan><tspan x="318.4">な</tspan><tspan x="335.2">い</tspan><tspan x="352.0">通</tspan><tspan x="368.8">信</tspan><tspan x="385.6">許</tspan><tspan x="402.4">可</tspan><tspan x="419.2">が</tspan><tspan x="436.0">あ</tspan><tspan x="452.8">る</tspan><tspan x="469.6">（</tspan><tspan x="486.4">.</tspan><tspan x="494.8">.</tspan></text>
 <text y="179.5" fill="#7f848e"><tspan x="511.6">|</tspan></text>
 <text y="179.5" fill="#61afef" font-weight="bold"><tspan x="536.8">宣</tspan><tspan x="553.6">言</tspan><tspan x="570.4">（</tspan><tspan x="587.2">s</tspan><tspan x="595.6">b</tspan><tspan x="604.0">x</tspan><tspan x="612.4">e</tspan><tspan x="620.8">n</tspan><tspan x="629.2">v</tspan><tspan x="637.6">.</tspan><tspan x="646.0">y</tspan><tspan x="654.4">a</tspan><tspan x="662.8">m</tspan><tspan x="671.2">l</tspan><tspan x="679.6">）</tspan></text>
-<text y="197.5" fill="#e5c07b" font-weight="bold"><tspan x="24.4">!</tspan></text>
-<text y="197.5" fill="#d6d9e0"><tspan x="49.6">中</tspan></text>
-<text y="197.5" fill="#d6d9e0"><tspan x="116.8">シ</tspan><tspan x="133.6">ー</tspan><tspan x="150.4">ク</tspan><tspan x="167.2">レ</tspan><tspan x="184.0">ッ</tspan><tspan x="200.8">ト</tspan><tspan x="217.6">:</tspan></text>
-<text y="197.5" fill="#d6d9e0"><tspan x="234.4">宣</tspan><tspan x="251.2">言</tspan><tspan x="268.0">し</tspan><tspan x="284.8">た</tspan><tspan x="301.6">シ</tspan><tspan x="318.4">ー</tspan><tspan x="335.2">ク</tspan><tspan x="352.0">レ</tspan><tspan x="368.8">ッ</tspan><tspan x="385.6">ト</tspan><tspan x="402.4">が</tspan><tspan x="419.2">登</tspan><tspan x="436.0">録</tspan><tspan x="452.8">さ</tspan><tspan x="469.6">れ</tspan><tspan x="486.4">.</tspan><tspan x="494.8">.</tspan></text>
+<text y="197.5" fill="#d6d9e0" font-weight="bold"><tspan x="24.4">こ</tspan><tspan x="41.2">の</tspan><tspan x="58.0">ツ</tspan><tspan x="74.8">ー</tspan><tspan x="91.6">ル</tspan><tspan x="108.4">の</tspan><tspan x="125.2">指</tspan><tspan x="142.0">摘</tspan><tspan x="158.8">（</tspan><tspan x="175.6">1</tspan></text>
+<text y="197.5" fill="#d6d9e0" font-weight="bold"><tspan x="192.4">件</tspan><tspan x="209.2">）</tspan></text>
 <text y="197.5" fill="#7f848e"><tspan x="511.6">|</tspan></text>
 <text y="197.5" fill="#d6d9e0"><tspan x="553.6">c</tspan><tspan x="562.0">l</tspan><tspan x="570.4">a</tspan><tspan x="578.8">u</tspan><tspan x="587.2">d</tspan><tspan x="595.6">e</tspan></text>
-<text y="215.5" fill="#d6d9e0" font-weight="bold"><tspan x="24.4">こ</tspan><tspan x="41.2">の</tspan><tspan x="58.0">ツ</tspan><tspan x="74.8">ー</tspan><tspan x="91.6">ル</tspan><tspan x="108.4">の</tspan><tspan x="125.2">指</tspan><tspan x="142.0">摘</tspan><tspan x="158.8">（</tspan><tspan x="175.6">1</tspan></text>
-<text y="215.5" fill="#d6d9e0" font-weight="bold"><tspan x="192.4">件</tspan><tspan x="209.2">）</tspan></text>
+<text y="215.5" fill="#e06c75" font-weight="bold"><tspan x="24.4">✗</tspan></text>
+<text y="215.5" fill="#d6d9e0"><tspan x="49.6">最</tspan><tspan x="66.4">重</tspan><tspan x="83.2">要</tspan></text>
+<text y="215.5" fill="#d6d9e0"><tspan x="116.8">項</tspan><tspan x="133.6">目</tspan><tspan x="150.4">の</tspan><tspan x="167.2">形</tspan><tspan x="184.0">が</tspan><tspan x="200.8">違</tspan><tspan x="217.6">う</tspan></text>
 <text y="215.5" fill="#7f848e"><tspan x="511.6">|</tspan></text>
-<text y="233.5" fill="#e06c75" font-weight="bold"><tspan x="24.4">✗</tspan></text>
-<text y="233.5" fill="#d6d9e0"><tspan x="49.6">最</tspan><tspan x="66.4">重</tspan><tspan x="83.2">要</tspan></text>
-<text y="233.5" fill="#d6d9e0"><tspan x="116.8">項</tspan><tspan x="133.6">目</tspan><tspan x="150.4">の</tspan><tspan x="167.2">形</tspan><tspan x="184.0">が</tspan><tspan x="200.8">違</tspan><tspan x="217.6">う</tspan></text>
+<text y="233.5" fill="#d6d9e0" font-weight="bold"><tspan x="24.4">設</tspan><tspan x="41.2">定</tspan><tspan x="58.0">ご</tspan><tspan x="74.8">と</tspan><tspan x="91.6">の</tspan><tspan x="108.4">危</tspan><tspan x="125.2">険</tspan><tspan x="142.0">度</tspan><tspan x="158.8">（</tspan><tspan x="175.6">3</tspan></text>
+<text y="233.5" fill="#d6d9e0" font-weight="bold"><tspan x="192.4">件</tspan><tspan x="209.2">）</tspan></text>
 <text y="233.5" fill="#7f848e"><tspan x="511.6">|</tspan></text>
 <text y="233.5" fill="#61afef" font-weight="bold"><tspan x="536.8">現</tspan><tspan x="553.6">在</tspan><tspan x="570.4">の</tspan><tspan x="587.2">実</tspan><tspan x="604.0">体</tspan><tspan x="620.8">（</tspan><tspan x="637.6">s</tspan><tspan x="646.0">b</tspan><tspan x="654.4">x</tspan><tspan x="662.8">）</tspan></text>
-<text y="251.5" fill="#d6d9e0" font-weight="bold"><tspan x="24.4">設</tspan><tspan x="41.2">定</tspan><tspan x="58.0">ご</tspan><tspan x="74.8">と</tspan><tspan x="91.6">の</tspan><tspan x="108.4">危</tspan><tspan x="125.2">険</tspan><tspan x="142.0">度</tspan><tspan x="158.8">（</tspan><tspan x="175.6">3</tspan></text>
-<text y="251.5" fill="#d6d9e0" font-weight="bold"><tspan x="192.4">件</tspan><tspan x="209.2">）</tspan></text>
+<text y="251.5" fill="#e06c75" font-weight="bold"><tspan x="24.4">✗</tspan></text>
+<text y="251.5" fill="#d6d9e0"><tspan x="49.6">高</tspan></text>
+<text y="251.5" fill="#d6d9e0"><tspan x="116.8">s</tspan><tspan x="125.2">e</tspan><tspan x="133.6">c</tspan><tspan x="142.0">r</tspan><tspan x="150.4">e</tspan><tspan x="158.8">t</tspan><tspan x="167.2">s</tspan><tspan x="175.6">.</tspan><tspan x="184.0">g</tspan><tspan x="192.4">i</tspan><tspan x="200.8">t</tspan><tspan x="209.2">h</tspan><tspan x="217.6">u</tspan><tspan x="226.0">b</tspan></text>
+<text y="251.5" fill="#7f848e"><tspan x="251.2">c</tspan><tspan x="259.6">o</tspan><tspan x="268.0">m</tspan><tspan x="276.4">m</tspan><tspan x="284.8">a</tspan><tspan x="293.2">n</tspan><tspan x="301.6">d</tspan><tspan x="310.0">:</tspan></text>
+<text y="251.5" fill="#7f848e"><tspan x="326.8">&lt;</tspan><tspan x="335.2">r</tspan><tspan x="343.6">e</tspan><tspan x="352.0">d</tspan><tspan x="360.4">a</tspan><tspan x="368.8">c</tspan><tspan x="377.2">t</tspan><tspan x="385.6">e</tspan><tspan x="394.0">d</tspan></text>
+<text y="251.5" fill="#7f848e"><tspan x="410.8">c</tspan><tspan x="419.2">o</tspan><tspan x="427.6">m</tspan><tspan x="436.0">m</tspan><tspan x="444.4">a</tspan><tspan x="452.8">n</tspan><tspan x="461.2">d</tspan><tspan x="469.6">&gt;</tspan></text>
 <text y="251.5" fill="#7f848e"><tspan x="511.6">|</tspan></text>
-<text y="251.5" fill="#d6d9e0"><tspan x="553.6">c</tspan><tspan x="562.0">o</tspan><tspan x="570.4">d</tspan><tspan x="578.8">e</tspan><tspan x="587.2">x</tspan></text>
-<text y="269.5" fill="#e06c75" font-weight="bold"><tspan x="24.4">✗</tspan></text>
-<text y="269.5" fill="#d6d9e0"><tspan x="49.6">高</tspan></text>
-<text y="269.5" fill="#d6d9e0"><tspan x="116.8">s</tspan><tspan x="125.2">e</tspan><tspan x="133.6">c</tspan><tspan x="142.0">r</tspan><tspan x="150.4">e</tspan><tspan x="158.8">t</tspan><tspan x="167.2">s</tspan><tspan x="175.6">.</tspan><tspan x="184.0">g</tspan><tspan x="192.4">i</tspan><tspan x="200.8">t</tspan><tspan x="209.2">h</tspan><tspan x="217.6">u</tspan><tspan x="226.0">b</tspan></text>
-<text y="269.5" fill="#7f848e"><tspan x="251.2">c</tspan><tspan x="259.6">o</tspan><tspan x="268.0">m</tspan><tspan x="276.4">m</tspan><tspan x="284.8">a</tspan><tspan x="293.2">n</tspan><tspan x="301.6">d</tspan><tspan x="310.0">:</tspan></text>
-<text y="269.5" fill="#7f848e"><tspan x="326.8">&lt;</tspan><tspan x="335.2">r</tspan><tspan x="343.6">e</tspan><tspan x="352.0">d</tspan><tspan x="360.4">a</tspan><tspan x="368.8">c</tspan><tspan x="377.2">t</tspan><tspan x="385.6">e</tspan><tspan x="394.0">d</tspan></text>
-<text y="269.5" fill="#7f848e"><tspan x="410.8">c</tspan><tspan x="419.2">o</tspan><tspan x="427.6">m</tspan><tspan x="436.0">m</tspan><tspan x="444.4">a</tspan><tspan x="452.8">n</tspan><tspan x="461.2">d</tspan><tspan x="469.6">&gt;</tspan></text>
+<text y="251.5" fill="#d6d9e0"><tspan x="553.6">&lt;</tspan><tspan x="562.0">r</tspan><tspan x="570.4">e</tspan><tspan x="578.8">d</tspan><tspan x="587.2">a</tspan><tspan x="595.6">c</tspan><tspan x="604.0">t</tspan><tspan x="612.4">e</tspan><tspan x="620.8">d</tspan><tspan x="629.2">&gt;</tspan></text>
+<text y="269.5" fill="#e5c07b" font-weight="bold"><tspan x="24.4">!</tspan></text>
+<text y="269.5" fill="#d6d9e0"><tspan x="49.6">中</tspan></text>
+<text y="269.5" fill="#d6d9e0"><tspan x="116.8">w</tspan><tspan x="125.2">o</tspan><tspan x="133.6">r</tspan><tspan x="142.0">k</tspan><tspan x="150.4">s</tspan><tspan x="158.8">p</tspan><tspan x="167.2">a</tspan><tspan x="175.6">c</tspan><tspan x="184.0">e</tspan></text>
+<text y="269.5" fill="#7f848e"><tspan x="209.2">~</tspan><tspan x="217.6">/</tspan><tspan x="226.0">p</tspan><tspan x="234.4">r</tspan><tspan x="242.8">o</tspan><tspan x="251.2">j</tspan><tspan x="259.6">/</tspan><tspan x="268.0">w</tspan><tspan x="276.4">e</tspan><tspan x="284.8">b</tspan><tspan x="293.2">-</tspan><tspan x="301.6">a</tspan><tspan x="310.0">p</tspan><tspan x="318.4">p</tspan></text>
 <text y="269.5" fill="#7f848e"><tspan x="511.6">|</tspan></text>
-<text y="287.5" fill="#e5c07b" font-weight="bold"><tspan x="24.4">!</tspan></text>
-<text y="287.5" fill="#d6d9e0"><tspan x="49.6">中</tspan></text>
-<text y="287.5" fill="#d6d9e0"><tspan x="116.8">w</tspan><tspan x="125.2">o</tspan><tspan x="133.6">r</tspan><tspan x="142.0">k</tspan><tspan x="150.4">s</tspan><tspan x="158.8">p</tspan><tspan x="167.2">a</tspan><tspan x="175.6">c</tspan><tspan x="184.0">e</tspan></text>
-<text y="287.5" fill="#7f848e"><tspan x="209.2">~</tspan><tspan x="217.6">/</tspan><tspan x="226.0">p</tspan><tspan x="234.4">r</tspan><tspan x="242.8">o</tspan><tspan x="251.2">j</tspan><tspan x="259.6">/</tspan><tspan x="268.0">w</tspan><tspan x="276.4">e</tspan><tspan x="284.8">b</tspan><tspan x="293.2">-</tspan><tspan x="301.6">a</tspan><tspan x="310.0">p</tspan><tspan x="318.4">p</tspan></text>
+<text y="287.5" fill="#d6d9e0"><tspan x="49.6">低</tspan></text>
+<text y="287.5" fill="#d6d9e0"><tspan x="116.8">p</tspan><tspan x="125.2">o</tspan><tspan x="133.6">r</tspan><tspan x="142.0">t</tspan><tspan x="150.4">s</tspan><tspan x="158.8">[</tspan><tspan x="167.2">3</tspan><tspan x="175.6">0</tspan><tspan x="184.0">0</tspan><tspan x="192.4">0</tspan><tspan x="200.8">/</tspan><tspan x="209.2">t</tspan><tspan x="217.6">c</tspan><tspan x="226.0">p</tspan><tspan x="234.4">4</tspan><tspan x="242.8">]</tspan></text>
+<text y="287.5" fill="#7f848e"><tspan x="268.0">l</tspan><tspan x="276.4">o</tspan><tspan x="284.8">o</tspan><tspan x="293.2">p</tspan><tspan x="301.6">b</tspan><tspan x="310.0">a</tspan><tspan x="318.4">c</tspan><tspan x="326.8">k</tspan><tspan x="335.2">:</tspan><tspan x="343.6">4</tspan><tspan x="352.0">0</tspan><tspan x="360.4">0</tspan><tspan x="368.8">0</tspan></text>
+<text y="287.5" fill="#7f848e"><tspan x="385.6">-</tspan><tspan x="394.0">&gt;</tspan></text>
+<text y="287.5" fill="#7f848e"><tspan x="410.8">s</tspan><tspan x="419.2">a</tspan><tspan x="427.6">n</tspan><tspan x="436.0">d</tspan><tspan x="444.4">b</tspan><tspan x="452.8">o</tspan><tspan x="461.2">x</tspan><tspan x="469.6">:</tspan><tspan x="478.0">3</tspan><tspan x="486.4">.</tspan><tspan x="494.8">.</tspan></text>
 <text y="287.5" fill="#7f848e"><tspan x="511.6">|</tspan></text>
 <text y="287.5" fill="#61afef" font-weight="bold"><tspan x="536.8">ど</tspan><tspan x="553.6">う</tspan><tspan x="570.4">す</tspan><tspan x="587.2">れ</tspan><tspan x="604.0">ば</tspan><tspan x="620.8">よ</tspan><tspan x="637.6">い</tspan><tspan x="654.4">か</tspan></text>
-<text y="305.5" fill="#d6d9e0"><tspan x="49.6">低</tspan></text>
-<text y="305.5" fill="#d6d9e0"><tspan x="116.8">p</tspan><tspan x="125.2">o</tspan><tspan x="133.6">r</tspan><tspan x="142.0">t</tspan><tspan x="150.4">s</tspan><tspan x="158.8">[</tspan><tspan x="167.2">3</tspan><tspan x="175.6">0</tspan><tspan x="184.0">0</tspan><tspan x="192.4">0</tspan><tspan x="200.8">/</tspan><tspan x="209.2">t</tspan><tspan x="217.6">c</tspan><tspan x="226.0">p</tspan><tspan x="234.4">4</tspan><tspan x="242.8">]</tspan></text>
-<text y="305.5" fill="#7f848e"><tspan x="268.0">l</tspan><tspan x="276.4">o</tspan><tspan x="284.8">o</tspan><tspan x="293.2">p</tspan><tspan x="301.6">b</tspan><tspan x="310.0">a</tspan><tspan x="318.4">c</tspan><tspan x="326.8">k</tspan><tspan x="335.2">:</tspan><tspan x="343.6">4</tspan><tspan x="352.0">0</tspan><tspan x="360.4">0</tspan><tspan x="368.8">0</tspan></text>
-<text y="305.5" fill="#7f848e"><tspan x="385.6">-</tspan><tspan x="394.0">&gt;</tspan></text>
-<text y="305.5" fill="#7f848e"><tspan x="410.8">s</tspan><tspan x="419.2">a</tspan><tspan x="427.6">n</tspan><tspan x="436.0">d</tspan><tspan x="444.4">b</tspan><tspan x="452.8">o</tspan><tspan x="461.2">x</tspan><tspan x="469.6">:</tspan><tspan x="478.0">3</tspan><tspan x="486.4">.</tspan><tspan x="494.8">.</tspan></text>
 <text y="305.5" fill="#7f848e"><tspan x="511.6">|</tspan></text>
 <text y="305.5" fill="#d6d9e0"><tspan x="553.6">a</tspan><tspan x="562.0">g</tspan><tspan x="570.4">e</tspan><tspan x="578.8">n</tspan><tspan x="587.2">t</tspan></text>
 <text y="305.5" fill="#d6d9e0"><tspan x="604.0">を</tspan><tspan x="620.8">変</tspan><tspan x="637.6">え</tspan><tspan x="654.4">た</tspan><tspan x="671.2">場</tspan><tspan x="688.0">合</tspan><tspan x="704.8">は</tspan><tspan x="721.6">、</tspan><tspan x="738.4">作</tspan><tspan x="755.2">り</tspan><tspan x="772.0">直</tspan><tspan x="788.8">し</tspan><tspan x="805.6">（</tspan><tspan x="822.4">s</tspan><tspan x="830.8">b</tspan><tspan x="839.2">x</tspan></text>
