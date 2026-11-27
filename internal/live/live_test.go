@@ -1184,3 +1184,25 @@ func TestAFamilyPortPrefersARowShowingItsFamily(t *testing.T) {
 		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
 	}
 }
+
+func TestWorkspacesMatchByThePathSbxReported(t *testing.T) {
+	t.Parallel()
+	// Arrange: one folder named with a tab, one with a literal \t; sbx
+	// mounts only the first. The snapshot escapes both alike for display.
+	r := &fakeSbx{out: map[string]string{
+		"ls --json": `[{"name": "web", "status": "running", "workspaces": ["/x/a\tb"]}]`, "policy ls web --json": `{"rules": []}`,
+		"secret ls --sandbox web --json": `{"secrets": []}`, "mcp ls --json": "[]",
+	}}
+	snap := live.Collect(context.Background(), r)
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Workspaces: []sbxenv.DeclaredMount{
+		{ItemID: "tab", Path: "/x/a\tb"}, {ItemID: "literal", Path: `/x/a\tb`},
+	}}}
+
+	// Act
+	c := live.Compare(p, &snap.Sandboxes[0], &snap, nil)
+
+	// Assert: regression; the escaped path matched the literal one.
+	if d, ok := drift(&c, "マウントされていない"); !ok || d.ItemID != "literal" || len(c.Drifts) != 1 {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}

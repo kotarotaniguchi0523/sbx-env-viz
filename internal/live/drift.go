@@ -124,7 +124,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			if w.Primary && w.Clone {
 				c.Skipped = append(c.Skipped, "メインのワークスペースは clone モード（専用のコピー）なので、マウント先のパスは比較していません。")
 				for i, m := range sb.Workspaces {
-					if samePath(m.Path, w.Path) {
+					if samePath(m.matchPath(), w.Path) {
 						used[i] = true
 					}
 				}
@@ -133,14 +133,14 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			c.Compared = append(c.Compared, w.ItemID)
 			found := -1
 			for i, m := range sb.Workspaces {
-				if !used[i] && samePath(m.Path, w.Path) {
+				if !used[i] && samePath(m.matchPath(), w.Path) {
 					found = i
 					break
 				}
 			}
 			if found < 0 {
 				for _, m := range sb.Mounts {
-					if samePath(m.Path, w.Path) {
+					if samePath(m.matchPath(), w.Path) {
 						found = -2
 						break
 					}

@@ -76,8 +76,8 @@ func Discover(ctx context.Context, req DiscoverRequest) ([]Target, Snapshot) {
 	dirs := []string{req.WorkDir}
 	for _, sb := range snap.Sandboxes {
 		for _, w := range sb.Workspaces {
-			if filepath.IsAbs(w.Path) {
-				dirs = append(dirs, w.Path, filepath.Dir(w.Path))
+			if p := w.matchPath(); filepath.IsAbs(p) {
+				dirs = append(dirs, p, filepath.Dir(p))
 			}
 		}
 	}
@@ -246,7 +246,7 @@ func match(d *sbxenv.Declared, sbs []Sandbox, taken map[int]bool) int {
 				continue
 			}
 			for _, m := range sb.Workspaces {
-				if samePath(m.Path, w.Path) {
+				if samePath(m.matchPath(), w.Path) {
 					return i
 				}
 			}

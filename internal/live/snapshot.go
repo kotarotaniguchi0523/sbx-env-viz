@@ -42,9 +42,24 @@ type Sandbox struct {
 }
 
 // Mount is a host directory mounted into a sandbox. sbx ls reports paths
-// only, not whether a mount is read-only.
+// only, not whether a mount is read-only. Path is escaped for display like
+// every value read from sbx; host keeps the path as sbx reported it, only
+// to be matched with declared paths, since escaping is not one-to-one (a
+// tab and a literal \t read the same).
 type Mount struct {
 	Path string
+	host string
+}
+
+// matchPath is the path to compare with a declared one: as sbx reported
+// it, or Path for a Mount built without one.
+//
+//declscope:shared // drift.go and discover.go match declared paths with it
+func (m Mount) matchPath() string {
+	if m.host != "" {
+		return m.host
+	}
+	return m.Path
 }
 
 // Port is a published port.
@@ -229,7 +244,7 @@ func paths(list []string) []Mount {
 	var out []Mount
 	for _, p := range list {
 		if p != "" {
-			out = append(out, Mount{Path: esc(p)})
+			out = append(out, Mount{Path: esc(p), host: p})
 		}
 	}
 	return out
