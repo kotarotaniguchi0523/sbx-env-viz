@@ -2007,3 +2007,18 @@ func TestTUISummaryOfAParseErrorTarget(t *testing.T) {
 	// Assert: regression; it said no declaration exists.
 	u.want("設定ファイルを解析できないため、危険度は評価していません")
 }
+
+func TestTUIOverviewDoesNotReportAFilterOrSearchItIgnores(t *testing.T) {
+	t.Parallel()
+	// Arrange: pick layer L2 and search on 設定, then return.
+	u := newUI(t, 120, 40, true)
+	u.press("3", "f", "f", "/", "N", "enter", "1")
+
+	// Assert: regression; the status line named a filter the manifest
+	// does not apply.
+	if u.has("絞り込み（") || u.has("検索: N") {
+		t.Errorf("Overview reports a filter or search:\n%s", u.text())
+	}
+	u.press("3")
+	u.want("絞り込み（", "検索: N")
+}

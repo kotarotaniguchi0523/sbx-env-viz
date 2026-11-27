@@ -293,7 +293,10 @@ func (m *Model) contextBar(w, y int) string {
 func (m *Model) stateLine() string {
 	p := m.plan
 	var state []string
-	if f := m.filter(); f != "" {
+	// The Overview's manifest applies neither the layer filter nor the
+	// search, so it does not report them either.
+	overview := m.view == viewOverview
+	if f := m.filter(); f != "" && !overview {
 		hidden := 0
 		for i := range p.Diagnostics {
 			d := &p.Diagnostics[i]
@@ -315,7 +318,7 @@ func (m *Model) stateLine() string {
 	}
 	if m.searching {
 		state = append(state, "検索: "+m.query+"_")
-	} else if m.query != "" {
+	} else if m.query != "" && !overview {
 		state = append(state, "検索: "+m.query+"（Esc で解除）")
 	}
 	return strings.Join(state, "  ")
