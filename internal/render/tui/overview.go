@@ -79,6 +79,11 @@ func (m *Model) buildOverview() {
 	// entry adds a setting that stands for items. Its detail is the
 	// riskiest item, so the explanation agrees with the row's mark.
 	entry := func(label, declared string, items ...*sbxenv.Item) {
+		// A setting that will not take effect (--skip-host-commands, an
+		// optional group whose condition fails) says so on its row.
+		if len(items) > 0 && !slices.ContainsFunc(items, func(it *sbxenv.Item) bool { return !hasBadge(it, sbxenv.BadgeSkip) }) {
+			declared += "（" + sbxenv.BadgeLabel(sbxenv.BadgeSkip) + "）"
+		}
 		l := manifestLine{kind: lineEntry, label: label, declared: declared, sev: sbxenv.SeverityInfo}
 		r := row{label: label}
 		for _, it := range items {
@@ -95,19 +100,20 @@ func (m *Model) buildOverview() {
 			if len(items) > 0 && !slices.ContainsFunc(items, func(it *sbxenv.Item) bool { return !m.compared[it.ID] }) {
 				l.check = checkMatch
 			}
+			// The row shows one drift, the worst; any other drift of the
+			// same items is listed with the rest below, so none is lost.
 			for _, it := range items {
 				for _, d := range driftsOf[it.ID] {
-					if used[d] {
-						continue
-					}
-					used[d] = true
-					if l.check != checkDrift {
-						l.check, l.actual = checkDrift, d.Actual
+					if !used[d] && (r.drift == nil || d.Severity.Rank() > r.drift.Severity.Rank()) {
 						r.drift = d
-						if d.Severity.Rank() > l.sev.Rank() {
-							l.sev = d.Severity
-						}
 					}
+				}
+			}
+			if d := r.drift; d != nil {
+				used[d] = true
+				l.check, l.actual = checkDrift, d.Actual
+				if d.Severity.Rank() > l.sev.Rank() {
+					l.sev = d.Severity
 				}
 			}
 		}

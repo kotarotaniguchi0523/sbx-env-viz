@@ -1716,3 +1716,48 @@ func TestTUIRiskSearchForTheSectionWordFindsTheDrifts(t *testing.T) {
 	// Assert: regression; the section's own word found nothing.
 	u.want("稼働中とのズレ（1 件）", "ポート公開: 宣言にないポート")
 }
+
+func TestTUIOverviewListsASecondDriftOfTheSameItem(t *testing.T) {
+	t.Parallel()
+	// Arrange: one MCP server, registered as another kind and waiting for
+	// authorization.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: "mcp.servers[docs]", Path: "mcp.servers[]", Value: "command: docs-mcp"}}}
+	mcp := func(title, actual string, sev sbxenv.Severity) live.Drift {
+		return live.Drift{Kind: "MCP サーバー", Title: title, Declared: "command: docs-mcp", Actual: actual, Severity: sev, ItemID: "mcp.servers[docs]"}
+	}
+	cmp := &live.Comparison{Checked: []string{"MCP サーバー"}, Compared: []string{"mcp.servers[docs]"}, Drifts: []live.Drift{
+		mcp("同じ名前の MCP サーバーが、宣言と違う種類で登録されている", "種類: remote（sse）", sbxenv.SeverityMedium),
+		mcp("MCP サーバーは登録済みだが使える状態ではない", "状態: needs authorization", sbxenv.SeverityLow),
+	}}
+
+	// Act
+	u := targetUI(t, 120, 40, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: &live.Sandbox{Name: "web"}, Comparison: cmp})
+
+	// Assert: regression; the second drift was marked used but shown nowhere.
+	u.wantRe(`^ !  MCP docs +.* +種類: remote（sse） *$`)
+	u.want("宣言にない実体・その他のズレ", "状態: needs authorization")
+}
+
+func TestTUIOverviewSaysASkippedCommandDoesNotRun(t *testing.T) {
+	t.Parallel()
+	// Arrange: --skip-host-commands marks the hook [SKIP].
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: "lifecycle.initialize[0]", Path: "lifecycle.initialize[0]", Value: "echo hi", Risk: sbxenv.SeverityLow,
+		Badges: []string{sbxenv.BadgeHost, sbxenv.BadgeSkip}}}}
+	m := tui.New(p, true)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	u := &ui{t: t, m: m}
+
+	// Assert: regression; the row read as a command that runs on the PC.
+	u.wantRe(`^ {4}PC 上で実行 +echo hi（実行されない） *$`)
+}
+
+func TestTUIContextLineOfAParseErrorTarget(t *testing.T) {
+	t.Parallel()
+	// Act
+	u := targetUI(t, 120, 30, live.Target{Name: "broken", State: "解析エラー", Files: []string{"~/x/sbxenv.yaml"}, Err: "設定ファイルを解析できませんでした: line 3"})
+
+	// Assert: regression; it read as a running sandbox without files.
+	if l := u.lines()[1]; !strings.Contains(l, "設定ファイルを解析できませんでした") || strings.Contains(l, "稼働中") {
+		t.Errorf("context line = %q", l)
+	}
+}

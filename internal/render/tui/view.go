@@ -238,8 +238,10 @@ func (m *Model) contextBar(w, y int) string {
 		switch {
 		case t.Comparison != nil:
 			notice = fmt.Sprintf(" 宣言 %d ファイルと稼働中の sandbox（sbx の読み取り専用コマンド）を照合", files)
-		case t.Plan == nil:
+		case t.Plan == nil && t.Sandbox != nil:
 			notice = " 稼働中の実体のみ（宣言ファイル未検出）"
+		case t.Plan == nil:
+			notice = " 設定ファイルを解析できませんでした"
 		}
 	}
 	if m.view == viewOverview {
