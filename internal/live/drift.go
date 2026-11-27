@@ -207,18 +207,30 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				}
 			}
 		}
-		// And in each pass a listener on the declared address is taken
-		// before any other, so a loopback declaration cannot take the
-		// 0.0.0.0 listener of its neighbour and read as exposed.
+		// And in each pass the closest listener is taken first: one on the
+		// declared address whose row shows the declared family, then one on
+		// the address, then one showing the family, then any. A loopback
+		// declaration then cannot take its neighbour's 0.0.0.0 listener and
+		// read as exposed, nor tcp4 a row of unknown family that tcp6 needs.
+		shows := func(dp sbxenv.DeclaredPort, lp Port) bool {
+			f := portFamily(dp.Protocol, dp.HostIP)
+			return f == "" || portFamily(lp.Protocol, lp.HostIP) == f
+		}
+		near := []func(sbxenv.DeclaredPort, Port) bool{
+			func(dp sbxenv.DeclaredPort, lp Port) bool { return sameIP(dp.HostIP, lp.HostIP) && shows(dp, lp) },
+			func(dp sbxenv.DeclaredPort, lp Port) bool { return sameIP(dp.HostIP, lp.HostIP) },
+			shows,
+			func(sbxenv.DeclaredPort, Port) bool { return true },
+		}
 		for _, pass := range passes {
-			for _, sameAddr := range []bool{true, false} {
+			for _, fit := range near {
 				for _, j := range order {
 					dp := d.Ports[j]
 					if pair[j] >= 0 {
 						continue
 					}
 					for i, lp := range sb.Ports {
-						if !used[i] && compatible(dp, lp) && pass(dp, lp) && (!sameAddr || sameIP(dp.HostIP, lp.HostIP)) {
+						if !used[i] && compatible(dp, lp) && pass(dp, lp) && fit(dp, lp) {
 							pair[j], used[i] = i, true
 							break
 						}

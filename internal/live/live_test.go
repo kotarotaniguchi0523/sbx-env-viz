@@ -1162,3 +1162,25 @@ func TestStrictRedactionHidesAnAgentNamedByAnArgument(t *testing.T) {
 		t.Errorf("drift = %+v (%v)", d, c.Drifts)
 	}
 }
+
+func TestAFamilyPortPrefersARowShowingItsFamily(t *testing.T) {
+	t.Parallel()
+	// Arrange: 80/tcp4 and 80/tcp6, ephemeral; sbx lists a row with no
+	// address before one on 127.0.0.1.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "v4", SandboxPort: 80, Protocol: "tcp4"},
+		{ItemID: "v6", SandboxPort: 80, Protocol: "tcp6"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostPort: 50001, SandboxPort: 80, Protocol: "tcp"},
+		{HostIP: "127.0.0.1", HostPort: 50002, SandboxPort: 80, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; tcp4 took the row of unknown family.
+	if len(c.Drifts) > 0 || !slices.Contains(c.Compared, "v4") {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
