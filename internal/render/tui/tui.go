@@ -393,22 +393,28 @@ func (m *Model) move(delta int) {
 	if len(m.rows) == 0 {
 		return
 	}
+	// The next selectable row that way; at either end, or when only
+	// headers lie that way, the cursor stays where it is (or, on a header,
+	// goes to the nearest selectable row).
 	c := m.cursor[m.view]
-	for i := 0; i < len(m.rows); i++ {
-		c += delta
-		if c < 0 {
-			c = 0
-			delta = 1
-		}
-		if c >= len(m.rows) {
-			c = len(m.rows) - 1
-			delta = -1
-		}
-		if !m.rows[c].header {
+	next := -1
+	for i := c + delta; i >= 0 && i < len(m.rows); i += delta {
+		if !m.rows[i].header {
+			next = i
 			break
 		}
 	}
-	m.cursor[m.view] = c
+	if next < 0 && m.rows[min(max(c, 0), len(m.rows)-1)].header {
+		for i := c - delta; i >= 0 && i < len(m.rows); i -= delta {
+			if !m.rows[i].header {
+				next = i
+				break
+			}
+		}
+	}
+	if next >= 0 {
+		m.cursor[m.view] = next
+	}
 	m.dScroll = 0
 }
 
@@ -628,8 +634,12 @@ func (m *Model) key(k string) (tea.Model, tea.Cmd) {
 			m.rebuild()
 		}
 	case "f":
-		m.filterIdx = (m.filterIdx + 1) % len(m.filters)
-		m.rebuild()
+		// The Overview applies no filter and shows no switch, so f there
+		// would change the next view's filter unseen.
+		if m.view != viewOverview {
+			m.filterIdx = (m.filterIdx + 1) % len(m.filters)
+			m.rebuild()
+		}
 	case "/":
 		// The Overview is a fixed manifest; its search is the settings'.
 		if m.view == viewOverview {

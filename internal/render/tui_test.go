@@ -2083,3 +2083,33 @@ func TestTUITabClickEndsTypingASearch(t *testing.T) {
 		t.Errorf("keys still edit the search:\n%s", u.text())
 	}
 }
+
+func TestTUIRiskKFromTheOnlyResultStaysOnIt(t *testing.T) {
+	t.Parallel()
+	// Arrange: search Risk down to one finding.
+	u := newUI(t, 160, 50, true).press("2", "/")
+	for _, r := range "lifecycle.initialize" {
+		u.press(string(r))
+	}
+	u.press("enter")
+	first := u.detailFirstLine()
+
+	// Act
+	u.press("k")
+
+	// Assert: regression; k selected the section header and blanked the detail.
+	if got := u.detailFirstLine(); got == "" || got != first {
+		t.Errorf("detail after k = %q, want %q\n%s", got, first, u.text())
+	}
+}
+
+func TestTUIFOnTheOverviewChangesNoFilter(t *testing.T) {
+	t.Parallel()
+	// Act
+	u := newUI(t, 130, 40, true).press("f", "2")
+
+	// Assert: regression; Risk opened filtered to L1, unannounced.
+	if u.has("絞り込み（") {
+		t.Errorf("f on the Overview set a filter:\n%s", u.text())
+	}
+}
