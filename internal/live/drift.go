@@ -449,7 +449,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		}
 		if unsure {
 			// The TUI marks these 照合なし; say so in text and JSON too.
-			c.Skipped = append(c.Skipped, "sbx ls --json に通信の種類（tcp / udp）、PC 側のポート番号、IPv4 / IPv6 の別のどれかが出ていない行と組んだポートは、その点を照合していません。")
+			c.Skipped = append(c.Skipped, "sbx ls --json の行だけでは確かめられない点（通信の種類、PC 側のポート番号、IPv4 と IPv6 の両方で公開されているか）があるポートは、その点を照合していません。")
 		}
 		for i, lp := range sb.Ports {
 			if used[i] {
@@ -461,7 +461,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			switch {
 			case isAll(lp.HostIP):
 				sev = sbxenv.SeverityHigh
-			case !isLoopback(lp.HostIP):
+			case !loopbackRange(lp.HostIP):
 				sev = sbxenv.SeverityMedium
 			}
 			actual := lp.Label()
@@ -636,6 +636,13 @@ func baseProto(p string) string {
 	// Anything else (sctp, a typo) is its own transport: tcp does not
 	// confirm it.
 	return p
+}
+
+// loopbackRange tells whether ip is on the loopback interface (all of
+// 127.0.0.0/8 too), for rating exposure; matching addresses stays exact.
+func loopbackRange(ip string) bool {
+	a, err := netip.ParseAddr(strings.Trim(ip, "[]"))
+	return isLoopback(ip) || err == nil && a.IsLoopback()
 }
 
 func isLoopback(ip string) bool {

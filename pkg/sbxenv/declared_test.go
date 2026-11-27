@@ -41,3 +41,22 @@ func TestAnAdditionalWorkspaceWithoutAPathDoesNotCrash(t *testing.T) {
 		}
 	}
 }
+
+func TestAPortOnAnyLoopbackAddressIsLow(t *testing.T) {
+	t.Parallel()
+	for ip, want := range map[string]sbxenv.Severity{"127.0.0.2": sbxenv.SeverityLow, "192.168.1.10": sbxenv.SeverityMedium, "0.0.0.0": sbxenv.SeverityHigh} {
+		// Arrange
+		f := newFixture(t)
+		f.write(t, "sbxenv.yaml", "schemaVersion: \"1\"\nagent: claude\nports:\n  - {host: 8080, sandbox: 80, hostIP: \""+ip+"\"}\n")
+
+		// Act
+		p := f.resolve(t, run{paths: []string{"."}, opts: sbxenv.ResolveOptions{Redaction: sbxenv.RedactHome}})
+
+		// Assert: regression; 127.0.0.2 counted as a network address.
+		for _, it := range p.Items {
+			if it.Path == "ports[]" && it.Risk != want {
+				t.Errorf("%s: %s, want %s", ip, it.Risk, want)
+			}
+		}
+	}
+}

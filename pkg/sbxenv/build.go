@@ -2,6 +2,7 @@ package sbxenv
 
 import (
 	"fmt"
+	"net/netip"
 	"net/url"
 	"strings"
 
@@ -604,7 +605,7 @@ func (rs *resolver) buildPorts() {
 			it.Risk = SeverityHigh
 			it.RiskReason = "LAN など外部のネットワークから、このポートに接続できます。"
 			reason = "publishes a sandbox port on every host interface, reachable from the network"
-		} else if ip != "" && ip != "127.0.0.1" && ip != "::1" {
+		} else if a, err := netip.ParseAddr(strings.Trim(ip, "[]")); ip != "" && ip != "localhost" && (err != nil || !a.IsLoopback()) {
 			it.Risk = SeverityMedium
 			it.RiskReason = "特定のネットワークアドレスに公開されるため、そのネットワーク上の他の機械から接続できる場合があります。"
 			reason = "publishes a sandbox port on a non-loopback host address"

@@ -2035,6 +2035,7 @@ func TestAnUndeclaredPortOnANetworkAddressIsMedium(t *testing.T) {
 	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{}}
 	sb := &live.Sandbox{Ports: []live.Port{
 		{HostIP: "127.0.0.1", HostPort: 8081, SandboxPort: 81, Protocol: "tcp"},
+		{HostIP: "127.0.0.2", HostPort: 8083, SandboxPort: 83, Protocol: "tcp"},
 		{HostIP: "192.168.1.10", HostPort: 8080, SandboxPort: 80, Protocol: "tcp4"},
 		{HostIP: "0.0.0.0", HostPort: 8082, SandboxPort: 82, Protocol: "tcp"},
 	}}
@@ -2044,7 +2045,7 @@ func TestAnUndeclaredPortOnANetworkAddressIsMedium(t *testing.T) {
 
 	// Assert: regression; the LAN address was rated low, while the same
 	// port declared is medium.
-	want := map[string]sbxenv.Severity{"127.0.0.1": sbxenv.SeverityLow, "192.168.1.10": sbxenv.SeverityMedium, "0.0.0.0": sbxenv.SeverityHigh}
+	want := map[string]sbxenv.Severity{"127.0.0.1": sbxenv.SeverityLow, "127.0.0.2": sbxenv.SeverityLow, "192.168.1.10": sbxenv.SeverityMedium, "0.0.0.0": sbxenv.SeverityHigh}
 	for _, d := range c.Drifts {
 		for ip, sev := range want {
 			if strings.HasPrefix(d.Actual, ip+":") && d.Severity != sev {
@@ -2052,7 +2053,7 @@ func TestAnUndeclaredPortOnANetworkAddressIsMedium(t *testing.T) {
 			}
 		}
 	}
-	if len(c.Drifts) != 3 {
+	if len(c.Drifts) != 4 {
 		t.Errorf("drifts %v", c.Drifts)
 	}
 }
@@ -2064,7 +2065,7 @@ func TestAPortPairedWithoutAProtocolIsNotedAsUnchecked(t *testing.T) {
 	bare := &live.Sandbox{Ports: []live.Port{{HostPort: 8080, SandboxPort: 80}}}
 	full := &live.Sandbox{Ports: []live.Port{{HostPort: 8080, SandboxPort: 80, Protocol: "tcp"}}}
 	noted := func(c live.Comparison) bool {
-		return slices.ContainsFunc(c.Skipped, func(s string) bool { return strings.Contains(s, "通信の種類") })
+		return slices.ContainsFunc(c.Skipped, func(s string) bool { return strings.Contains(s, "確かめられない点") })
 	}
 
 	// Act
