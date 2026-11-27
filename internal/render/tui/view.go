@@ -189,20 +189,27 @@ func (m *Model) titleBar(w int) string {
 	// The tabs keep their place. When the rest does not fit beside them,
 	// the name gives way first, shortened in the middle down to 8 cells,
 	// since a single target's state (稼働中, 停止中) is shown nowhere else;
-	// then the state; the position stays.
+	// then the state down to its first word; then the name to nothing;
+	// the position stays.
 	room := w - tabW - 3 - lipgloss.Width(" sbxray") - lipgloss.Width(pos)
 	over := func() int { return lipgloss.Width(name) + lipgloss.Width(state) - room }
-	if n := m.subject(); over() > 0 && n != "" {
-		n = model.EscapeControl(n)
+	n := model.EscapeControl(m.subject())
+	if over() > 0 && n != "" {
 		name = "  " + truncMiddle(n, max(lipgloss.Width(n)-over(), min(lipgloss.Width(n), 8)))
 	}
 	if o := over(); o > 0 {
-		if sw := lipgloss.Width(state) - o; sw >= 6 {
-			state = trunc(state, sw)
-		} else {
-			state = ""
-			name = trunc(name, max(room, 0))
+		state = trunc(state, max(lipgloss.Width(state)-o, min(lipgloss.Width(state), 2+6)))
+	}
+	if o := over(); o > 0 && n != "" {
+		// Below two cells of its own the name says nothing; drop it.
+		nw := lipgloss.Width(name) - 2 - o
+		name = ""
+		if nw >= 2 {
+			name = "  " + truncMiddle(n, nw)
 		}
+	}
+	if over() > 0 {
+		state = trunc(state, max(room, 0))
 	}
 	left := " " + m.pal.strong.Render("sbxray") + name + m.pal.muted.Render(state+pos)
 	gap := w - lipgloss.Width(left) - tabW
