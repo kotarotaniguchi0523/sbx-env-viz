@@ -1916,3 +1916,23 @@ func TestProtocolLessRowsPairWithUDPDeclarations(t *testing.T) {
 		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
 	}
 }
+
+func TestACompanionMustCarryTheDeclaredTransport(t *testing.T) {
+	t.Parallel()
+	// Arrange: 5353 -> 53/udp (both families); sbx has a bare IPv4 row and
+	// an IPv6 row that is tcp.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", HostPort: 5353, SandboxPort: 53, Protocol: "udp"}}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 5353, SandboxPort: 53},
+		{HostIP: "::1", HostPort: 5353, SandboxPort: 53, Protocol: "tcp6"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the tcp6 row was taken as the udp port's IPv6
+	// half and vanished from the report.
+	if d, ok := drift(&c, "宣言にないポート"); !ok || !strings.Contains(d.Actual, "tcp6") {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}

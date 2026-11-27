@@ -195,13 +195,14 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		}
 		// companion finds the row of the other family that, with lp, makes
 		// up a port declared for both families (sbx may list one row per
-		// family): same ports and protocol, on the declared address too, so
-		// a [::] row never passes for loopback. skip leaves out rows taken.
+		// family): same ports, the declaration's transport (lp may have
+		// none), on the declared address too, so a [::] row never passes
+		// for loopback. skip leaves out rows taken.
 		companion := func(dp sbxenv.DeclaredPort, lp Port, skip func(int) bool) int {
 			other := map[string]string{"4": "6", "6": "4"}[portFamily(lp.Protocol, lp.HostIP)]
 			for i, x := range sb.Ports {
 				if other != "" && !skip(i) && x.Protocol != "" && x.SandboxPort == lp.SandboxPort && x.HostPort == lp.HostPort &&
-					baseProto(x.Protocol) == baseProto(lp.Protocol) && portFamily(x.Protocol, x.HostIP) == other && sameIP(dp.HostIP, x.HostIP) {
+					baseProto(x.Protocol) == baseProto(dp.Protocol) && portFamily(x.Protocol, x.HostIP) == other && sameIP(dp.HostIP, x.HostIP) {
 					return i
 				}
 			}
