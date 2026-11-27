@@ -304,10 +304,16 @@ func (m *Model) stateLine() string {
 	// The Overview's manifest applies neither the layer filter nor the
 	// search, so it does not report them either.
 	overview := m.view == viewOverview
+	// A long query shows its end (where typing happens), so it cannot
+	// push this target's error off the line.
+	query := m.query
+	if lipgloss.Width(query) > 24 {
+		query = ".." + ansi.TruncateLeft(query, lipgloss.Width(query)-22, "")
+	}
 	if m.searching {
-		state = append(state, "検索: "+m.query+"_")
+		state = append(state, "検索: "+query+"_")
 	} else if m.query != "" && !overview {
-		state = append(state, "検索: "+m.query+"（Esc で解除）")
+		state = append(state, "検索: "+query+"（Esc で解除）")
 	}
 	// This target's error comes next; when it is also the standing notice
 	// (--live with one target), it is shown here, once.
@@ -627,11 +633,7 @@ func truncMiddle(s string, w int) string {
 	}
 	tail := w * 2 / 3
 	head := w - tail - 2
-	r := []rune(s)
-	back := ""
-	for i := len(r) - 1; i >= 0 && lipgloss.Width(string(r[i:])) <= tail; i-- {
-		back = string(r[i:])
-	}
+	back := ansi.TruncateLeft(s, lipgloss.Width(s)-tail, "")
 	return ansi.Truncate(s, head, "") + ".." + back
 }
 

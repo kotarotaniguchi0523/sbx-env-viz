@@ -2205,3 +2205,24 @@ func TestTUIFooterWhileTypingASearch(t *testing.T) {
 		t.Errorf("footer = %q", f)
 	}
 }
+
+func TestTUIStateLineShortensALongQuery(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	const msg = "sbx コマンドが見つかりません"
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	m := tui.NewTargets([]live.Target{{Name: "web", State: "宣言", Plan: p, Err: msg}}, msg, true)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	u := &ui{t: t, m: m}
+
+	// Act
+	u.press("3", "/")
+	for _, r := range "kit:net/network-policy@1/runtime.allow/api.example.com/and/more/text" {
+		u.press(string(r))
+	}
+
+	// Assert: regression; the query pushed the live error off the line.
+	if l := u.lines()[2]; !strings.Contains(l, msg) || !strings.Contains(l, "more/text_") {
+		t.Errorf("state line = %q", l)
+	}
+}
