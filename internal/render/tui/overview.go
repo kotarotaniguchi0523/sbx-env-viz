@@ -58,6 +58,13 @@ func (m *Model) buildOverview() {
 		cmp = t.Comparison
 	}
 	used := map[*live.Drift]bool{}
+	// The drifts by the item they are about, looked up once per entry.
+	driftsOf := map[string][]*live.Drift{}
+	for i := range m.drifts {
+		if d := &m.drifts[i]; d.ItemID != "" {
+			driftsOf[d.ItemID] = append(driftsOf[d.ItemID], d)
+		}
+	}
 	byID := map[string]*sbxenv.Item{}
 	for i := range m.plan.Items {
 		byID[m.plan.Items[i].ID] = &m.plan.Items[i]
@@ -88,17 +95,18 @@ func (m *Model) buildOverview() {
 			if len(items) > 0 && !slices.ContainsFunc(items, func(it *sbxenv.Item) bool { return !m.compared[it.ID] }) {
 				l.check = checkMatch
 			}
-			for i := range m.drifts {
-				d := &m.drifts[i]
-				if d.ItemID == "" || used[d] || !slices.ContainsFunc(items, func(it *sbxenv.Item) bool { return it.ID == d.ItemID }) {
-					continue
-				}
-				used[d] = true
-				if l.check != checkDrift {
-					l.check, l.actual = checkDrift, d.Actual
-					r.drift = d
-					if d.Severity.Rank() > l.sev.Rank() {
-						l.sev = d.Severity
+			for _, it := range items {
+				for _, d := range driftsOf[it.ID] {
+					if used[d] {
+						continue
+					}
+					used[d] = true
+					if l.check != checkDrift {
+						l.check, l.actual = checkDrift, d.Actual
+						r.drift = d
+						if d.Severity.Rank() > l.sev.Rank() {
+							l.sev = d.Severity
+						}
 					}
 				}
 			}
@@ -256,7 +264,7 @@ func (m *Model) buildOverview() {
 		for _, it := range net {
 			// A rule sbx disagrees with gets its own row, so the row names
 			// the host and every such drift is reachable from here.
-			if slices.ContainsFunc(m.drifts, func(d live.Drift) bool { return d.ItemID == it.ID }) {
+			if len(driftsOf[it.ID]) > 0 {
 				drifted = append(drifted, it)
 				continue
 			}
