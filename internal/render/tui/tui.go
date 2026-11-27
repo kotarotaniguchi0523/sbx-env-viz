@@ -399,10 +399,10 @@ func (m *Model) move(delta int) {
 		m.oExtra += delta
 		return
 	}
-	before, step := m.cursor[m.view], delta
+	before := m.cursor[m.view]
 	defer func() {
 		if m.view == viewOverview {
-			m.scrollOverview(step, m.cursor[m.view] != before)
+			m.scrollOverview(delta, m.cursor[m.view] != before)
 		}
 	}()
 	if len(m.rows) == 0 {

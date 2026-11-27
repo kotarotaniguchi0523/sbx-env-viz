@@ -86,11 +86,16 @@ func (m *Model) Render() string {
 		h = 8
 	}
 	m.zones = nil
-	lines := []string{m.titleBar(w)}
+	// The target line (row 1) is built once; when it does not fit, the
+	// title bar carries the position instead.
+	var bar string
+	barFits := false
 	if m.switchable() {
-		if bar, ok := m.targetBar(w, len(lines)); ok {
-			lines = append(lines, bar)
-		}
+		bar, barFits = m.targetBar(w, 1)
+	}
+	lines := []string{m.titleBar(w, barFits)}
+	if barFits {
+		lines = append(lines, bar)
 	}
 	lines = append(lines, m.contextBar(w, len(lines)))
 	// The state parts share a line while they fit; a part that does not
@@ -98,13 +103,10 @@ func (m *Model) Render() string {
 	// notice all stay in view. Three lines at most.
 	var state []string
 	for _, part := range m.stateLine() {
-		switch n := len(state); {
-		case n > 0 && lipgloss.Width(state[n-1])+2+lipgloss.Width(part) <= w-1:
+		if n := len(state); n > 0 && (n == 3 || lipgloss.Width(state[n-1])+2+lipgloss.Width(part) <= w-1) {
 			state[n-1] += "  " + part
-		case n < 3:
+		} else {
 			state = append(state, part)
-		default:
-			state[n-1] += "  " + part
 		}
 	}
 	for _, s := range state {
@@ -145,11 +147,12 @@ func (m *Model) viewTotal(v viewID) int {
 }
 
 // titleBar is the brand, the sandbox it describes, and the numbered tabs,
-// right-aligned when they fit.
-func (m *Model) titleBar(w int) string {
+// right-aligned when they fit. barFits says the target line is drawn.
+func (m *Model) titleBar(w int, barFits bool) string {
 	var name, state, pos string
-	if n := m.subject(); n != "" {
-		name = "  " + model.EscapeControl(n)
+	n := model.EscapeControl(m.subject())
+	if n != "" {
+		name = "  " + n
 	}
 	var word string
 	if t := m.target(); t != nil {
@@ -160,10 +163,8 @@ func (m *Model) titleBar(w int) string {
 		if i := strings.IndexAny(state, "・（"); i >= 0 {
 			word = state[:i]
 		}
-		if m.switchable() {
-			if _, ok := m.targetBar(w, 1); !ok {
-				pos = fmt.Sprintf(" %d/%d", m.tIdx+1, len(m.targets))
-			}
+		if m.switchable() && !barFits {
+			pos = fmt.Sprintf(" %d/%d", m.tIdx+1, len(m.targets))
 		}
 	}
 	// The tabs shrink before they are cut: first the counts go, then the
@@ -201,7 +202,6 @@ func (m *Model) titleBar(w int) string {
 	brand := " " + m.pal.strong.Render("sbxray")
 	room := w - tabW - 3 - lipgloss.Width(brand) - lipgloss.Width(pos)
 	over := func() int { return lipgloss.Width(name) + lipgloss.Width(state) - room }
-	n := model.EscapeControl(m.subject())
 	if over() > 0 && n != "" {
 		name = "  " + truncMiddle(n, max(lipgloss.Width(n)-over(), min(lipgloss.Width(n), 8)))
 	}
@@ -506,7 +506,7 @@ func frame(content []string, ww, hh int) string {
 func (m *Model) listColumns(iw int) (string, int) {
 	if m.view == viewItems {
 		// Never narrower than its own heading, even with no row to measure.
-		keyW := max(min(m.keyW, iw*50/100), widthOf("設定"))
+		keyW := max(min(m.keyW, iw*50/100), lipgloss.Width("設定"))
 		return "    " + pad("設定", keyW) + "  値", keyW
 	}
 	switch m.view {
@@ -647,12 +647,12 @@ func (m *Model) pickerLines(iw, top, ih int) []string {
 	// pane, so similar names (…-staging, …-prod) stay apart.
 	nameW := 18
 	for i := range m.targets {
-		nameW = max(nameW, min(widthOf(model.EscapeControl(m.targets[i].Name)), iw*2/5))
+		nameW = max(nameW, min(lipgloss.Width(model.EscapeControl(m.targets[i].Name)), iw*2/5))
 	}
 	// The state column fits the longest state (稼働中・宣言ファイル未検出).
 	stateW := 4
 	for i := range m.targets {
-		stateW = max(stateW, widthOf(m.targets[i].State))
+		stateW = max(stateW, lipgloss.Width(m.targets[i].State))
 	}
 	lines = append(lines, p.colHead.Render(pad("    "+pad("名前", nameW)+"  "+pad("状態", stateW)+"  "+pad("ズレ", 4)+"  ファイル", iw)))
 	// On a short pane the title, then the spacer, then the column header
@@ -702,6 +702,8 @@ func (m *Model) helpLines(iw, ih int) []string {
 	return out
 }
 
+// widthOf is the display width of s, for tui.go and overview.go, which
+// leave drawing (and lipgloss) to this file.
 func widthOf(s string) int { return lipgloss.Width(s) }
 
 // truncMiddle shortens s to w cells by cutting its middle, so the start
