@@ -541,7 +541,13 @@ func (m *Model) detailLines(iw, ih, top, x0 int) []string {
 func (m *Model) pickerLines(iw, top, ih int) []string {
 	p := m.pal
 	lines := []string{" " + p.title.Render("対象の sandbox を選ぶ"), ""}
-	lines = append(lines, p.colHead.Render(pad("    "+pad("名前", 18)+"  "+pad("状態", 24)+"  "+pad("ズレ", 4)+"  ファイル", iw)))
+	// The name column grows to the longest name, up to two fifths of the
+	// pane, so similar names (…-staging, …-prod) stay apart.
+	nameW := 18
+	for i := range m.targets {
+		nameW = max(nameW, min(widthOf(model.EscapeControl(m.targets[i].Name)), iw*2/5))
+	}
+	lines = append(lines, p.colHead.Render(pad("    "+pad("名前", nameW)+"  "+pad("状態", 24)+"  "+pad("ズレ", 4)+"  ファイル", iw)))
 	// On a short pane the title, then the spacer, then the column header
 	// give way, so at least the cursor row is always drawn.
 	lines = lines[len(lines)-min(len(lines), max(ih-1, 0)):]
@@ -558,7 +564,7 @@ func (m *Model) pickerLines(iw, top, ih int) []string {
 		if t.Comparison != nil {
 			drift = fmt.Sprint(t.Drifts())
 		}
-		text := pad(model.EscapeControl(t.Name), 18) + "  " + pad(t.State, 24) + "  " + pad(drift, 4) + "  " + model.EscapeControl(files)
+		text := pad(model.EscapeControl(t.Name), nameW) + "  " + pad(t.State, 24) + "  " + pad(drift, 4) + "  " + model.EscapeControl(files)
 		y := top + len(lines)
 		m.addZone(1, y, 1+iw, y+1, zoneTargetRow, i)
 		if i == m.pCursor {

@@ -1878,21 +1878,26 @@ func TestTUIOverviewEnterIgnoresACursorRowScrolledAway(t *testing.T) {
 	u.want("エージェント")
 }
 
-func TestTUIOverviewEnterOpensNothingWhenNoRowFits(t *testing.T) {
+func TestTUIOverviewDrawsAnEntryOnAPaneTooShortForItsHeader(t *testing.T) {
 	t.Parallel()
-	// Arrange: two targets and a live error leave the pane no body row.
+	// Arrange: two targets and a live error leave the pane three rows,
+	// which the summary, spacer and column header would fill.
 	p, _ := newPlan(t, sbxenv.RedactHome)
 	m := tui.NewTargets([]live.Target{{Name: "a", State: "宣言", Plan: p, Err: "sbx コマンドが見つかりません"}, {Name: "b", State: "宣言", Plan: p}}, "", true)
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 8})
 	u := &ui{t: t, m: m}
 
 	// Act
-	u.press("j", "j", "enter")
+	u.press("j", "j")
 
-	// Assert: regression; Enter opened a setting no frame had shown.
-	if u.has(backLink) {
-		t.Errorf("Enter opened an unseen row:\n%s", u.text())
+	// Assert: regression; no entry was drawn, yet j moved and Enter
+	// opened one. The header gives way, the cursor row shows, and Enter
+	// opens what is shown.
+	if !strings.Contains(u.frame(), "\x1b[7m") || len(u.lines()) != 8 {
+		t.Fatalf("the cursor row is on screen:\n%s", u.text())
 	}
+	u.press("enter")
+	u.want(backLink)
 }
 
 func TestTUISourceLabelSurvivesALongFilterList(t *testing.T) {
@@ -1978,4 +1983,27 @@ func TestTUIPickerShowsTheCursorRowOnAShortPane(t *testing.T) {
 	if !strings.Contains(u.frame(), "\x1b[7m") || !strings.Contains(u.text(), "    bravo") {
 		t.Errorf("the selected target is on screen:\n%s", u.text())
 	}
+}
+
+func TestTUIPickerTellsSimilarLongNamesApart(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	u := targetUI(t, 160, 30,
+		live.Target{Name: "integration-worker-staging", State: "停止中・宣言ファイル未検出", Sandbox: &live.Sandbox{Name: "x"}},
+		live.Target{Name: "integration-worker-prod", State: "停止中・宣言ファイル未検出", Sandbox: &live.Sandbox{Name: "y"}})
+
+	// Act
+	u.press("s")
+
+	// Assert: regression; both names were cut to the same 18 cells.
+	u.want("    integration-worker-staging", "    integration-worker-prod ")
+}
+
+func TestTUISummaryOfAParseErrorTarget(t *testing.T) {
+	t.Parallel()
+	// Act
+	u := targetUI(t, 120, 30, live.Target{Name: "broken", State: "解析エラー", Files: []string{"~/x/sbxenv.yaml"}, Err: "設定ファイルを解析できませんでした: line 3"})
+
+	// Assert: regression; it said no declaration exists.
+	u.want("設定ファイルを解析できないため、危険度は評価していません")
 }

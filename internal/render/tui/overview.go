@@ -494,7 +494,11 @@ func (m *Model) overviewPanes(w, top, ph int) string {
 	assessed := true
 	if t := m.target(); t != nil && t.Plan == nil {
 		// Nothing was assessed, which is not the same as nothing found.
-		summary, assessed = p.muted.Render("宣言がないため、危険度は評価していません"), false
+		why := "宣言がないため"
+		if t.Err != "" && t.Sandbox == nil {
+			why = "設定ファイルを解析できないため"
+		}
+		summary, assessed = p.muted.Render(why+"、危険度は評価していません"), false
 	}
 	if t := m.target(); t != nil && t.Comparison != nil {
 		n := p.strong.Render(fmt.Sprint(len(m.drifts)))
@@ -540,6 +544,14 @@ func (m *Model) overviewPanes(w, top, ph int) string {
 	}
 	header := pad(cols(" ", "項目", "宣言（sbxenv.yaml）", "実体（sbx）"), w-1)
 	head = append(head, p.colHead.Render(header))
+	// On a pane too short for them and a row, the spacer, then the
+	// summary, then the column header give way, so an entry is drawn.
+	for _, drop := range []int{1, 0, 0} {
+		if ph-len(head) >= 1 || len(head) == 0 {
+			break
+		}
+		head = append(head[:drop:drop], head[drop+1:]...)
+	}
 
 	var body []string
 	type rowZone struct{ y, row int }
