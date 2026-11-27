@@ -1230,3 +1230,26 @@ func TestPortPairingDoesNotTakeAListenerAnotherDeclarationNeeds(t *testing.T) {
 		}
 	}
 }
+
+func TestPortPairingKeepsAnExactMatchWhenAFreeListenerWillDo(t *testing.T) {
+	t.Parallel()
+	// Arrange: 4000 -> 3000/tcp and an ephemeral 3000/tcp4; sbx has two
+	// IPv4 loopback listeners, on 4000 then 5000.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "fixed", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"},
+		{ItemID: "eph", SandboxPort: 3000, Protocol: "tcp4"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"},
+		{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 3000, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the ephemeral one pried 4000 away, so the fixed
+	// one read as changed to 5000.
+	if len(c.Drifts) > 0 {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}

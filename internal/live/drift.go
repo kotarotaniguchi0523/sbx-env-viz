@@ -234,9 +234,18 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				}
 			}
 			slices.SortStableFunc(cands, func(a, b int) int { return distance(dp, sb.Ports[a]) - distance(dp, sb.Ports[b]) })
+			// A free listener is taken before one is pried from another
+			// declaration, which moves only when this one has no other.
+			for _, i := range cands {
+				if owner[i] < 0 {
+					seen[i] = true
+					owner[i], pair[j] = j, i
+					return true
+				}
+			}
 			for _, i := range cands {
 				seen[i] = true
-				if owner[i] < 0 || claim(owner[i], seen) {
+				if claim(owner[i], seen) {
 					owner[i], pair[j] = j, i
 					return true
 				}
