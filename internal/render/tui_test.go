@@ -2142,3 +2142,18 @@ func TestTUIOverviewDoesNotCallALocalZipKitRemote(t *testing.T) {
 	// Assert: regression; a local archive read as remote.
 	u.wantRe(`^ {4}bundle +ZIP（展開していない。「4 ファイル」で確認） *$`)
 }
+
+func TestTUITitleBarKeepsTheStateOfALongNamedSandbox(t *testing.T) {
+	t.Parallel()
+	// Arrange: one paired target; nothing else on the Overview says it is stopped.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: "agent", Path: "agent", Value: "claude"}}}
+	long := "integration-worker-for-the-billing-service-staging"
+
+	// Act
+	u := targetUI(t, 80, 24, live.Target{Name: long, State: "停止中", Plan: p, Sandbox: &live.Sandbox{Name: long, Status: "stopped"}, Comparison: &live.Comparison{}})
+
+	// Assert: regression; the name pushed 停止中 out of the title bar.
+	if l := u.lines()[0]; !strings.Contains(l, "停止中") || !strings.Contains(l, "4 ファイル") {
+		t.Errorf("title bar = %q", l)
+	}
+}

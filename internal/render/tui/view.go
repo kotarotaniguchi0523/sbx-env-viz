@@ -158,11 +158,17 @@ func (m *Model) titleBar(w int) string {
 		tabW += lipgloss.Width(t) + 3
 	}
 	// The tabs keep their place. When the rest does not fit beside them,
-	// the state gives way first (the Overview repeats it), then the name;
-	// the position stays.
+	// the name gives way first, shortened in the middle down to 8 cells,
+	// since a single target's state (稼働中, 停止中) is shown nowhere else;
+	// then the state; the position stays.
 	room := w - tabW - 3 - lipgloss.Width(" sbxray") - lipgloss.Width(pos)
-	if over := lipgloss.Width(name) + lipgloss.Width(state) - room; over > 0 {
-		if sw := lipgloss.Width(state) - over; sw >= 6 {
+	over := func() int { return lipgloss.Width(name) + lipgloss.Width(state) - room }
+	if n := m.subject(); over() > 0 && n != "" {
+		n = model.EscapeControl(n)
+		name = "  " + truncMiddle(n, max(lipgloss.Width(n)-over(), min(lipgloss.Width(n), 8)))
+	}
+	if o := over(); o > 0 {
+		if sw := lipgloss.Width(state) - o; sw >= 6 {
 			state = trunc(state, sw)
 		} else {
 			state = ""
