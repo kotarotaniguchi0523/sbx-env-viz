@@ -615,11 +615,15 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 }
 
 func baseProto(p string) string {
-	p = strings.ToLower(p)
-	if strings.HasPrefix(p, "udp") {
+	switch p = strings.ToLower(p); p {
+	case "", "tcp", "tcp4", "tcp6":
+		return "tcp"
+	case "udp", "udp4", "udp6":
 		return "udp"
 	}
-	return "tcp"
+	// Anything else (sctp, a typo) is its own transport: tcp does not
+	// confirm it.
+	return p
 }
 
 func isLoopback(ip string) bool {

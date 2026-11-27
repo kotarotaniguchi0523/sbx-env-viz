@@ -2011,3 +2011,19 @@ func TestRowsWithoutAHostPortAreNotOnePublication(t *testing.T) {
 		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
 	}
 }
+
+func TestAnUnknownProtocolIsNotConfirmedByTCP(t *testing.T) {
+	t.Parallel()
+	// Arrange: 8080 -> 80 declared as sctp, which sbx does not accept;
+	// sbx lists a tcp row on the same ports.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "p", HostPort: 8080, SandboxPort: 80, Protocol: "sctp"}}}}
+	sb := &live.Sandbox{Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 8080, SandboxPort: 80, Protocol: "tcp"}}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; anything not udp counted as tcp and matched.
+	if _, ok := drift(&c, "宣言したポートが公開されていない"); !ok {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
