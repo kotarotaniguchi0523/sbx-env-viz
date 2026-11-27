@@ -1189,13 +1189,15 @@ func TestWorkspacesMatchByThePathSbxReported(t *testing.T) {
 	t.Parallel()
 	// Arrange: one folder named with a tab, one with a literal \t; sbx
 	// mounts only the first. The snapshot escapes both alike for display.
+	// Neither exists, under a fresh directory, so no alias can join them.
+	dir := t.TempDir()
 	r := &fakeSbx{out: map[string]string{
-		"ls --json": `[{"name": "web", "status": "running", "workspaces": ["/x/a\tb"]}]`, "policy ls web --json": `{"rules": []}`,
+		"ls --json": `[{"name": "web", "status": "running", "workspaces": ["` + dir + `/a\tb"]}]`, "policy ls web --json": `{"rules": []}`,
 		"secret ls --sandbox web --json": `{"secrets": []}`, "mcp ls --json": "[]",
 	}}
 	snap := live.Collect(context.Background(), r)
 	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Workspaces: []sbxenv.DeclaredMount{
-		{ItemID: "tab", Path: "/x/a\tb"}, {ItemID: "literal", Path: `/x/a\tb`},
+		{ItemID: "tab", Path: dir + "/a\tb"}, {ItemID: "literal", Path: dir + `/a\tb`},
 	}}}
 
 	// Act
