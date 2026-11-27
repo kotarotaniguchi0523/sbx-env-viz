@@ -177,8 +177,12 @@ func (m *Model) titleBar(w int) string {
 			tabs = append(tabs, label)
 			tabW += lipgloss.Width(label) + 3
 		}
-		// The position (" 1/3") stays beside the brand, so it counts too.
-		if tabW+3+lipgloss.Width(" sbxray")+lipgloss.Width(pos) <= w {
+		// The position (" 1/3") stays beside the brand, so it counts too,
+		// and so do the first word of the state (稼働中, 停止中: shown
+		// nowhere else for a single target) and the name at its shortest:
+		// they outrank the counts.
+		keep := lipgloss.Width(pos) + min(lipgloss.Width(state), 2+6) + min(lipgloss.Width(name), 2+8)
+		if tabW+3+lipgloss.Width(" sbxray")+keep <= w {
 			break
 		}
 	}
