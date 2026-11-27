@@ -1573,3 +1573,18 @@ func TestAnMCPKindOtherThanRemoteConfirmsNothing(t *testing.T) {
 		}
 	}
 }
+
+func TestADualStackPortIsNotConfirmedByAnIPv4Row(t *testing.T) {
+	t.Parallel()
+	// Arrange: protocol tcp with no address asks for IPv4 and IPv6; sbx
+	// shows one IPv4 listener.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"}}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp4"}}}, &live.Snapshot{}, nil)
+
+	// Assert: regression; the IPv4 row confirmed both families.
+	if slices.Contains(c.Compared, "dual") || len(c.Drifts) > 0 {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}

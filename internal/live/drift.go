@@ -335,10 +335,12 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				continue
 			}
 			lp := sb.Ports[found]
-			// A fixed host port is confirmed only when sbx reports one, and
-			// a fixed family (tcp6, ::1) only when sbx's row shows one.
-			if (dp.HostPort == 0 || lp.HostPort != 0) &&
-				(portFamily(dp.Protocol, dp.HostIP) == "" || portFamily(lp.Protocol, lp.HostIP) != "") {
+			// A fixed host port is confirmed only when sbx reports one, a
+			// fixed family (tcp6, ::1) only when sbx's row shows one, and
+			// a port for both families (tcp, no address) only by a row for
+			// both: one IPv4 listener does not show the IPv6 one.
+			df, lf := portFamily(dp.Protocol, dp.HostIP), portFamily(lp.Protocol, lp.HostIP)
+			if (dp.HostPort == 0 || lp.HostPort != 0) && (df == "" && lf == "" || df != "" && lf != "") {
 				c.Compared = append(c.Compared, dp.ItemID)
 			}
 			hide := dp.Redacted || strict
