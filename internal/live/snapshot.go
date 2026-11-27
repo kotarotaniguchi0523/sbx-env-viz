@@ -39,6 +39,9 @@ type Sandbox struct {
 	// SecretsKnown is true when `sbx secret ls --sandbox NAME --json`
 	// answered. Only names are read; values are never requested.
 	SecretsKnown bool
+	// Redacted is set on a sandbox shown under strict redaction: its
+	// ports and secret names are drawn as <redacted>.
+	Redacted bool
 }
 
 // Mount is a host directory mounted into a sandbox. sbx ls reports paths

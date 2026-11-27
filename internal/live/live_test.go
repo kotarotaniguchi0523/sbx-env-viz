@@ -500,7 +500,12 @@ func TestStrictRedactionHidesTheMountsOfAnUndeclaredSandbox(t *testing.T) {
 		w.strict = strict
 
 		// Act
-		orphan := find(t, w.discover(t, w.sbx), "orphan")
+		// Under strict redaction its name is hidden too, numbered.
+		name := "orphan"
+		if strict {
+			name = "<redacted>-1"
+		}
+		orphan := find(t, w.discover(t, w.sbx), name)
 
 		// Assert
 		if len(orphan.Sandbox.Workspaces) == 0 {
@@ -1331,4 +1336,28 @@ func jsonString(t *testing.T, s string) string {
 		t.Fatal(err)
 	}
 	return string(b)
+}
+
+func TestStrictRedactionHidesEveryLiveValueWhateverThisPlanHides(t *testing.T) {
+	t.Parallel()
+	// Arrange: this plan hides nothing, but another target of the session
+	// may hide manual.example.com or codex as an argument.
+	p := strictPlan(&sbxenv.Declared{Agent: "claude"}, sbxenv.Item{ID: "agent", Path: "agent", Value: "claude"})
+	sb := &live.Sandbox{Agent: "codex", RulesKnown: true, Rules: []live.Rule{{Decision: "allow", Resource: "manual.example.com", CreatedVia: "added"}},
+		SecretsKnown: true, Secrets: []string{"acme-token"}, Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"}}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the check looked only at this plan's values.
+	for _, d := range c.Drifts {
+		for _, leak := range []string{"codex", "manual.example.com", "acme-token", "4000"} {
+			if strings.Contains(d.Actual+d.Title, leak) {
+				t.Errorf("drift shows %q: %+v", leak, d)
+			}
+		}
+	}
+	if len(c.Drifts) != 4 {
+		t.Errorf("each difference is still reported: %v", c.Drifts)
+	}
 }

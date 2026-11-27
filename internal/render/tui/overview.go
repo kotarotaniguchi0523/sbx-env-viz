@@ -423,13 +423,21 @@ func (m *Model) liveOnly(sb *live.Sandbox, section func(string), info func(strin
 		info("マウント: " + w.Path)
 	}
 	for _, p := range sb.Ports {
+		if sb.Redacted {
+			info("ポート公開: <redacted>")
+			continue
+		}
 		info(fmt.Sprintf("ポート公開: %s:%d -> sandbox:%d/%s", orNone(p.HostIP), p.HostPort, p.SandboxPort, orNone(p.Protocol)))
 	}
 	if sb.RulesKnown {
 		info(fmt.Sprintf("通信ルール: %d 件", len(sb.Rules)))
 	}
 	if sb.SecretsKnown {
-		info("シークレット（名前のみ）: " + orNone(strings.Join(sb.Secrets, ", ")))
+		names := strings.Join(sb.Secrets, ", ")
+		if sb.Redacted && names != "" {
+			names = fmt.Sprintf("<redacted>（%d 件）", len(sb.Secrets))
+		}
+		info("シークレット（名前のみ）: " + orNone(names))
 	}
 }
 

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 
@@ -124,27 +123,19 @@ func Discover(ctx context.Context, req DiscoverRequest) ([]Target, Snapshot) {
 		}
 		targets = append(targets, t)
 	}
-	// Under strict redaction, when any declaration hides its name or agent
-	// (an argument in it), the names and agents sbx reports may carry the
-	// same value (reviewcanary-old beside <redacted>-new), so those of the
-	// sandboxes no file declares, and of a pairing that took sbx's name,
-	// are hidden too, numbered so the picker still tells them apart.
+	// Under strict redaction a value sbx reports may carry an argument
+	// hidden in any declaration of the session, so the names, agents,
+	// ports and secret names of the sandboxes no file declares, and the
+	// name a pairing took from sbx, are hidden; names are numbered so the
+	// picker still tells them apart.
 	strict := req.Redaction == "" || req.Redaction == sbxenv.RedactStrict
-	hidden := func(id string) bool {
-		return strict && slices.ContainsFunc(targets, func(t Target) bool {
-			return t.Plan != nil && slices.ContainsFunc(t.Plan.Items, func(it sbxenv.Item) bool {
-				return it.ID == id && strings.Contains(it.Value, "<redacted>")
-			})
-		})
-	}
-	hideName, hideAgent := hidden("name"), hidden("agent")
 	n := 0
 	shownName := func() string {
 		n++
 		return fmt.Sprintf("<redacted>-%d", n)
 	}
 	for i := range targets {
-		if t := &targets[i]; hideName && t.Sandbox != nil && t.Plan != nil && t.Plan.Declared != nil && t.Plan.Declared.Name == "" {
+		if t := &targets[i]; strict && t.Sandbox != nil && t.Plan != nil && t.Plan.Declared != nil && t.Plan.Declared.Name == "" {
 			t.Name = shownName()
 		}
 	}
@@ -154,11 +145,11 @@ func Discover(ctx context.Context, req DiscoverRequest) ([]Target, Snapshot) {
 		}
 		sb := sb
 		sb.Workspaces, sb.Mounts = shownMounts(sb.Workspaces, req.Redaction, show), shownMounts(sb.Mounts, req.Redaction, show)
-		if hideName {
-			sb.Name = shownName()
-		}
-		if hideAgent && sb.Agent != "" {
-			sb.Agent = "<redacted>"
+		if strict {
+			sb.Name, sb.Redacted = shownName(), true
+			if sb.Agent != "" {
+				sb.Agent = "<redacted>"
+			}
 		}
 		targets = append(targets, Target{Name: sb.Name, State: StateLabel(sb.Status) + "・宣言ファイル未検出", Sandbox: &sb})
 	}

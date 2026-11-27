@@ -2272,3 +2272,19 @@ func TestTUIContextLineCountsOnlyExpandedKits(t *testing.T) {
 	// Assert: regression; the broken kit counted as analysed.
 	u.want("宣言 1 ファイル・Kit 1 を静的に解析")
 }
+
+func TestTUILiveOnlyOverviewHidesPortsAndSecretsWhenRedacted(t *testing.T) {
+	t.Parallel()
+	// Arrange: discovery marks a sandbox no file declares as redacted.
+	sb := &live.Sandbox{Name: "<redacted>-1", Status: "stopped", Redacted: true, SecretsKnown: true, Secrets: []string{"acme-token"},
+		Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"}}}
+
+	// Act
+	u := targetUI(t, 120, 30, live.Target{Name: sb.Name, State: "停止中・宣言ファイル未検出", Sandbox: sb})
+
+	// Assert: regression; the listener and secret names were printed raw.
+	u.want("ポート公開: <redacted>", "シークレット（名前のみ）: <redacted>（1 件）")
+	if u.has("4000") || u.has("acme-token") {
+		t.Errorf("a live value leaked:\n%s", u.text())
+	}
+}

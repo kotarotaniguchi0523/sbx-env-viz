@@ -119,7 +119,7 @@ Each detail pane shows official Docker Sandboxes docs, relevant OWASP references
 ## Live Drift & Redaction
 
 - **Read-only live comparison**: When run with no arguments in a terminal (or with `--live`), `sbxray` runs read-only `sbx` list commands (`ls`, `policy ls`, `secret ls`, `mcp ls` with `--json --no-input`) to highlight drift across agents, mounts, ports, network policies, secrets, and MCP servers. Secret values are never read.
-- **Strict redaction**: Secret values and embedded URL credentials are never emitted in any mode. `--json` and `--redact` also redact env values, arg values (including interpolated segments), command bodies, `op://` details, and URL paths/queries. Control and BiDi characters are escaped before terminal output.
+- **Strict redaction**: Secret values and embedded URL credentials are never emitted in any mode. `--json` and `--redact` also redact env values, arg values (including interpolated segments), command bodies, `op://` details, and URL paths/queries, and show every value `sbx` reports (names, agents, paths, ports, hosts, secret names) as `<redacted>`, since it can carry a hidden argument; each drift is still listed by kind. Control and BiDi characters are escaped before terminal output.
 
 ## For Coding Agents (Built-in Skills)
 

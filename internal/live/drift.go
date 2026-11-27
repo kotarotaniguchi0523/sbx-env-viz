@@ -91,7 +91,18 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		return labels[id]
 	}
 	add := func(x Drift) { c.Drifts = append(c.Drifts, x) }
+	// Under strict redaction (--redact, --json) a value sbx reports is
+	// shown only as <redacted>: an argument hidden in any declaration of
+	// the session (this one or another target's) can come back inside a
+	// live name, agent, port, host or secret name in any form, so no live
+	// value is held to be safe. What differs is still said, by kind.
 	strict := p.Meta.Redaction == "" || p.Meta.Redaction == sbxenv.RedactStrict
+	shown := func(v string) string {
+		if strict {
+			return "<redacted>"
+		}
+		return v
+	}
 
 	// Name: a declared name is how the sandbox was found, so it is
 	// confirmed when sbx has the same one.
@@ -104,13 +115,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		c.Checked = append(c.Checked, "エージェント")
 		c.Compared = append(c.Compared, "agent")
 		if !strings.EqualFold(d.Agent, sb.Agent) {
-			// An agent named by an argument is hidden, and sbx's may carry
-			// the same value (canary-v1 beside <redacted>-v2).
-			actual := sb.Agent
-			if strict && strings.Contains(item("agent"), "<redacted>") {
-				actual = "<redacted>"
-			}
-			add(Drift{Kind: "エージェント", Title: "宣言と違うエージェントで動いている", Declared: item("agent"), Actual: actual,
+			add(Drift{Kind: "エージェント", Title: "宣言と違うエージェントで動いている", Declared: item("agent"), Actual: shown(sb.Agent),
 				Fix: "agent を変えた場合は、作り直し（sbx env rm → sbx env create）で反映されます。", Severity: sbxenv.SeverityMedium, ItemID: "agent", Source: srcLs})
 		}
 	}
@@ -175,10 +180,6 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 	// Ports.
 	if len(sb.Ports) > 0 || len(d.Ports) > 0 {
 		c.Checked = append(c.Checked, "ポート公開")
-		// Under strict redaction a port set by an argument is hidden, and
-		// any live port may carry the same number, so every live value is
-		// hidden then: a listener paired with another declaration too.
-		hidePorts := strict && slices.ContainsFunc(d.Ports, func(dp sbxenv.DeclaredPort) bool { return dp.Redacted })
 		// Pair declarations with listeners so that as many as possible
 		// pair (a declaration never takes the listener another one needs,
 		// so sbx's order cannot swap two of one sandbox port), each trying
@@ -338,7 +339,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				(portFamily(dp.Protocol, dp.HostIP) == "" || portFamily(lp.Protocol, lp.HostIP) != "") {
 				c.Compared = append(c.Compared, dp.ItemID)
 			}
-			hide := dp.Redacted || hidePorts
+			hide := dp.Redacted || strict
 			var diffs []string
 			if dp.HostPort != 0 && lp.HostPort != 0 && lp.HostPort != dp.HostPort {
 				if hide {
@@ -378,7 +379,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				sev = sbxenv.SeverityHigh
 			}
 			actual := portLabel(lp)
-			if hidePorts {
+			if strict {
 				actual = "<redacted>"
 			}
 			add(Drift{Kind: "ポート公開", Title: "宣言にないポートが公開されている", Declared: "（宣言なし）", Actual: actual,
@@ -408,22 +409,12 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				kitVisible = true
 			}
 		}
-		// When the plan hides part of any rule's host (an argument, in an
-		// active or a skipped rule), a live rule the files do not declare
-		// may name it in any form (with a port, under a wildcard), so under
-		// strict redaction every such live host is hidden.
-		hideHosts := strict && slices.ContainsFunc(p.Items, func(it sbxenv.Item) bool {
-			return strings.HasPrefix(it.Path, "cap:network-policy") && strings.Contains(it.Value, "<redacted>")
-		})
 		for _, r := range sb.Rules {
 			manual := r.CreatedVia == "added" || r.CreatedVia == "approval"
 			if !manual || declared[r.Decision+" "+r.Resource] {
 				continue
 			}
-			resource := r.Resource
-			if hideHosts {
-				resource = "<redacted>"
-			}
+			resource := shown(r.Resource)
 			how := "sbx policy allow などで手動追加"
 			if r.CreatedVia == "approval" {
 				how = "通信の承認プロンプトで許可"
@@ -484,7 +475,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		}
 		for _, s := range sb.Secrets {
 			if !declared[s] {
-				add(Drift{Kind: "シークレット", Title: "宣言にないシークレットが登録されている", Declared: "（宣言なし）", Actual: s + "（値は表示しません）",
+				add(Drift{Kind: "シークレット", Title: "宣言にないシークレットが登録されている", Declared: "（宣言なし）", Actual: shown(s) + "（値は表示しません）",
 					Fix:      "sbx secret set で手動登録した可能性があります。不要なら sbx secret rm で削除してください。",
 					Severity: sbxenv.SeverityLow, Source: "sbx secret ls --sandbox <name> --json"})
 			}

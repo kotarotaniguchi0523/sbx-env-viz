@@ -28,6 +28,7 @@ sbxray . --json --live --fail-on=medium
   - `sbx mcp ls --json --no-input`
 - Secret values (`secrets[].secret`) are never deserialized or read.
 - If `sbx` is not installed or stopped, `sbxray` reports the reason in `live.problem` and still outputs the static plan.
+- Under `--json` (and `--redact`), every value `sbx` reports (names, agents, paths, ports, hosts, secret names) appears as `<redacted>` in `live.drift[].actual`, since it can carry a hidden argument; the drift `kind` and `title` still say what differs.
 
 ## What Is Compared vs. Skipped
 
