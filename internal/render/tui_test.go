@@ -2041,3 +2041,29 @@ func TestTUIOverviewKeepsATabAndALiteralBackslashTApart(t *testing.T) {
 	// Assert: regression; the first row took the second one's drift.
 	u.wantRe(`^ {4}追加フォルダ +/w/one（読み書き） +パスは一致 *$`, `^ !  追加フォルダ +/w/two（読み書き） +（マウントされていない） *$`)
 }
+
+func TestTUIOverviewKeepsTheActualColumnOnANarrowScreen(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: "sandboxOptions.template", Path: "sandboxOptions.template", Value: "ghcr.io/example/x:dev"}}}
+
+	// Act
+	u := targetUI(t, 32, 20, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: &live.Sandbox{Name: "web"}, Comparison: &live.Comparison{}})
+
+	// Assert: regression; label, gaps and the value pushed it off screen.
+	u.wantRe(`照合なし *$`)
+}
+
+func TestTUIPickerKeepsTheEndOfALongName(t *testing.T) {
+	t.Parallel()
+	// Arrange: at 80 columns the name column stops short of these names.
+	u := targetUI(t, 80, 30,
+		live.Target{Name: "integration-worker-for-the-billing-service-staging", State: "停止中", Sandbox: &live.Sandbox{Name: "x"}},
+		live.Target{Name: "integration-worker-for-the-billing-service-prod", State: "停止中", Sandbox: &live.Sandbox{Name: "y"}})
+
+	// Act
+	u.press("s")
+
+	// Assert: regression; both rows were cut to the same prefix.
+	u.want("staging  ", "prod  ")
+}

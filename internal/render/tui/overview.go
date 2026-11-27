@@ -534,6 +534,12 @@ func (m *Model) overviewPanes(w, top, ph int) string {
 	if live {
 		declW -= actualW + 2
 	}
+	// On a narrow screen the label column gives way first, so the 実体
+	// column, which says whether a row was compared, stays on screen.
+	if short := 8 - declW; short > 0 {
+		cut := min(short, labelW-4)
+		labelW, declW = labelW-cut, declW+cut
+	}
 	declW = max(declW, 8)
 	cols := func(mark, label, declared, actual string) string {
 		s := " " + mark + "  " + pad(label, labelW) + "  "

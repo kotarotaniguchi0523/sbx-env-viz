@@ -567,7 +567,7 @@ func (m *Model) pickerLines(iw, top, ih int) []string {
 		if t.Comparison != nil {
 			drift = fmt.Sprint(t.Drifts())
 		}
-		text := pad(model.EscapeControl(t.Name), nameW) + "  " + pad(t.State, 24) + "  " + pad(drift, 4) + "  " + model.EscapeControl(files)
+		text := pad(truncMiddle(model.EscapeControl(t.Name), nameW), nameW) + "  " + pad(t.State, 24) + "  " + pad(drift, 4) + "  " + model.EscapeControl(files)
 		y := top + len(lines)
 		m.addZone(1, y, 1+iw, y+1, zoneTargetRow, i)
 		if i == m.pCursor {
