@@ -544,11 +544,17 @@ func (m *Model) overviewPanes(w, top, ph int) string {
 	}
 
 	bh := max(ph-len(head), 1)
-	if cursorY < m.oScroll+1 {
-		m.oScroll = cursorY - 1
+	// One line of context around the cursor, and the overflow hint, need
+	// three lines; a smaller body shows the cursor row alone.
+	margin := 1
+	if bh < 3 {
+		margin = 0
 	}
-	if cursorY >= m.oScroll+bh-1 {
-		m.oScroll = cursorY - bh + 2
+	if cursorY < m.oScroll+margin {
+		m.oScroll = cursorY - margin
+	}
+	if cursorY >= m.oScroll+bh-margin {
+		m.oScroll = cursorY - bh + margin + 1
 	}
 	maxScroll := max(len(body)-bh, 0)
 	m.oScroll = min(max(m.oScroll, 0), maxScroll)
@@ -563,7 +569,7 @@ func (m *Model) overviewPanes(w, top, ph int) string {
 		out = append(out, body[i])
 	}
 	visible := bh
-	if rest := len(body) - end; rest > 0 {
+	if rest := len(body) - end; rest > 0 && margin > 0 {
 		// The last visible line says how much follows, so the summary's
 		// counts never point at rows the user cannot see.
 		out[len(out)-1] = strings.Repeat(" ", indent) + p.muted.Render(fmt.Sprintf("ほか %d 行（j で下へ）", rest+1))

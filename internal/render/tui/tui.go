@@ -588,6 +588,10 @@ func (m *Model) key(k string) (tea.Model, tea.Cmd) {
 		m.filterIdx = (m.filterIdx + 1) % len(m.filters)
 		m.rebuild()
 	case "/":
+		// The Overview is a fixed manifest; its search is the settings'.
+		if m.view == viewOverview {
+			m.setView(viewItems)
+		}
 		m.searching = true
 		m.query = ""
 		m.rebuild()

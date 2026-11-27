@@ -318,6 +318,9 @@ func (m *Model) statusBar(w int) string {
 		keys = [][2]string{{"j/k", "スクロール"}, {"esc", "戻る"}}
 	default:
 		keys = [][2]string{{"j/k", "移動"}, {"enter", "詳細"}, {"/", "検索"}}
+		if m.view == viewOverview {
+			keys[2][1] = "設定を検索"
+		}
 		if m.view == viewItems {
 			keys = append(keys, [2]string{"g", "グループ"})
 		}
@@ -348,7 +351,7 @@ func (m *Model) panes(w, top, ph int) string {
 	case m.help:
 		return frame(m.helpLines(w-2, ph), w, ph)
 	case m.picker:
-		return frame(m.pickerLines(w-2, top), w, ph)
+		return frame(m.pickerLines(w-2, top, ph), w, ph)
 	case m.view == viewOverview:
 		return m.overviewPanes(w, top, ph)
 	case m.twoPane():
@@ -521,11 +524,14 @@ func (m *Model) detailLines(iw, ih, top, x0 int) []string {
 
 // pickerLines lists every target with its state, files, and drift count;
 // a click or Enter on a row switches to it.
-func (m *Model) pickerLines(iw, top int) []string {
+func (m *Model) pickerLines(iw, top, ih int) []string {
 	p := m.pal
 	lines := []string{" " + p.title.Render("対象の sandbox を選ぶ"), ""}
 	lines = append(lines, p.colHead.Render(pad("    "+pad("名前", 18)+"  "+pad("状態", 24)+"  "+pad("ズレ", 4)+"  ファイル", iw)))
-	for i := range m.targets {
+	// The rows scroll so the cursor stays on screen.
+	room := max(ih-len(lines), 1)
+	first := min(max(m.pCursor-room+1, 0), max(len(m.targets)-room, 0))
+	for i := first; i < len(m.targets) && i < first+room; i++ {
 		t := &m.targets[i]
 		files := "（設定ファイルなし）"
 		if len(t.Files) > 0 {

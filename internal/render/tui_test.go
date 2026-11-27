@@ -1596,3 +1596,62 @@ func TestTUIOverviewGroupMatchesOnlyWhenEveryRuleWasCompared(t *testing.T) {
 	// Assert: regression; one confirmed rule confirmed the whole row.
 	u.wantRe(`^ {4}許可（実行中） +2 件  active\.test、skipped\.test +照合なし *$`)
 }
+
+func TestTUIOverviewKeepsTheCursorRowOnATinyScreen(t *testing.T) {
+	t.Parallel()
+	// Arrange: the body has room for one line.
+	u := newUI(t, 80, 8, true)
+
+	// Act / Assert: regression; the overflow hint covered every entry.
+	for range 3 {
+		u.press("j")
+		if u.has("ほか ") {
+			t.Fatalf("the hint replaced the cursor row:\n%s", u.text())
+		}
+		if !strings.Contains(u.frame(), "\x1b[7m") {
+			t.Fatalf("the cursor row is on screen:\n%s", u.text())
+		}
+	}
+}
+
+func TestTUIPickerScrollsToTheCursor(t *testing.T) {
+	t.Parallel()
+	// Arrange: ten targets on a short screen.
+	var ts []live.Target
+	for i := range 10 {
+		ts = append(ts, live.Target{Name: fmt.Sprintf("box-%02d", i), State: "停止中・宣言ファイル未検出", Sandbox: &live.Sandbox{Name: "x"}})
+	}
+	u := targetUI(t, 80, 12, ts...)
+
+	// Act
+	u.press("s")
+	for range 9 {
+		u.press("j")
+	}
+
+	// Assert: regression; the picker always drew from the first target.
+	u.want("box-09")
+	u.press("enter")
+	if !strings.HasPrefix(u.lines()[0], " sbxray  box-09") {
+		t.Errorf("title bar = %q", u.lines()[0])
+	}
+}
+
+func TestTUISearchFromTheOverviewSearchesTheSettings(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	u := newUI(t, 130, 40, true)
+	if !strings.Contains(u.footer(), "/ 設定を検索") {
+		t.Errorf("footer = %q", u.footer())
+	}
+
+	// Act
+	u.press("/", "N", "O", "D", "E")
+
+	// Assert: regression; the query was shown but filtered nothing.
+	u.wantView("設定")
+	u.want("検索: NODE")
+	if u.has("lifecycle.initialize") {
+		t.Errorf("the settings are filtered:\n%s", u.text())
+	}
+}
