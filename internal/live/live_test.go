@@ -570,6 +570,23 @@ func TestStrictRedactionKeepsArgumentNamedMCPServersApart(t *testing.T) {
 	}
 }
 
+func TestStrictRedactionKeepsArgumentPortsApart(t *testing.T) {
+	t.Parallel()
+	// Arrange: two ports set by arguments both show as <redacted>/tcp4;
+	// sbx publishes only the first.
+	env := "schemaVersion: \"1\"\nname: web-app\nagent: claude\nworkspace: ./web-app\nargs:\n  a: {default: \"3000\"}\n  b: {default: \"3001\"}\n" +
+		"ports:\n  - {sandbox: \"${{ env.args.a }}\", host: 4000}\n  - {sandbox: \"${{ env.args.b }}\", host: 4001}\n"
+
+	// Act
+	c := compare(t, env, func(w *world) { w.strict = true })
+
+	// Assert: the drift is the second port's, under its own item ID.
+	d, ok := drift(c, "宣言したポートが公開されていない")
+	if !ok || d.ItemID != "ports[<redacted>/tcp4]#2" {
+		t.Errorf("drift = %+v (%v)", d, c.Drifts)
+	}
+}
+
 func TestDriftMCPOfAnotherKind(t *testing.T) {
 	t.Parallel()
 	// Arrange: docs is declared as a command server, but sbx has a remote
