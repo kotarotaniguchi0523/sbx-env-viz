@@ -570,6 +570,34 @@ func TestStrictRedactionKeepsArgumentNamedMCPServersApart(t *testing.T) {
 	}
 }
 
+func TestDriftMCPOfAnotherKind(t *testing.T) {
+	t.Parallel()
+	// Arrange: docs is declared as a command server, but sbx has a remote
+	// server of that name.
+	env := strings.Replace(matching, `{name: docs, url: "https://mcp.example.com/sse"}`, `{name: docs, command: "docs-mcp"}`, 1)
+
+	// Act
+	c := compare(t, env, nil)
+
+	// Assert
+	if d, ok := drift(c, "宣言と違う種類"); !ok || d.Actual != "種類: remote（sse）" {
+		t.Errorf("drift = %+v (%v)", d, c.Drifts)
+	}
+}
+
+func TestMCPWithoutAKindIsNotConfirmed(t *testing.T) {
+	t.Parallel()
+	// Act: sbx lists docs but not what kind of server it is.
+	c := compare(t, matching, func(w *world) {
+		w.sbx.out["mcp ls --json"] = `[{"name": "docs", "status": "ready"}]`
+	})
+
+	// Assert: registered, but url versus command is unknown.
+	if slices.Contains(c.Compared, "mcp.servers[docs]") || len(c.Drifts) > 1 {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
 func TestReadOnlyIsNotComparedBecauseSbxDoesNotReportIt(t *testing.T) {
 	t.Parallel()
 	// Arrange: the declaration wants a read-only mount; sbx ls lists paths

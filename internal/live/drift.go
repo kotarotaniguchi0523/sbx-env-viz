@@ -317,7 +317,6 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 	default:
 		c.Checked = append(c.Checked, "MCP サーバー")
 		for _, m := range d.MCP {
-			c.Compared = append(c.Compared, m.ItemID)
 			var row *MCPServer
 			for i := range snap.MCP {
 				if snap.MCP[i].Name == m.Name {
@@ -326,9 +325,22 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				}
 			}
 			if row == nil {
+				c.Compared = append(c.Compared, m.ItemID)
 				add(Drift{Kind: "MCP サーバー", Title: "宣言した MCP サーバーが登録されていない", Declared: item(m.ItemID), Actual: "（登録なし）",
 					Fix: fixRecreate, Severity: sbxenv.SeverityMedium, ItemID: m.ItemID, Source: "sbx mcp ls --json"})
 				continue
+			}
+			// The kind sbx reports ("remote", or another for a command
+			// server) is held against url versus command; without it only
+			// the registration is known, which does not confirm the row.
+			if row.Type != "" {
+				c.Compared = append(c.Compared, m.ItemID)
+				if remote := row.Type == "remote"; remote != m.Remote {
+					add(Drift{Kind: "MCP サーバー", Title: "同じ名前の MCP サーバーが、宣言と違う種類で登録されている", Declared: item(m.ItemID),
+						Actual: "種類: " + row.Type + "（" + orDefault(row.Transport, "接続方式不明") + "）",
+						Fix:    "別の設定で登録された可能性があります。sbx mcp inspect " + m.Shown + " で確認してください。", Severity: sbxenv.SeverityMedium,
+						ItemID: m.ItemID, Source: "sbx mcp ls --json"})
+				}
 			}
 			if st := row.Status; needsAuth(st) {
 				add(Drift{Kind: "MCP サーバー", Title: "MCP サーバーは登録済みだが使える状態ではない", Declared: item(m.ItemID), Actual: "状態: " + st,
