@@ -164,7 +164,7 @@ func (m *Model) buildOverview() {
 			m.rows = rows
 			return
 		case strings.HasPrefix(t.State, "宣言のみ"):
-			section("稼働中の実体")
+			section("sbx の sandbox")
 			info("まだ作成されていません（sbx ls に該当する sandbox がありません）。")
 		}
 	}
@@ -381,7 +381,7 @@ func ruleLabel(it *sbxenv.Item) (label, host string) {
 
 // liveOnly shows a sandbox that no environment file declares.
 func (m *Model) liveOnly(sb *live.Sandbox, section func(string), info func(string)) {
-	section("稼働中の実体（宣言ファイル未検出）")
+	section("sbx の sandbox（宣言ファイル未検出）")
 	info("この sandbox を宣言した sbxenv*.yaml が、カレントディレクトリとワークスペースの近くに見つかりませんでした。")
 	info("エージェント: " + orNone(sb.Agent))
 	info("状態: " + live.StateLabel(sb.Status))

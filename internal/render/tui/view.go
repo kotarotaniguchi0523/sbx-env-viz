@@ -96,10 +96,17 @@ func (m *Model) Render() string {
 	if state := m.stateLine(); state != "" {
 		lines = append(lines, trunc(" "+m.pal.strong.Render(state), w))
 	}
-	lines = append(lines, "")
+	// The frame never outgrows the terminal: on a short one the spacer
+	// goes first, then the panes shrink to what is left.
+	if h-len(lines)-2 >= 4 {
+		lines = append(lines, "")
+	}
 	top := len(lines)
-	ph := max(h-1-top, 4)
+	ph := max(h-1-top, 1)
 	lines = append(lines, strings.Split(m.panes(w, top, ph), "\n")...)
+	if len(lines) > h-1 {
+		lines = lines[:h-1]
+	}
 	lines = append(lines, m.statusBar(w))
 	return strings.Join(lines, "\n")
 }
@@ -237,9 +244,9 @@ func (m *Model) contextBar(w, y int) string {
 	if t := m.target(); t != nil {
 		switch {
 		case t.Comparison != nil:
-			notice = fmt.Sprintf(" 宣言 %d ファイルと稼働中の sandbox（sbx の読み取り専用コマンド）を照合", files)
+			notice = fmt.Sprintf(" 宣言 %d ファイルと sbx の sandbox（読み取り専用コマンド）を照合", files)
 		case t.Plan == nil && t.Sandbox != nil:
-			notice = " 稼働中の実体のみ（宣言ファイル未検出）"
+			notice = " sbx の sandbox のみ（宣言ファイル未検出）"
 		case t.Plan == nil:
 			notice = " 設定ファイルを解析できませんでした"
 		}

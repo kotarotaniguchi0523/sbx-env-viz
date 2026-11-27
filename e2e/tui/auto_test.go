@@ -42,7 +42,7 @@ func TestAutoDetectListsEverySandboxAndDeclaration(t *testing.T) {
 
 	// Assert: every target on one line, and the manifest gains an 実体 column.
 	for _, want := range []string{" 対象  web-app（稼働中・ズレ 2）  orphan（停止中・宣言ファイル未検出）  api（宣言のみ（未作成））",
-		" 宣言 1 ファイルと稼働中の sandbox（sbx の読み取り専用コマンド）を照合", "宣言にない実体・その他のズレ"} {
+		" 宣言 1 ファイルと sbx の sandbox（読み取り専用コマンド）を照合", "宣言にない実体・その他のズレ"} {
 		s.expect(want)
 	}
 	for _, row := range []string{`ズレ 2\s+印なしでも問題がないとは限りません`, `項目\s+宣言（sbxenv\.yaml）\s+実体（sbx）`,
@@ -74,7 +74,7 @@ func TestAutoDetectSwitchesTargetsByKeyAndClick(t *testing.T) {
 	// Act / Assert: > moves to the sandbox without files.
 	s.press(">")
 	s.expect(" sbxray  orphan  停止中・宣言ファイル未検出")
-	s.expect("稼働中の実体（宣言ファイル未検出）")
+	s.expect("sbx の sandbox（宣言ファイル未検出）")
 	s.expect("ワークスペース: /srv/orphan")
 
 	// Act / Assert: a click on a target name moves to the declaration not created.

@@ -1141,7 +1141,7 @@ func TestTUITargetBarNamesEverySandboxWithItsState(t *testing.T) {
 			t.Errorf("target bar missing %q: %q", want, lines[1])
 		}
 	}
-	if !strings.Contains(lines[2], "宣言 2 ファイルと稼働中の sandbox（sbx の読み取り専用コマンド）を照合") {
+	if !strings.Contains(lines[2], "宣言 2 ファイルと sbx の sandbox（読み取り専用コマンド）を照合") {
 		t.Errorf("context line = %q", lines[2])
 	}
 	u.wantRe(`^ ✗ 最重要・高 \d+    ! 中 \d+    ズレ \d+ `, `^ {4}項目 +宣言（sbxenv\.yaml） +実体（sbx）`)
@@ -1189,7 +1189,7 @@ func TestTUIKeysSwitchTargets(t *testing.T) {
 		name, want string
 	}{
 		{nil, "web", "実体（sbx）"},
-		{[]string{">"}, "orphan", "稼働中の実体（宣言ファイル未検出）"},
+		{[]string{">"}, "orphan", "sbx の sandbox（宣言ファイル未検出）"},
 		{[]string{">", ">"}, "api", "まだ作成されていません"},
 		{[]string{"<"}, "api", "まだ作成されていません"},
 		{[]string{">", ">", ">"}, "web", "実体（sbx）"},
@@ -1218,7 +1218,7 @@ func TestTUIClickOnATargetSwitchesToIt(t *testing.T) {
 	u.clickOn("orphan", 1)
 
 	// Assert
-	u.want("稼働中の実体（宣言ファイル未検出）", "ワークスペース: /srv/orphan", "ポート公開: 127.0.0.1:8080 -> sandbox:80/tcp", "稼働中の実体のみ（宣言ファイル未検出）")
+	u.want("sbx の sandbox（宣言ファイル未検出）", "ワークスペース: /srv/orphan", "ポート公開: 127.0.0.1:8080 -> sandbox:80/tcp", "sbx の sandbox のみ（宣言ファイル未検出）")
 }
 
 func TestTUIPickerListsTargetsAndSwitchesByKeyOrClick(t *testing.T) {
@@ -1243,7 +1243,7 @@ func TestTUIPickerListsTargetsAndSwitchesByKeyOrClick(t *testing.T) {
 	// Act / Assert: a click on a row picks it too.
 	u.press("s")
 	u.clickRow(`^ {4}orphan +停止中`)
-	u.want("稼働中の実体（宣言ファイル未検出）")
+	u.want("sbx の sandbox（宣言ファイル未検出）")
 }
 
 func TestTUIDriftOpensSideBySideInRisk(t *testing.T) {
@@ -1759,5 +1759,42 @@ func TestTUIContextLineOfAParseErrorTarget(t *testing.T) {
 	// Assert: regression; it read as a running sandbox without files.
 	if l := u.lines()[1]; !strings.Contains(l, "設定ファイルを解析できませんでした") || strings.Contains(l, "稼働中") {
 		t.Errorf("context line = %q", l)
+	}
+}
+
+func TestTUIContextLineDoesNotCallAStoppedSandboxRunning(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: "agent", Path: "agent", Value: "claude"}}}
+
+	// Act
+	u := targetUI(t, 120, 30, live.Target{Name: "web", State: "停止中", Plan: p, Sandbox: &live.Sandbox{Name: "web", Status: "stopped"}, Comparison: &live.Comparison{}})
+
+	// Assert: regression; the context line said 稼働中.
+	if l := u.lines()[1]; strings.Contains(l, "稼働中") || !strings.Contains(l, "sbx の sandbox") {
+		t.Errorf("context line = %q", l)
+	}
+}
+
+func TestTUIFrameFitsAShortTerminal(t *testing.T) {
+	t.Parallel()
+	// Arrange: two targets (a target line) and a live error (a state line).
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	targets := []live.Target{{Name: "a", State: "宣言", Plan: p, Err: "sbx コマンドが見つかりません"}, {Name: "b", State: "宣言", Plan: p}}
+	for _, h := range []int{8, 9, 10} {
+		for _, view := range []string{"1", "2", "3", "4", "s", "?"} {
+			m := tui.NewTargets(targets, "sbx コマンドが見つかりません", true)
+			m.Update(tea.WindowSizeMsg{Width: 120, Height: h})
+			u := &ui{t: t, m: m}
+			u.press(view)
+
+			// Assert: regression; the frame was taller than the terminal.
+			if n := len(u.lines()); n != h {
+				t.Errorf("height %d, view %s: %d lines\n%s", h, view, n, u.text())
+			}
+			if !strings.Contains(u.lines()[h-1], "q 終了") {
+				t.Errorf("height %d, view %s: the footer is on the last line:\n%s", h, view, u.text())
+			}
+		}
 	}
 }
