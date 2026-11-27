@@ -1832,3 +1832,17 @@ func TestADualStackPortPrefersARowWithAProtocol(t *testing.T) {
 		}
 	}
 }
+
+func TestARowWithoutAProtocolConfirmsNoTransport(t *testing.T) {
+	t.Parallel()
+	// Arrange: tcp4 declared; sbx gives the address but no protocol.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "v4", SandboxPort: 80, Protocol: "tcp4"}}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 50001, SandboxPort: 80}}}, &live.Snapshot{}, nil)
+
+	// Assert: regression; the address's family alone confirmed tcp.
+	if slices.Contains(c.Compared, "v4") || len(c.Drifts) > 0 {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}

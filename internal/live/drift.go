@@ -398,9 +398,10 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 					used[i], lf = true, ""
 				}
 			}
-			// A row without a protocol says nothing of its families, so it
-			// cannot confirm a port declared for both.
-			if (dp.HostPort == 0 || lp.HostPort != 0) && (df == "" && lf == "" && lp.Protocol != "" || df != "" && lf != "") {
+			// A row without a protocol confirms neither the transport (tcp,
+			// udp) nor, for a port declared for both, its families; it can
+			// still pair, so it is no drift, but it reads 照合なし.
+			if lp.Protocol != "" && (dp.HostPort == 0 || lp.HostPort != 0) && (df == "" && lf == "" || df != "" && lf != "") {
 				c.Compared = append(c.Compared, dp.ItemID)
 			}
 			hide := dp.Redacted || strict
