@@ -172,26 +172,32 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		// any live port may carry the same number, so every live value is
 		// hidden then: a listener paired with another declaration too.
 		hidePorts := strict && slices.ContainsFunc(d.Ports, func(dp sbxenv.DeclaredPort) bool { return dp.Redacted })
-		// Pair each declaration with a listener: first every one that has
-		// its declared host port, then the rest with any compatible one, so
-		// neither sbx's order nor a missing listener can swap two
+		// Pair each declaration with a listener, the most constrained
+		// first: every one with its declared host port, then the ones that
+		// fix a family (tcp4, ::1), then the rest with any compatible one.
+		// Neither sbx's order nor a missing listener can then swap two
 		// declarations of one sandbox port.
 		used := map[int]bool{}
 		pair := make([]int, len(d.Ports))
+		for j := range pair {
+			pair[j] = -1
+		}
 		compatible := func(dp sbxenv.DeclaredPort, lp Port) bool {
 			return lp.SandboxPort == dp.SandboxPort && baseProto(lp.Protocol) == baseProto(dp.Protocol) &&
 				sameFamily(portFamily(lp.Protocol, lp.HostIP), portFamily(dp.Protocol, dp.HostIP))
 		}
-		for _, exact := range []bool{true, false} {
+		passes := []func(sbxenv.DeclaredPort, Port) bool{
+			func(dp sbxenv.DeclaredPort, lp Port) bool { return dp.HostPort != 0 && lp.HostPort == dp.HostPort },
+			func(dp sbxenv.DeclaredPort, _ Port) bool { return portFamily(dp.Protocol, dp.HostIP) != "" },
+			func(sbxenv.DeclaredPort, Port) bool { return true },
+		}
+		for _, pass := range passes {
 			for j, dp := range d.Ports {
-				if exact {
-					pair[j] = -1
-				}
-				if pair[j] >= 0 || exact && dp.HostPort == 0 {
+				if pair[j] >= 0 {
 					continue
 				}
 				for i, lp := range sb.Ports {
-					if !used[i] && compatible(dp, lp) && (!exact || lp.HostPort == dp.HostPort) {
+					if !used[i] && compatible(dp, lp) && pass(dp, lp) {
 						pair[j], used[i] = i, true
 						break
 					}

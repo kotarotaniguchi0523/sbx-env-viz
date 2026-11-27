@@ -1081,3 +1081,25 @@ func TestStrictRedactionHidesALiveNumberPairedWithALiteralPort(t *testing.T) {
 		t.Errorf("drifts %v", c.Drifts)
 	}
 }
+
+func TestAPortThatFixesItsFamilyPairsBeforeANeutralOne(t *testing.T) {
+	t.Parallel()
+	// Arrange: 3000/tcp and 3000/tcp4, both with ephemeral host ports;
+	// sbx lists the IPv4 listener before the IPv6 one.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "any", SandboxPort: 3000, Protocol: "tcp"},
+		{ItemID: "v4", SandboxPort: 3000, Protocol: "tcp4"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 50001, SandboxPort: 3000, Protocol: "tcp"},
+		{HostIP: "::1", HostPort: 50002, SandboxPort: 3000, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; tcp took the IPv4 listener, leaving tcp4 none.
+	if len(c.Drifts) > 0 {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}
