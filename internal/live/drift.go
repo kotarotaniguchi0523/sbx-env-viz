@@ -219,6 +219,11 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			// port declared for both (tcp, no address) that is a row for both
 			// too, which is also the only one that can confirm it.
 			shows := portFamily(lp.Protocol, lp.HostIP) == portFamily(dp.Protocol, dp.HostIP)
+			// A row without a protocol says nothing of its families, so it
+			// cannot show a port declared for both (nor confirm it below).
+			if lp.Protocol == "" && portFamily(dp.Protocol, dp.HostIP) == "" {
+				shows = false
+			}
 			// A row of one family with its companion shows both, as a row
 			// for both does, whatever order sbx lists them in.
 			if !shows && portFamily(dp.Protocol, dp.HostIP) == "" && companion(dp, lp, skip) >= 0 {

@@ -1814,3 +1814,21 @@ func TestPortLabel(t *testing.T) {
 		}
 	}
 }
+
+func TestADualStackPortPrefersARowWithAProtocol(t *testing.T) {
+	t.Parallel()
+	// Arrange: an ephemeral 80/tcp; sbx lists 50001 without a protocol and
+	// 50002 as tcp.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", SandboxPort: 80, Protocol: "tcp"}}}}
+	bare := live.Port{HostPort: 50001, SandboxPort: 80}
+	tcp := live.Port{HostPort: 50002, SandboxPort: 80, Protocol: "tcp"}
+	for _, order := range [][]live.Port{{bare, tcp}, {tcp, bare}} {
+		// Act
+		c := live.Compare(p, &live.Sandbox{Ports: order}, &live.Snapshot{}, nil)
+
+		// Assert: regression; with 50001 first the port stayed 照合なし.
+		if !slices.Contains(c.Compared, "dual") || len(c.Drifts) != 1 || !strings.Contains(c.Drifts[0].Actual, "50001") {
+			t.Errorf("order %v: compared %v, drifts %v", order, c.Compared, c.Drifts)
+		}
+	}
+}
