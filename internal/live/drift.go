@@ -268,7 +268,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		hidden := map[string]bool{}
 		for _, r := range d.Network {
 			if strict && !strings.Contains(strings.ToLower(item(r.ItemID)), r.Host) {
-				hidden[r.Host] = true
+				hidden[stripRulePort(r.Host)] = true
 			}
 		}
 		for _, r := range sb.Rules {
@@ -277,7 +277,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				continue
 			}
 			resource := r.Resource
-			if host := strings.ToLower(resource); hidden[host] || hidden[stripRulePort(host)] {
+			if hidden[stripRulePort(strings.ToLower(resource))] {
 				resource = "<redacted>"
 			}
 			how := "sbx policy allow などで手動追加"
