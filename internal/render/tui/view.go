@@ -94,14 +94,14 @@ func (m *Model) Render() string {
 	}
 	lines = append(lines, m.contextBar(w, len(lines)))
 	// The state parts share a line while they fit; a part that does not
-	// starts a second line, so a target's error and the standing notice
-	// both stay in view. Two lines at most.
+	// starts a new line, so the search, a target's error and the standing
+	// notice all stay in view. Three lines at most.
 	var state []string
 	for _, part := range m.stateLine() {
 		switch n := len(state); {
 		case n > 0 && lipgloss.Width(state[n-1])+2+lipgloss.Width(part) <= w-1:
 			state[n-1] += "  " + part
-		case n < 2:
+		case n < 3:
 			state = append(state, part)
 		default:
 			state[n-1] += "  " + part

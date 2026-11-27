@@ -725,7 +725,17 @@ func run(m *Model, in io.Reader, out io.Writer) (string, error) {
 	}
 	line := exitSummary(m.plan)
 	if t := m.target(); t != nil {
-		line = "sbxray: " + model.EscapeControl(t.Name) + ": " + sbxenv.SummaryLine(m.plan.Summary)
+		line = "sbxray: " + model.EscapeControl(t.Name) + ": "
+		// A target without a plan was not assessed: counts of 0 from the
+		// stand-in plan would read as nothing found.
+		switch {
+		case t.Plan == nil && t.Sandbox != nil:
+			line += "宣言ファイルがないため、危険度は評価していません"
+		case t.Plan == nil:
+			line += "設定ファイルを解析できないため、危険度は評価していません"
+		default:
+			line += sbxenv.SummaryLine(m.plan.Summary)
+		}
 		if t.Comparison != nil {
 			line += fmt.Sprintf(" | ズレ %d", len(t.Comparison.Drifts))
 		}

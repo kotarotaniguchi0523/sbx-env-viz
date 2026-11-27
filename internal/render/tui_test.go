@@ -2917,3 +2917,52 @@ func TestTUIOverviewListsARiskySettingNoSectionCovers(t *testing.T) {
 		t.Errorf("a counted setting had no row:\n%s", u.text())
 	}
 }
+
+func TestTUIRunSummaryOfATargetThatFailedToParse(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	var out bytes.Buffer
+	targets := []live.Target{{Name: "broken", State: "解析エラー", Files: []string{"~/x/sbxenv.yaml"}, Err: "設定ファイルを解析できませんでした: line 1"}}
+
+	// Act
+	done := make(chan struct{})
+	var line string
+	var err error
+	go func() {
+		line, err = tui.RunTargets(targets, "", strings.NewReader("q"), &out)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("tui.RunTargets did not exit after q")
+	}
+
+	// Assert: regression; the stand-in plan printed エラー 0 | 警告 0.
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(line, "解析できない") || strings.Contains(line, "エラー 0") {
+		t.Errorf("summary = %q", line)
+	}
+}
+
+func TestTUIStateLinesKeepTheSearchTheErrorAndTheNotice(t *testing.T) {
+	t.Parallel()
+	// Arrange: a long parse error and a different live failure at 80 columns.
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	const parse = "設定ファイルを解析できませんでした: line 3: mapping values are not allowed in this context near the second key"
+	const note = "sbx から sandbox の一覧を取得できませんでした（デーモンが停止している可能性があります）"
+	m := tui.NewTargets([]live.Target{{Name: "web", State: "宣言", Plan: p, Err: parse}}, note, true)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	u := &ui{t: t, m: m}
+
+	// Act
+	u.press("2", "/", "x")
+
+	// Assert: regression; with the search on the first line the notice was
+	// appended to the full second one and cut.
+	if !u.has("検索: x_") || !u.has("line 3") || !u.has("デーモンが停止") {
+		t.Errorf("all three are on screen:\n%s", u.text())
+	}
+}
