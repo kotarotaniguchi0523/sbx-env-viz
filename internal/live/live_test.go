@@ -1738,3 +1738,40 @@ func TestPortPairingCountsACompanionOnlyIfItIsFree(t *testing.T) {
 		}
 	}
 }
+
+func TestARowWithoutAProtocolDoesNotConfirmADualStackPort(t *testing.T) {
+	t.Parallel()
+	// Arrange: sbx gives the sandbox port only.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "dual", SandboxPort: 80, Protocol: "tcp"}}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{Ports: []live.Port{{SandboxPort: 80}}}, &live.Snapshot{}, nil)
+
+	// Assert: regression; the empty row read as one for both families.
+	if slices.Contains(c.Compared, "dual") || len(c.Drifts) > 0 {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}
+
+func TestPortPairingGivesAPairToTheDualPortAndTheRestToTheOther(t *testing.T) {
+	t.Parallel()
+	// Arrange: ephemeral 80/tcp and 80/tcp4; sbx lists [::1]:5000,
+	// 127.0.0.1:5000 and 127.0.0.1:5001.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "dual", SandboxPort: 80, Protocol: "tcp"},
+		{ItemID: "v4", SandboxPort: 80, Protocol: "tcp4"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "::1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp6"},
+		{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp4"},
+		{HostIP: "127.0.0.1", HostPort: 5001, SandboxPort: 80, Protocol: "tcp4"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: the dual port takes the 5000 pair, tcp4 takes 5001.
+	if len(c.Drifts) > 0 || !slices.Contains(c.Compared, "dual") {
+		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
+	}
+}

@@ -393,7 +393,9 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 					used[i], lf = true, ""
 				}
 			}
-			if (dp.HostPort == 0 || lp.HostPort != 0) && (df == "" && lf == "" || df != "" && lf != "") {
+			// A row without a protocol says nothing of its families, so it
+			// cannot confirm a port declared for both.
+			if (dp.HostPort == 0 || lp.HostPort != 0) && (df == "" && lf == "" && lp.Protocol != "" || df != "" && lf != "") {
 				c.Compared = append(c.Compared, dp.ItemID)
 			}
 			hide := dp.Redacted || strict
