@@ -352,7 +352,13 @@ func run(args []string, e env) int {
 		targets, snap := live.Discover(context.Background(), live.DiscoverRequest{
 			WorkDir: wd, Runner: e.sbx, Show: show, Redaction: redaction,
 			Resolve: func(g live.Group) (*sbxenv.Plan, error) {
-				return resolve(loader.Request{Paths: g.Paths, EnvArgsFiles: o.envArgsFiles, KitArgsFiles: o.kitArgsFiles, WorkDir: g.Dir, HomeDir: home})
+				p, err := resolve(loader.Request{Paths: g.Paths, EnvArgsFiles: o.envArgsFiles, KitArgsFiles: o.kitArgsFiles, WorkDir: g.Dir, HomeDir: home})
+				if err != nil {
+					// As for explicit paths: the error names the file with
+					// $HOME shortened, never the home directory itself.
+					return nil, errors.New(sbxenv.ShortenHome(err.Error(), home, homeAliases...))
+				}
+				return p, nil
 			},
 		})
 		if len(targets) > 0 {
