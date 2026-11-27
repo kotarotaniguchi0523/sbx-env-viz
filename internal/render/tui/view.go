@@ -527,7 +527,12 @@ func (m *Model) detailLines(iw, ih, top, x0 int) []string {
 		m.dScroll = limit
 	}
 	body = body[m.dScroll:]
-	if len(body) > vis {
+	switch {
+	case len(body) <= vis:
+	case vis < 3:
+		// Too short for a hint as well: the text itself takes the rows.
+		body = body[:max(vis, 0)]
+	default:
 		more := len(body) - vis + 1
 		body = append(body[:vis-1:vis-1], m.pal.muted.Render(fmt.Sprintf("ほか %d 行（j でスクロール）", more)))
 	}

@@ -123,7 +123,8 @@ func (m *Model) buildOverview() {
 	}
 	// partly qualifies the match of the entry just added, for what sbx
 	// reports only in part: a mount's host path (not its mode or its place
-	// in the sandbox), a secret's name (not where its value comes from).
+	// in the sandbox), a secret's name (not where its value comes from), a
+	// rule's host (not its bounds).
 	partly := func(text string) {
 		if l := &m.manifest[len(m.manifest)-1]; l.check == checkMatch {
 			l.actual = text
@@ -293,6 +294,9 @@ func (m *Model) buildOverview() {
 		}
 		for _, g := range groups {
 			entry(g.label, fmt.Sprintf("%d 件  %s", len(g.hosts), strings.Join(g.hosts, "、")), g.items...)
+			// sbx policy ls lists a decision and a host, not the methods
+			// or paths a running rule may still be limited to.
+			partly("ホストは一致")
 		}
 		for _, it := range drifted {
 			label, host := ruleLabel(it)

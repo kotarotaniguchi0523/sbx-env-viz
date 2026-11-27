@@ -1536,7 +1536,7 @@ func TestTUIOverviewGivesEachDriftedRuleItsOwnRow(t *testing.T) {
 
 	// Assert: regression; one grouped row hid which host was missing,
 	// and its second drift could not be opened from the Overview.
-	u.wantRe(`^ {4}許可（実行中） +1 件  one\.test +一致 *$`,
+	u.wantRe(`^ {4}許可（実行中） +1 件  one\.test +ホストは一致 *$`,
 		`^ !  許可（実行中） +two\.test +（該当するルールなし） *$`, `^ !  許可（実行中） +three\.test +（該当するルールなし） *$`)
 	if u.has("宣言にない実体・その他のズレ") {
 		t.Errorf("every drift belongs to a declared row:\n%s", u.text())
@@ -1912,5 +1912,27 @@ func TestTUISourceLabelSurvivesALongFilterList(t *testing.T) {
 	// Assert: regression; the label came after the switches and was cut.
 	if l := u.lines()[1]; !strings.Contains(l, "静的解析") {
 		t.Errorf("context line = %q", l)
+	}
+}
+
+func TestTUIDetailShowsTextBeforeAHintOnATinyPane(t *testing.T) {
+	t.Parallel()
+	// Arrange: an 80-column detail on 8 rows with a target line and a
+	// state line leaves the body a row or two.
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	m := tui.NewTargets([]live.Target{{Name: "a", State: "宣言", Plan: p, Err: "sbx コマンドが見つかりません"}, {Name: "b", State: "宣言", Plan: p}}, "", true)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 8})
+	u := &ui{t: t, m: m}
+
+	// Act
+	u.press("3", "enter")
+
+	// Assert: regression; the hint covered the only body row, or the
+	// slice before it panicked.
+	if u.has("ほか ") || !u.has("kit:net/network-policy@1/runtime.allow/api.example.com") {
+		t.Errorf("the detail's first line gave way to the hint:\n%s", u.text())
+	}
+	if n := len(u.lines()); n != 8 {
+		t.Errorf("%d lines", n)
 	}
 }
