@@ -123,6 +123,13 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 	// Workspaces.
 	if len(sb.Workspaces) > 0 || len(d.Workspaces) > 0 {
 		c.Checked = append(c.Checked, "ワークスペース・マウント")
+		// Folders a kit mounts (mounts, host-mount) are not held against
+		// sbx's list; the TUI reads them 照合なし, text and JSON say so.
+		if slices.ContainsFunc(p.Items, func(it sbxenv.Item) bool {
+			return strings.HasPrefix(it.Path, "mounts.") || it.Path == "cap:host-mount@1"
+		}) {
+			c.Skipped = append(c.Skipped, "Kit が使うフォルダ（mounts・host-mount）は比較していません。")
+		}
 		used := map[int]bool{}
 		readOnlyNote := false
 		for _, w := range d.Workspaces {
@@ -591,7 +598,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		if slices.ContainsFunc(d.MCP, func(m sbxenv.DeclaredMCP) bool { return !m.Skipped }) {
 			c.Checked = append(c.Checked, "MCP サーバー")
 		}
-		skipped := false
+		skipped, untyped := false, false
 		for _, m := range d.MCP {
 			if m.Skipped {
 				skipped = true
@@ -614,7 +621,9 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			// only "remote" is known to mean a url server: another word
 			// (unknown, a newer kind) shows neither, so it confirms nothing
 			// and is no drift; only the registration is known then.
-			if row.Type == "remote" {
+			if row.Type != "remote" {
+				untyped = true
+			} else {
 				c.Compared = append(c.Compared, m.ItemID)
 				if !m.Remote {
 					add(Drift{Kind: "MCP サーバー", Title: "同じ名前の MCP サーバーが、宣言と違う種類で登録されている", Declared: item(m.ItemID),
@@ -631,6 +640,9 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		}
 		if skipped {
 			c.Skipped = append(c.Skipped, "--skip-host-commands で起動しないコマンド型の MCP サーバーは比較していません。")
+		}
+		if untyped {
+			c.Skipped = append(c.Skipped, "sbx mcp ls の種類が remote でない MCP サーバーは、登録だけを確かめ、種類（URL 型かコマンド型か）は照合していません。")
 		}
 	}
 	c.Skipped = append(c.Skipped, "メモリ・CPU・lifecycle の実行履歴などは sbx の一覧から取得できないため比較していません。")

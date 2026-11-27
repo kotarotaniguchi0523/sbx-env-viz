@@ -2103,3 +2103,35 @@ func TestRulesLeftOutOfTheComparisonAreNoted(t *testing.T) {
 		t.Errorf("skipped %v", c.Skipped)
 	}
 }
+
+func TestMCPAndKitMountsLeftOutAreNoted(t *testing.T) {
+	t.Parallel()
+	noted := func(c live.Comparison, s string) bool {
+		return slices.ContainsFunc(c.Skipped, func(x string) bool { return strings.Contains(x, s) })
+	}
+	// Arrange: a command server sbx lists as command, and a kit mount
+	// beside the workspace.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome},
+		Items: []sbxenv.Item{{ID: "mounts./data", Path: "mounts./data", Value: "/data"}},
+		Declared: &sbxenv.Declared{
+			MCP:        []sbxenv.DeclaredMCP{{ItemID: "m", Name: "docs", Shown: "docs"}},
+			Workspaces: []sbxenv.DeclaredMount{{ItemID: "workspace", Path: "/work/app", Primary: true}},
+		}}
+	sb := &live.Sandbox{Workspaces: []live.Mount{{Path: "/work/app"}}}
+	snap := &live.Snapshot{MCPKnown: true, MCP: []live.MCPServer{{Name: "docs", Type: "command", Transport: "stdio", Status: "ready"}}}
+
+	// Act
+	c := live.Compare(p, sb, snap, nil)
+
+	// Assert: regression; both read as checked with no drift and no note,
+	// while the TUI says 照合なし.
+	if len(c.Drifts) != 0 || !noted(c, "remote でない MCP") || !noted(c, "Kit が使うフォルダ") {
+		t.Errorf("drifts %v, skipped %v", c.Drifts, c.Skipped)
+	}
+
+	// A remote server and no kit mount need neither note.
+	p.Items, snap.MCP[0].Type, p.Declared.MCP[0].Remote = nil, "remote", true
+	if c := live.Compare(p, sb, snap, nil); noted(c, "MCP") || noted(c, "Kit") {
+		t.Errorf("noted without cause: %v", c.Skipped)
+	}
+}
