@@ -93,8 +93,22 @@ func (m *Model) Render() string {
 		}
 	}
 	lines = append(lines, m.contextBar(w, len(lines)))
-	if state := m.stateLine(); state != "" {
-		lines = append(lines, trunc(" "+m.pal.strong.Render(state), w))
+	// The state parts share a line while they fit; a part that does not
+	// starts a second line, so a target's error and the standing notice
+	// both stay in view. Two lines at most.
+	var state []string
+	for _, part := range m.stateLine() {
+		switch n := len(state); {
+		case n > 0 && lipgloss.Width(state[n-1])+2+lipgloss.Width(part) <= w-1:
+			state[n-1] += "  " + part
+		case n < 2:
+			state = append(state, part)
+		default:
+			state[n-1] += "  " + part
+		}
+	}
+	for _, s := range state {
+		lines = append(lines, trunc(" "+m.pal.strong.Render(s), w))
 	}
 	// The frame never outgrows the terminal: on a short one the spacer
 	// goes first, then the panes shrink to what is left.
@@ -311,7 +325,7 @@ func (m *Model) contextBar(w, y int) string {
 }
 
 // stateLine reports an active filter or search; empty when neither is on.
-func (m *Model) stateLine() string {
+func (m *Model) stateLine() []string {
 	p := m.plan
 	// What the user is doing comes first and the standing notice last, so
 	// on a narrow line the search and this target's error stay in view.
@@ -356,7 +370,7 @@ func (m *Model) stateLine() string {
 	if notice != "" {
 		state = append(state, notice)
 	}
-	return strings.Join(state, "  ")
+	return state
 }
 
 // statusBar is one line of the keys that matter where the user is.

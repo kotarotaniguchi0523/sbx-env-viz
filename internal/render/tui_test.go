@@ -2192,9 +2192,33 @@ func TestTUIStateLineShowsALiveErrorThatIsAlsoTheNotice(t *testing.T) {
 	// Act
 	u.press("2", "f", "/", "x")
 
-	// Assert: regression; the shared message went last and was cut.
-	if l := u.lines()[2]; !strings.HasPrefix(strings.TrimSpace(l), "検索: x_  sbx コマンドが見つかりません") {
-		t.Errorf("state line = %q", l)
+	// Assert: regression; the shared message went last and was cut. It
+	// follows the search, on the next line when it does not fit beside it.
+	if l := u.lines()[2] + u.lines()[3]; !strings.Contains(l, "検索: x_") || !strings.Contains(l, "sbx コマンドが見つかりません") ||
+		strings.Index(l, "検索") > strings.Index(l, "sbx コマンド") {
+		t.Errorf("state lines = %q", l)
+	}
+}
+
+func TestTUIStateLinesKeepATargetErrorAndTheLiveNoticeBoth(t *testing.T) {
+	t.Parallel()
+	// Arrange: a long parse error and a different live failure at 80 columns.
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	const parse = "設定ファイルを解析できませんでした: line 3: mapping values are not allowed in this context near the second key"
+	const note = "sbx から sandbox の一覧を取得できませんでした（デーモンが停止している可能性があります）"
+	m := tui.NewTargets([]live.Target{{Name: "web", State: "宣言", Plan: p, Err: parse}}, note, true)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	u := &ui{t: t, m: m}
+
+	// Act
+	u.press("2")
+
+	// Assert: regression; the notice came after the error on one row and was cut.
+	if !u.has("line 3") || !u.has("デーモンが停止") {
+		t.Errorf("both messages are on screen:\n%s", u.text())
+	}
+	if n := len(u.lines()); n != 24 {
+		t.Errorf("%d lines", n)
 	}
 }
 
