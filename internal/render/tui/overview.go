@@ -300,9 +300,14 @@ func (m *Model) buildOverview() {
 			// A rule that will not take effect (an optional group whose
 			// condition fails) gets a row of its own, marked as such.
 			label, host := ruleLabel(it)
+			// A rule held against sbx and one that was not get rows of
+			// their own too, so a check made is not lost in 照合なし.
 			key := label
 			if hasBadge(it, sbxenv.BadgeSkip) {
 				key += "\x00skip"
+			}
+			if m.compared[it] {
+				key += "\x00compared"
 			}
 			g := find[key]
 			if g == nil {

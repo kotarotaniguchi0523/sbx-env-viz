@@ -1595,8 +1595,10 @@ func TestTUIOverviewGroupMatchesOnlyWhenEveryRuleWasCompared(t *testing.T) {
 	// Act
 	u := targetUI(t, 120, 40, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: &live.Sandbox{Name: "web"}, Comparison: cmp})
 
-	// Assert: regression; one confirmed rule confirmed the whole row.
-	u.wantRe(`^ {4}許可（実行中） +2 件  active\.test、skipped\.test +照合なし *$`)
+	// Assert: regression; one confirmed rule confirmed the whole row. The
+	// confirmed rule and the other get rows of their own, so neither the
+	// check made nor the one missing is lost.
+	u.wantRe(`^ {4}許可（実行中） +1 件  active\.test +ホストは一致 *$`, `^ {4}許可（実行中） +1 件  skipped\.test +照合なし *$`)
 }
 
 func TestTUIOverviewKeepsTheCursorRowOnATinyScreen(t *testing.T) {
