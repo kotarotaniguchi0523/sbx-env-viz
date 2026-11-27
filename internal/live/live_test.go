@@ -2056,3 +2056,26 @@ func TestAnUndeclaredPortOnANetworkAddressIsMedium(t *testing.T) {
 		t.Errorf("drifts %v", c.Drifts)
 	}
 }
+
+func TestAPortPairedWithoutAProtocolIsNotedAsUnchecked(t *testing.T) {
+	t.Parallel()
+	// Arrange: 8080 -> 80/tcp; sbx's only row leaves the protocol out.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "p", HostPort: 8080, SandboxPort: 80, Protocol: "tcp"}}}}
+	bare := &live.Sandbox{Ports: []live.Port{{HostPort: 8080, SandboxPort: 80}}}
+	full := &live.Sandbox{Ports: []live.Port{{HostPort: 8080, SandboxPort: 80, Protocol: "tcp"}}}
+	noted := func(c live.Comparison) bool {
+		return slices.ContainsFunc(c.Skipped, func(s string) bool { return strings.Contains(s, "通信の種類") })
+	}
+
+	// Act
+	c, ok := live.Compare(p, bare, &live.Snapshot{}, nil), live.Compare(p, full, &live.Snapshot{}, nil)
+
+	// Assert: regression; text and JSON read the same as a confirmed
+	// match, with no drift and no note.
+	if len(c.Drifts) != 0 || !noted(c) {
+		t.Errorf("bare: drifts %v, skipped %v", c.Drifts, c.Skipped)
+	}
+	if noted(ok) {
+		t.Errorf("a confirmed port is noted: %v", ok.Skipped)
+	}
+}

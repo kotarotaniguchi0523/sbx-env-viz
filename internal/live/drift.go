@@ -384,6 +384,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		for i, j := range owner {
 			used[i] = j >= 0
 		}
+		unsure := false
 		for j, dp := range d.Ports {
 			decl := item(dp.ItemID)
 			found := pair[j]
@@ -412,6 +413,8 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			// still pair, so it is no drift, but it reads 照合なし.
 			if lp.Protocol != "" && (dp.HostPort == 0 || lp.HostPort != 0) && (df == "" && lf == "" || df != "" && lf != "") {
 				c.Compared = append(c.Compared, dp.ItemID)
+			} else {
+				unsure = true
 			}
 			hide := dp.Redacted || strict
 			var diffs []string
@@ -443,6 +446,10 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				add(Drift{Kind: "ポート公開", Title: "ポートの公開のしかたが宣言と違う（" + strings.Join(diffs, "、") + "）", Declared: decl,
 					Actual: actual, Fix: fixRecreate, Severity: sev, ItemID: dp.ItemID, Source: srcLs})
 			}
+		}
+		if unsure {
+			// The TUI marks these 照合なし; say so in text and JSON too.
+			c.Skipped = append(c.Skipped, "sbx ls --json に通信の種類（tcp / udp）、PC 側のポート番号、IPv4 / IPv6 の別のどれかが出ていない行と組んだポートは、その点を照合していません。")
 		}
 		for i, lp := range sb.Ports {
 			if used[i] {
