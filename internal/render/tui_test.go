@@ -2966,3 +2966,22 @@ func TestTUIStateLinesKeepTheSearchTheErrorAndTheNotice(t *testing.T) {
 		t.Errorf("all three are on screen:\n%s", u.text())
 	}
 }
+
+func TestTUIStateLinesKeepTheNoticeBeforeAFilter(t *testing.T) {
+	t.Parallel()
+	// Arrange: search, a long parse error, a layer filter and a live failure.
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	const parse = "設定ファイルを解析できませんでした: line 3: mapping values are not allowed in this context near the second key"
+	const note = "sbx から sandbox の一覧を取得できませんでした（デーモンが停止している可能性があります）"
+	m := tui.NewTargets([]live.Target{{Name: "web", State: "宣言", Plan: p, Err: parse}}, note, true)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	u := &ui{t: t, m: m}
+
+	// Act
+	u.press("2", "f", "/", "x")
+
+	// Assert: regression; the filter took the third line and cut the notice.
+	if !u.has("デーモンが停止") {
+		t.Errorf("the notice is on screen:\n%s", u.text())
+	}
+}

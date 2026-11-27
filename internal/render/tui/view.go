@@ -353,6 +353,11 @@ func (m *Model) stateLine() []string {
 			notice = ""
 		}
 	}
+	// The standing notice goes before the filter, which the context
+	// line's switches show as well.
+	if notice != "" {
+		state = append(state, notice)
+	}
 	if f := m.filter(); f != "" && !overview {
 		hidden := 0
 		for i := range p.Diagnostics {
@@ -366,9 +371,6 @@ func (m *Model) stateLine() []string {
 			label = f + " " + s.Path
 		}
 		state = append(state, fmt.Sprintf("絞り込み（非表示の警告・エラー %d 件）: %s", hidden, label))
-	}
-	if notice != "" {
-		state = append(state, notice)
 	}
 	return state
 }
