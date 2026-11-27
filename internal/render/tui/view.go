@@ -435,7 +435,7 @@ func (m *Model) panes(w, top, ph int) string {
 	case m.help:
 		return frame(m.helpLines(w-2, ph), w, ph)
 	case m.picker:
-		return frame(m.pickerLines(w-2, top, ph), w, ph)
+		return frame(m.pickerLines(w, top, ph), w, ph)
 	case m.view == viewOverview:
 		return m.overviewPanes(w, top, ph)
 	case m.twoPane():
@@ -621,7 +621,12 @@ func (m *Model) pickerLines(iw, top, ih int) []string {
 	for i := range m.targets {
 		nameW = max(nameW, min(widthOf(model.EscapeControl(m.targets[i].Name)), iw*2/5))
 	}
-	lines = append(lines, p.colHead.Render(pad("    "+pad("名前", nameW)+"  "+pad("状態", 24)+"  "+pad("ズレ", 4)+"  ファイル", iw)))
+	// The state column fits the longest state (稼働中・宣言ファイル未検出).
+	stateW := 4
+	for i := range m.targets {
+		stateW = max(stateW, widthOf(m.targets[i].State))
+	}
+	lines = append(lines, p.colHead.Render(pad("    "+pad("名前", nameW)+"  "+pad("状態", stateW)+"  "+pad("ズレ", 4)+"  ファイル", iw)))
 	// On a short pane the title, then the spacer, then the column header
 	// give way, so at least the cursor row is always drawn.
 	lines = lines[len(lines)-min(len(lines), max(ih-1, 0)):]
@@ -638,7 +643,7 @@ func (m *Model) pickerLines(iw, top, ih int) []string {
 		if t.Comparison != nil {
 			drift = fmt.Sprint(t.Drifts())
 		}
-		text := pad(truncMiddle(model.EscapeControl(t.Name), nameW), nameW) + "  " + pad(t.State, 24) + "  " + pad(drift, 4) + "  " + model.EscapeControl(files)
+		text := pad(truncMiddle(model.EscapeControl(t.Name), nameW), nameW) + "  " + pad(t.State, stateW) + "  " + pad(drift, 4) + "  " + model.EscapeControl(files)
 		y := top + len(lines)
 		m.addZone(0, y, iw, y+1, zoneTargetRow, i) // the row as frame draws it, from column 0
 		if i == m.pCursor {

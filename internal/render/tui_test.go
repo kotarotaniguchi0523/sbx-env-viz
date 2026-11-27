@@ -3298,3 +3298,21 @@ func TestTUIPickerRowAnswersAClickOnItsFirstColumn(t *testing.T) {
 		t.Errorf("title bar = %q", u.lines()[0])
 	}
 }
+
+func TestTUIPickerShowsWholeStatesAndAnswersItsLastColumn(t *testing.T) {
+	t.Parallel()
+	// Arrange: a live-only sandbox, whose state is the longest kind.
+	u := newTargetsUI(t, 160, 30).press("s")
+
+	// Assert: regression; the state column was 24 cells wide.
+	u.want("停止中・宣言ファイル未検出")
+
+	// Act: click the row's last column.
+	_, y := u.find("orphan", 3)
+	u.click(159, y)
+
+	// Assert: regression; the zone stopped two columns short.
+	if !strings.HasPrefix(u.lines()[0], " sbxray  orphan") {
+		t.Errorf("title bar = %q", u.lines()[0])
+	}
+}
