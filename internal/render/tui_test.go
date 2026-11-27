@@ -1379,9 +1379,10 @@ func TestTUITargetPositionReplacesATargetLineThatDoesNotFit(t *testing.T) {
 			t.Errorf("a target line that does not fit is not drawn: %q", l)
 		}
 	}
+	// A long state gives way to the tabs, and the position stays.
 	u.press(">")
-	if !strings.HasPrefix(u.lines()[0], " sbxray  orphan  停止中・宣言ファイル未検出 2/3") {
-		t.Errorf("title bar after > = %q", u.lines()[0])
+	if l := u.lines()[0]; !strings.HasPrefix(l, " sbxray  orphan  停止中") || !strings.Contains(l, ".. 2/3 ") || !strings.Contains(l, "4 ファイル") {
+		t.Errorf("title bar after > = %q", l)
 	}
 	if newTargetsUI(t, 160, 30).has(" 1/3") {
 		t.Error("the position is shown only when the target line is not")
@@ -1562,4 +1563,18 @@ func TestTUIOverviewFindsTheDriftOfAnEscapedID(t *testing.T) {
 	if u.has("一致") || u.has("宣言にない実体・その他のズレ") {
 		t.Errorf("the drift belongs to its row:\n%s", u.text())
 	}
+}
+
+func TestTUITitleBarKeepsTheTabsBesideALongName(t *testing.T) {
+	t.Parallel()
+	// Arrange / Act
+	long := strings.Repeat("very-long-sandbox-name-", 4)
+	u := targetUI(t, 80, 24, live.Target{Name: long, State: "停止中・宣言ファイル未検出", Sandbox: &live.Sandbox{Name: long}})
+
+	// Assert: regression; the name pushed the tabs off the right edge.
+	if l := u.lines()[0]; !strings.Contains(l, "4 ファイル") || !strings.Contains(l, "1 概要") {
+		t.Errorf("title bar = %q", l)
+	}
+	u.clickOn("4 ファイル", 0)
+	u.wantView("ファイル")
 }

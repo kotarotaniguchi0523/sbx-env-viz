@@ -132,15 +132,15 @@ func (m *Model) viewTotal(v viewID) int {
 // titleBar is the brand, the sandbox it describes, and the numbered tabs,
 // right-aligned when they fit.
 func (m *Model) titleBar(w int) string {
-	left := " " + m.pal.strong.Render("sbxray")
-	if name := m.subject(); name != "" {
-		left += "  " + model.EscapeControl(name)
+	var name, state, pos string
+	if n := m.subject(); n != "" {
+		name = "  " + model.EscapeControl(n)
 	}
 	if t := m.target(); t != nil {
-		left += m.pal.muted.Render("  " + t.State)
+		state = "  " + t.State
 		if len(m.targets) > 1 {
 			if _, ok := m.targetBar(w, 1); !ok {
-				left += m.pal.muted.Render(fmt.Sprintf(" %d/%d", m.tIdx+1, len(m.targets)))
+				pos = fmt.Sprintf(" %d/%d", m.tIdx+1, len(m.targets))
 			}
 		}
 	}
@@ -156,6 +156,19 @@ func (m *Model) titleBar(w int) string {
 	for _, t := range tabs {
 		tabW += lipgloss.Width(t) + 3
 	}
+	// The tabs keep their place. When the rest does not fit beside them,
+	// the state gives way first (the Overview repeats it), then the name;
+	// the position stays.
+	room := w - tabW - 3 - lipgloss.Width(" sbxray") - lipgloss.Width(pos)
+	if over := lipgloss.Width(name) + lipgloss.Width(state) - room; over > 0 {
+		if sw := lipgloss.Width(state) - over; sw >= 6 {
+			state = trunc(state, sw)
+		} else {
+			state = ""
+			name = trunc(name, max(room, 0))
+		}
+	}
+	left := " " + m.pal.strong.Render("sbxray") + name + m.pal.muted.Render(state+pos)
 	gap := w - lipgloss.Width(left) - tabW
 	s := &strip{m: m, y: 0}
 	s.text(left, lipgloss.NewStyle())
