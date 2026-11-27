@@ -69,8 +69,8 @@ func (m *Model) buildOverview() {
 	info := func(text string) {
 		m.manifest = append(m.manifest, manifestLine{kind: lineInfo, label: text, row: -1})
 	}
-	// entry adds a setting that stands for items, compared under area.
-	entry := func(label, declared, area string, items ...*sbxenv.Item) {
+	// entry adds a setting that stands for items.
+	entry := func(label, declared string, items ...*sbxenv.Item) {
 		l := manifestLine{kind: lineEntry, label: label, declared: declared, sev: sbxenv.SeverityInfo}
 		for _, it := range items {
 			if it.Risk.Rank() > l.sev.Rank() {
@@ -82,9 +82,10 @@ func (m *Model) buildOverview() {
 			r.item = items[0]
 		}
 		if cmp != nil {
+			// 一致 only for what was held against sbx's output: an area
+			// being checked does not confirm every item in it.
 			l.check = checkSkip
-			compared := slices.ContainsFunc(items, func(it *sbxenv.Item) bool { return !slices.Contains(cmp.NotCompared, it.ID) })
-			if slices.Contains(cmp.Checked, area) && compared {
+			if slices.ContainsFunc(items, func(it *sbxenv.Item) bool { return slices.Contains(cmp.Compared, it.ID) }) {
 				l.check = checkMatch
 			}
 			for i := range m.drifts {
@@ -163,16 +164,12 @@ func (m *Model) buildOverview() {
 				parts, its = append(parts, "CPU "+it.Value), append(its, it)
 			}
 			if len(its) > 0 {
-				entry(f[1], strings.Join(parts, "、"), "", its...)
+				entry(f[1], strings.Join(parts, "、"), its...)
 			}
 			continue
 		}
 		if it := byID[f[0]]; it != nil {
-			area := ""
-			if f[0] == "agent" {
-				area = "エージェント"
-			}
-			entry(f[1], it.Value, area, it)
+			entry(f[1], it.Value, it)
 		}
 	}
 
@@ -188,43 +185,42 @@ func (m *Model) buildOverview() {
 					state = "未展開（読み込めない）"
 				}
 			}
-			entry(field(it, "handle"), state, "", it)
+			entry(field(it, "handle"), state, it)
 		}
 	}
 
 	if ws, extra, kitMounts, caps := items(pathIs("workspace")), items(pathIs("additionalWorkspaces[]")), items(pathIs("mounts.")), items(pathIs("cap:host-mount@1")); len(ws)+len(extra)+len(kitMounts)+len(caps) > 0 {
 		section("フォルダの共有")
-		const area = "ワークスペース・マウント"
 		for _, it := range ws {
 			mode := "読み書き"
 			if field(it, "clone") == "true" || field(it, "--clone") == "true" {
 				mode = "コピーして使う"
 			}
-			entry("ワークスペース", it.Value+"（"+mode+"）", area, it)
+			entry("ワークスペース", it.Value+"（"+mode+"）", it)
 		}
 		for _, it := range extra {
 			mode := "読み書き"
 			if hasBadge(it, sbxenv.BadgeRO) {
 				mode = "読み取り専用"
 			}
-			entry("追加フォルダ", it.Value+"（"+mode+"）", area, it)
+			entry("追加フォルダ", it.Value+"（"+mode+"）", it)
 		}
 		for _, it := range kitMounts {
-			entry("Kit 用フォルダ", it.Value, area, it)
+			entry("Kit 用フォルダ", it.Value, it)
 		}
 		for _, it := range caps {
 			v := it.Value
 			if hasBadge(it, sbxenv.BadgePersist) {
 				v += "（削除後も残る）"
 			}
-			entry("Kit の共有", v, area, it)
+			entry("Kit の共有", v, it)
 		}
 	}
 
 	if ports := items(pathIs("ports[]")); len(ports) > 0 {
 		section("ポート公開")
 		for _, it := range ports {
-			entry("ポート", it.Value, "ポート公開", it)
+			entry("ポート", it.Value, it)
 		}
 	}
 
@@ -237,7 +233,7 @@ func (m *Model) buildOverview() {
 			if strings.HasPrefix(it.Value, "command:") {
 				where = "あなたの PC 上で起動（stdio）"
 			}
-			entry("MCP "+name, where, "MCP サーバー", it)
+			entry("MCP "+name, where, it)
 		}
 		// Rules group by decision and phase, one line each.
 		type group struct {
@@ -271,28 +267,28 @@ func (m *Model) buildOverview() {
 			g.items = append(g.items, it)
 		}
 		for _, g := range groups {
-			entry(g.label, fmt.Sprintf("%d 件  %s", len(g.hosts), strings.Join(g.hosts, "、")), "通信の許可・拒否", g.items...)
+			entry(g.label, fmt.Sprintf("%d 件  %s", len(g.hosts), strings.Join(g.hosts, "、")), g.items...)
 		}
 	}
 
 	var creds []func()
 	for _, g := range []struct {
-		label, area string
-		match       func(*sbxenv.Item) bool
+		label string
+		match func(*sbxenv.Item) bool
 	}{
-		{"秘密", "シークレット（名前のみ）", pathIs("secrets.")},
-		{"使用の承認", "", pathIs("bindings.")},
-		{"レジストリ認証", "", pathIs("registries.")},
-		{"Kit の認証情報", "", pathIs("cap:credential@1")},
-		{"SSH エージェント", "", pathIs("cap:ssh-agent@1")},
-		{"Git の名前・メール", "", pathIs("cap:git-identity@1")},
+		{"秘密", pathIs("secrets.")},
+		{"使用の承認", pathIs("bindings.")},
+		{"レジストリ認証", pathIs("registries.")},
+		{"Kit の認証情報", pathIs("cap:credential@1")},
+		{"SSH エージェント", pathIs("cap:ssh-agent@1")},
+		{"Git の名前・メール", pathIs("cap:git-identity@1")},
 	} {
 		for _, it := range items(g.match) {
 			label := g.label
 			if i := strings.Index(it.ID, "."); i >= 0 && (strings.HasPrefix(it.ID, "secrets.") || strings.HasPrefix(it.ID, "bindings.") || strings.HasPrefix(it.ID, "registries.")) {
 				label += " " + it.ID[i+1:]
 			}
-			creds = append(creds, func() { entry(label, it.Value, g.area, it) })
+			creds = append(creds, func() { entry(label, it.Value, it) })
 		}
 	}
 	if len(creds) > 0 {
@@ -306,10 +302,10 @@ func (m *Model) buildOverview() {
 	if len(host)+len(inside) > 0 {
 		section("コマンドの実行")
 		for _, it := range host {
-			entry("PC 上で実行", it.Value, "", it)
+			entry("PC 上で実行", it.Value, it)
 		}
 		for _, it := range inside {
-			entry("sandbox 内で実行", it.Value, "", it)
+			entry("sandbox 内で実行", it.Value, it)
 		}
 	}
 

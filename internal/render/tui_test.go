@@ -1417,3 +1417,38 @@ func TestTUIShowsLiveErrorWithoutHidingPlanAndKeepsTargetErrorVisible(t *testing
 	u.press("2")
 	u.want(parseErr)
 }
+
+// targetUI shows the targets at width x height.
+func targetUI(t *testing.T, width, height int, targets ...live.Target) *ui {
+	t.Helper()
+	m := tui.NewTargets(targets, "", true)
+	m.Update(tea.WindowSizeMsg{Width: width, Height: height})
+	u := &ui{t: t, m: m}
+	u.frame()
+	return u
+}
+
+func TestTUIOverviewClaimsAMatchOnlyForWhatWasCompared(t *testing.T) {
+	t.Parallel()
+	// Arrange: the area of folders and of network rules was checked, but
+	// only the workspace itself was held against sbx's output.
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	sb := &live.Sandbox{Name: "web", Status: "running"}
+	checked := []string{"ワークスペース・マウント", "通信の許可・拒否"}
+	for _, tc := range []struct {
+		compared []string
+		want     string
+	}{
+		{nil, "照合なし"},
+		{[]string{"workspace"}, "一致"},
+	} {
+		cmp := &live.Comparison{Checked: checked, Compared: tc.compared}
+
+		// Act
+		u := targetUI(t, 160, 60, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: sb, Comparison: cmp})
+
+		// Assert: regression; a checked area used to confirm every row in it.
+		u.wantRe(`^ [!✗ ]  ワークスペース +\S+（読み書き） +` + tc.want + ` *$`)
+		u.wantRe(`^ {4}許可（実行中） +1 件  api\.example\.com +照合なし *$`)
+	}
+}

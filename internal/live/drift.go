@@ -33,10 +33,12 @@ type Comparison struct {
 	// not compared and why.
 	Checked []string
 	Skipped []string
-	// NotCompared lists declared items inside a checked area that sbx's
-	// output could not confirm either way (Kit network rules that sbx
-	// policy ls does not show), so a reader must not take them as matching.
-	NotCompared []string
+	// Compared lists the ItemIDs of the declared items that were held
+	// against sbx's output, whether they matched or drifted. An item in a
+	// checked area that is not listed here (a clone workspace, a Kit mount,
+	// an install-time rule) was not confirmed either way, so a reader must
+	// not take it as matching.
+	Compared []string
 }
 
 const (
@@ -91,6 +93,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 	// Agent.
 	if d.Agent != "" && sb.Agent != "" {
 		c.Checked = append(c.Checked, "エージェント")
+		c.Compared = append(c.Compared, "agent")
 		if !strings.EqualFold(d.Agent, sb.Agent) {
 			add(Drift{Kind: "エージェント", Title: "宣言と違うエージェントで動いている", Declared: item("agent"), Actual: sb.Agent,
 				Fix: "agent を変えた場合は、作り直し（sbx env rm → sbx env create）で反映されます。", Severity: sbxenv.SeverityMedium, ItemID: "agent", Source: srcLs})
@@ -113,6 +116,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				}
 				continue
 			}
+			c.Compared = append(c.Compared, w.ItemID)
 			found := -1
 			for i, m := range sb.Workspaces {
 				if !used[i] && samePath(m.Path, w.Path) {
@@ -158,6 +162,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		c.Checked = append(c.Checked, "ポート公開")
 		used := map[int]bool{}
 		for _, dp := range d.Ports {
+			c.Compared = append(c.Compared, dp.ItemID)
 			decl := item(dp.ItemID)
 			found := -1
 			for i, lp := range sb.Ports {
@@ -258,12 +263,15 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			if len(d.Network) > 0 {
 				c.Skipped = append(c.Skipped, "sbx policy ls の結果に Kit 由来のルールが含まれていないため、宣言した通信ルールが反映済みかは比較していません。")
 			}
-			for _, r := range d.Network {
-				c.NotCompared = append(c.NotCompared, r.ItemID)
-			}
 		} else {
 			for _, r := range d.Network {
-				if r.Phase != "runtime" || live[r.Decision+" "+r.Host] {
+				// sbx policy ls lists the rules in force now, so only
+				// runtime rules can be held against it.
+				if r.Phase != "runtime" {
+					continue
+				}
+				c.Compared = append(c.Compared, r.ItemID)
+				if live[r.Decision+" "+r.Host] {
 					continue
 				}
 				label := map[string]string{"allow": "許可", "deny": "拒否"}[r.Decision]
@@ -285,6 +293,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		declared := map[string]bool{}
 		for _, s := range d.Secrets {
 			declared[s.Name] = true
+			c.Compared = append(c.Compared, s.ItemID)
 			if !live[s.Name] {
 				add(Drift{Kind: "シークレット", Title: "宣言したシークレットが登録されていない", Declared: s.Name + "（" + item(s.ItemID) + "）", Actual: "（登録なし）",
 					Fix:      "シークレットは sandbox を作成したときに登録されます。作り直す（sbx env rm → sbx env create）か、sbx secret set で登録してください。",
@@ -308,6 +317,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 	default:
 		c.Checked = append(c.Checked, "MCP サーバー")
 		for _, m := range d.MCP {
+			c.Compared = append(c.Compared, m.ItemID)
 			var row *MCPServer
 			for i := range snap.MCP {
 				if snap.MCP[i].Name == m.Name {

@@ -512,6 +512,37 @@ func TestStrictRedactionHidesTheMountsOfAnUndeclaredSandbox(t *testing.T) {
 	}
 }
 
+func TestCompareConfirmsOnlyTheItemsItHeldAgainstSbx(t *testing.T) {
+	t.Parallel()
+	// Arrange: a clone workspace keeps no mount path to compare, and sbx
+	// policy ls lists the rules in force, not the install-time ones.
+	env := strings.Replace(matching, "workspace: ./web-app", "workspace: {path: ./web-app, clone: true}", 1) + "kits:\n  - ./kits/net\n"
+	kit := "schemaVersion: \"3\"\nkind: mixin\nname: net\ncapabilities:\n  - type: com.docker.sandbox/network-policy@1\n    config:\n      install:\n        allow: [build.example.com]\n      runtime:\n        allow: [api.example.com]\n"
+
+	// Act
+	c := compare(t, env, func(w *world) {
+		if err := os.MkdirAll(filepath.Join(w.dir, "kits", "net"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(w.dir, "kits", "net", "net.yaml"), []byte(kit), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	// Assert
+	got := strings.Join(c.Compared, " ")
+	for _, want := range []string{"agent", "ports[", "secrets.github", "mcp.servers[docs]", "runtime.allow/api.example.com"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%s was compared: %v", want, c.Compared)
+		}
+	}
+	for _, not := range []string{"workspace", "build.example.com"} {
+		if strings.Contains(got, not) {
+			t.Errorf("%s was not held against sbx's output: %v", not, c.Compared)
+		}
+	}
+}
+
 func TestReadOnlyIsNotComparedBecauseSbxDoesNotReportIt(t *testing.T) {
 	t.Parallel()
 	// Arrange: the declaration wants a read-only mount; sbx ls lists paths
