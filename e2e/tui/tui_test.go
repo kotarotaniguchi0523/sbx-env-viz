@@ -27,7 +27,7 @@ func TestEightyColumnsShowsOnePane(t *testing.T) {
 	if !strings.HasPrefix(lines[0], " sbxray  web-app ") || !tabs.MatchString(lines[0]) {
 		t.Errorf("title row should name the sandbox and keep every tab with its count: %q", lines[0])
 	}
-	if strings.TrimSpace(lines[1]) != "絞り込み  全て L1 L2 K1 K2    静的解析" {
+	if strings.TrimSpace(lines[1]) != "静的解析   絞り込み  全て L1 L2 K1 K2" {
 		t.Errorf("context row should hold the filter switches and where the data comes from on Risk: %q", lines[1])
 	}
 	s.expectMatch(`危険度\s+内容`)

@@ -258,7 +258,7 @@ func (m *Model) rebuild() {
 		for _, sec := range []struct {
 			title string
 			rows  []row
-		}{{"稼働中とのズレ", drifts}, {"このツールの指摘", diags}, {"設定ごとの危険度", items}} {
+		}{{"sbx とのズレ", drifts}, {"このツールの指摘", diags}, {"設定ごとの危険度", items}} {
 			if len(sec.rows) > 0 {
 				rows = append(rows, row{header: true, label: fmt.Sprintf("%s（%d 件）", sec.title, len(sec.rows))})
 				rows = append(rows, sec.rows...)

@@ -241,7 +241,8 @@ func (m *Model) contextBar(w, y int) string {
 		}
 	}
 	// notice says where the screen's data comes from; the other views
-	// end their line with its short form, so no screen loses it.
+	// start their line with its short form, ahead of switches that may be
+	// cut at the edge, so no screen loses it.
 	notice := fmt.Sprintf(" 宣言 %d ファイル・Kit %d を静的に解析（稼働中の状態ではありません）", files, kits)
 	short := "静的解析"
 	if t := m.target(); t != nil {
@@ -259,6 +260,7 @@ func (m *Model) contextBar(w, y int) string {
 		s.text(notice, m.pal.muted)
 		return trunc(s.b.String(), w)
 	}
+	s.text(" "+short+"  ", m.pal.muted)
 	if m.view == viewItems {
 		s.text(" グループ ", m.pal.muted)
 		for i, n := range groupNames {
@@ -284,7 +286,6 @@ func (m *Model) contextBar(w, y int) string {
 		s.text(" ", lipgloss.NewStyle())
 		s.zone(label, st, zoneFilter, i)
 	}
-	s.text("    "+short, m.pal.muted)
 	return trunc(s.b.String(), w)
 }
 

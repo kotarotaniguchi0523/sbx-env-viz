@@ -1300,7 +1300,7 @@ func TestTUIRiskListsDriftsFirst(t *testing.T) {
 		t.Errorf("detail = %q", got)
 	}
 	u.want("宣言（sbxenv.yaml）", "claude", "現在の実体（sbx）", "codex", "sbx env rm")
-	u.wantRe(`^ {4}危険度  内容 +\| *.*\n 稼働中とのズレ（4 件） `, `^ !  中 +エージェント: 宣言と違うエージェントで動いている `)
+	u.wantRe(`^ {4}危険度  内容 +\| *.*\n sbx とのズレ（4 件） `, `^ !  中 +エージェント: 宣言と違うエージェントで動いている `)
 }
 
 func TestTUIRiskIsSectionedAndSortedByRisk(t *testing.T) {
@@ -1714,7 +1714,7 @@ func TestTUIRiskSearchForTheSectionWordFindsTheDrifts(t *testing.T) {
 	u.press("2", "/", "ズ", "レ", "enter")
 
 	// Assert: regression; the section's own word found nothing.
-	u.want("稼働中とのズレ（1 件）", "ポート公開: 宣言にないポート")
+	u.want("sbx とのズレ（1 件）", "ポート公開: 宣言にないポート")
 }
 
 func TestTUIOverviewListsASecondDriftOfTheSameItem(t *testing.T) {
@@ -1876,4 +1876,41 @@ func TestTUIOverviewEnterIgnoresACursorRowScrolledAway(t *testing.T) {
 		u.press("k")
 	}
 	u.want("エージェント")
+}
+
+func TestTUIOverviewEnterOpensNothingWhenNoRowFits(t *testing.T) {
+	t.Parallel()
+	// Arrange: two targets and a live error leave the pane no body row.
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	m := tui.NewTargets([]live.Target{{Name: "a", State: "宣言", Plan: p, Err: "sbx コマンドが見つかりません"}, {Name: "b", State: "宣言", Plan: p}}, "", true)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 8})
+	u := &ui{t: t, m: m}
+
+	// Act
+	u.press("j", "j", "enter")
+
+	// Assert: regression; Enter opened a setting no frame had shown.
+	if u.has(backLink) {
+		t.Errorf("Enter opened an unseen row:\n%s", u.text())
+	}
+}
+
+func TestTUISourceLabelSurvivesALongFilterList(t *testing.T) {
+	t.Parallel()
+	// Arrange: twelve Kit sources make the filter switches overflow 80 columns.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: "agent", Path: "agent", Value: "claude"}}}
+	for i := range 12 {
+		p.Meta.Sources = append(p.Meta.Sources, sbxenv.Source{ID: fmt.Sprintf("K%d", i+1), Kind: sbxenv.SourceKit, Path: fmt.Sprintf("kits/k%d", i+1)})
+	}
+	m := tui.New(p, true)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	u := &ui{t: t, m: m}
+
+	// Act
+	u.press("3")
+
+	// Assert: regression; the label came after the switches and was cut.
+	if l := u.lines()[1]; !strings.Contains(l, "静的解析") {
+		t.Errorf("context line = %q", l)
+	}
 }

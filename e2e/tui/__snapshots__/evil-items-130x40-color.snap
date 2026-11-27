@@ -1,6 +1,6 @@
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ sbxray                                                                           1 概要   2 リスク 0   3 設定 6   4 ファイル 1   │
-│ グループ  層別 境界別 kit別     絞り込み  全て L1    静的解析                                                                    │
+│ 静的解析   グループ  層別 境界別 kit別     絞り込み  全て L1                                                                     │
 │                                                                                                                                  │
 │    設定           値                                      |  schemaVersion                                                       │
 │ 層 L1 ~/proj/evil.yaml                                    |  値: 1                                                               │
@@ -62,9 +62,6 @@
     "1,4": {
       "bold": true
     },
-    "10,1": {
-      "fg": "default"
-    },
     "101,0": {
       "fg": "default"
     },
@@ -78,11 +75,6 @@
     },
     "106,0": {
       "bold": true
-    },
-    "11,1": {
-      "bold": true,
-      "fg": 4,
-      "underline": "single"
     },
     "110,0": {
       "bold": false
@@ -109,14 +101,6 @@
     "127,0": {
       "fg": "default"
     },
-    "15,1": {
-      "bold": false,
-      "fg": "default",
-      "underline": "none"
-    },
-    "16,1": {
-      "fg": 8
-    },
     "17,39": {
       "bold": false,
       "fg": "default"
@@ -139,14 +123,16 @@
     "19,9": {
       "fg": 8
     },
-    "22,1": {
+    "21,1": {
       "fg": "default"
+    },
+    "22,1": {
+      "bold": true,
+      "fg": 4,
+      "underline": "single"
     },
     "22,39": {
       "fg": "default"
-    },
-    "23,1": {
-      "fg": 8
     },
     "23,4": {
       "bold": false
@@ -158,17 +144,22 @@
     "25,6": {
       "fg": "default"
     },
+    "26,1": {
+      "bold": false,
+      "fg": "default",
+      "underline": "none"
+    },
     "26,39": {
       "bold": false,
       "fg": "default"
+    },
+    "27,1": {
+      "fg": 8
     },
     "27,39": {
       "fg": 8
     },
     "27,9": {
-      "fg": "default"
-    },
-    "28,1": {
       "fg": "default"
     },
     "31,39": {
@@ -177,7 +168,10 @@
     "31,8": {
       "fg": "default"
     },
-    "32,1": {
+    "33,1": {
+      "fg": "default"
+    },
+    "34,1": {
       "fg": 8
     },
     "34,39": {
@@ -191,17 +185,15 @@
     "36,39": {
       "fg": 8
     },
+    "39,1": {
+      "fg": "default"
+    },
     "4,39": {
       "bold": false,
       "fg": "default"
     },
-    "42,1": {
-      "fg": "default"
-    },
     "43,1": {
-      "bold": true,
-      "fg": 4,
-      "underline": "single"
+      "fg": 8
     },
     "44,39": {
       "fg": "default"
@@ -209,17 +201,9 @@
     "44,7": {
       "fg": "default"
     },
-    "47,1": {
-      "bold": false,
-      "fg": "default",
-      "underline": "none"
-    },
     "47,39": {
       "bold": true,
       "fg": 4
-    },
-    "48,1": {
-      "fg": 8
     },
     "48,39": {
       "bold": false,
@@ -230,6 +214,14 @@
     },
     "5,39": {
       "fg": 8
+    },
+    "53,1": {
+      "fg": "default"
+    },
+    "54,1": {
+      "bold": true,
+      "fg": 4,
+      "underline": "single"
     },
     "56,10": {
       "fg": "default"
@@ -243,6 +235,14 @@
     },
     "57,5": {
       "inverse": false
+    },
+    "58,1": {
+      "bold": false,
+      "fg": "default",
+      "underline": "none"
+    },
+    "59,1": {
+      "fg": 8
     },
     "59,10": {
       "fg": 8
@@ -464,11 +464,11 @@
     "60,9": {
       "fg": "default"
     },
-    "61,39": {
-      "bold": false,
+    "61,1": {
       "fg": "default"
     },
-    "62,1": {
+    "61,39": {
+      "bold": false,
       "fg": "default"
     },
     "62,11": {

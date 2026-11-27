@@ -104,7 +104,7 @@ func TestAutoDetectShowsDeclarationAndSandboxSideBySide(t *testing.T) {
 
 	// Assert
 	s.expectMatch(`\|\s+ズレ: 宣言と違うエージェントで動いている`)
-	for _, want := range []string{"稼働中とのズレ（2 件）", "エージェント: 宣言と違うエージェントで動いている",
+	for _, want := range []string{"sbx とのズレ（2 件）", "エージェント: 宣言と違うエージェントで動いている",
 		"宣言（sbxenv.yaml）", "現在の実体（sbx）", "codex", "どうすればよいか", "sbx env rm", "比較の根拠", "sbx ls --json"} {
 		s.expect(want)
 	}

@@ -611,12 +611,14 @@ func (m *Model) overviewPanes(w, top, ph int) string {
 	for i := scroll; i < end; i++ {
 		out = append(out, body[i])
 	}
-	visible := bh
+	// Rows past the pane (a pane too short for its own header) are cut
+	// from the frame, so they count as not visible.
+	visible := min(bh, max(ph-len(head), 0))
 	if rest := len(body) - end; rest > 0 && margin > 0 {
 		// The last visible line says how much follows, so the summary's
 		// counts never point at rows the user cannot see.
 		out[len(out)-1] = strings.Repeat(" ", indent) + p.muted.Render(fmt.Sprintf("ほか %d 行（j で下へ）", rest+1))
-		visible = bh - 1
+		visible--
 	}
 	if y := cursorY - scroll; len(zs) > 0 {
 		m.oCursorShown = y >= 0 && y < visible
