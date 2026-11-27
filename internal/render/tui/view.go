@@ -243,7 +243,11 @@ func (m *Model) contextBar(w, y int) string {
 		case sbxenv.SourceEnv, sbxenv.SourceUserDefaults:
 			files++
 		case sbxenv.SourceKit:
-			kits++
+			// Only a kit that was expanded was analysed; the others are
+			// listed under 4 ファイル as not expanded.
+			if src.Expanded {
+				kits++
+			}
 		}
 	}
 	// notice says where the screen's data comes from; the other views
@@ -306,9 +310,9 @@ func (m *Model) stateLine() string {
 	overview := m.view == viewOverview
 	// A long query shows its end (where typing happens), so it cannot
 	// push this target's error off the line.
-	query := m.query
-	if lipgloss.Width(query) > 24 {
-		query = ".." + ansi.TruncateLeft(query, lipgloss.Width(query)-22, "")
+	query, qw := m.query, min(24, max(m.width/4, 8))
+	if lipgloss.Width(query) > qw {
+		query = ".." + ansi.TruncateLeft(query, lipgloss.Width(query)-(qw-2), "")
 	}
 	if m.searching {
 		state = append(state, "検索: "+query+"_")
@@ -476,8 +480,8 @@ func (m *Model) listLines(iw, ih, x0, top int) []string {
 		}
 		text, note := r.label, r.note
 		if m.view == viewItems && keyW > 0 {
-			if k, v, ok := strings.Cut(r.label, " = "); ok {
-				text, note = pad(truncMiddle(k, keyW), keyW), v
+			if v, ok := strings.CutPrefix(r.label, r.key+" = "); ok && r.key != "" {
+				text, note = pad(truncMiddle(r.key, keyW), keyW), v
 			}
 		}
 		if note != "" && m.view == viewRisk {

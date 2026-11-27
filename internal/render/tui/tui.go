@@ -50,7 +50,10 @@ type row struct {
 	header bool
 	label  string
 	// note follows the label in muted ink (a risky item's value).
-	note   string
+	note string
+	// key is a 設定 row's setting ID, the part of label before " = "; it
+	// is kept apart because the ID itself may hold " = " (a mount target).
+	key    string
 	badges []string
 	sev    sbxenv.Severity
 	item   *sbxenv.Item
@@ -301,7 +304,7 @@ func (m *Model) rebuild() {
 					// The group header already names the kit.
 					id = strings.TrimPrefix(id, "kit:"+it.Kit+"/")
 				}
-				rows = append(rows, row{label: id + " = " + it.Value, badges: it.Badges, sev: it.Risk, item: it})
+				rows = append(rows, row{label: id + " = " + it.Value, key: id, badges: it.Badges, sev: it.Risk, item: it})
 			}
 		}
 	case viewSources:
@@ -338,8 +341,8 @@ func (m *Model) rebuild() {
 	m.keyW = 0
 	if m.view == viewItems {
 		for _, r := range rows {
-			if k, _, ok := strings.Cut(r.label, " = "); ok && !r.header {
-				m.keyW = max(m.keyW, widthOf(k))
+			if r.key != "" && !r.header {
+				m.keyW = max(m.keyW, widthOf(r.key))
 			}
 		}
 	}

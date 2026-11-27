@@ -2241,3 +2241,34 @@ func TestTUIOverviewDoesNotShowAnItemSuffixAsAHost(t *testing.T) {
 	// Assert: regression; the second read api.example.com#2.
 	u.wantRe(`^ {4}許可（実行中） +2 件  api\.example\.com、api\.example\.com *$`)
 }
+
+func TestTUISettingsKeepAKeyThatHoldsEquals(t *testing.T) {
+	t.Parallel()
+	// Arrange: a mount target with " = " in it.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: "additionalWorkspaces[/work/a = b]", Path: "additionalWorkspaces[]", Value: "~/data"}}}
+	m := tui.New(p, true)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	u := &ui{t: t, m: m}
+
+	// Act
+	u.press("3")
+
+	// Assert: regression; the key was cut at its own " = ".
+	u.wantRe(`paces\[/work/a = b\] +~/data`)
+}
+
+func TestTUIContextLineCountsOnlyExpandedKits(t *testing.T) {
+	t.Parallel()
+	// Arrange: one kit read, one that failed to expand.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Sources: []sbxenv.Source{
+		{ID: "L1", Kind: sbxenv.SourceEnv, Path: "sbxenv.yaml", Expanded: true},
+		{ID: "K1", Kind: sbxenv.SourceKit, Path: "kits/a", Expanded: true},
+		{ID: "K2", Kind: sbxenv.SourceKit, Path: "kits/broken"},
+	}}}
+	m := tui.New(p, true)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	u := &ui{t: t, m: m}
+
+	// Assert: regression; the broken kit counted as analysed.
+	u.want("宣言 1 ファイル・Kit 1 を静的に解析")
+}
