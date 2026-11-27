@@ -851,9 +851,9 @@ func (rs *resolver) buildNetEntry(c *capState, e *netEntry) {
 	shown := rs.r.text(e.host.disp)
 	value := e.phase + " " + e.list + " " + shown
 	if e.bounded() {
-		value += " [" + strings.Join(e.methods, ",") + "]"
+		value += " [" + rs.r.text(strings.Join(e.methods, ",")) + "]"
 		if len(e.paths) > 0 {
-			value += " " + strings.Join(e.paths, " ")
+			value += " " + rs.r.text(strings.Join(e.paths, " "))
 		}
 	}
 	risk, badges := SeverityLow, []string{BadgeNet}

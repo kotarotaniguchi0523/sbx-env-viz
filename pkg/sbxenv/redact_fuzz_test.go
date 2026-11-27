@@ -69,6 +69,13 @@ capabilities:
     config:
       runtime:
         allow: ["${{ kit.args.host }}"]
+  - type: com.docker.sandbox/network-policy@2
+    config:
+      runtime:
+        allow:
+          - hosts: [bounded.example.com]
+            methods: ["${{ kit.args.host }}"]
+            paths: ["/${{ kit.args.host }}/**"]
   - type: com.docker.sandbox/credential@1
     optional: true
     config:

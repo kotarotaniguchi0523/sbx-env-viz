@@ -37,7 +37,7 @@ Both were shown failing on broken variants: list merge switched to append, a rep
 | `TestPortsMergeMatchesTheReferenceModelExhaustively` | `merger.mergeInto`, `merger.mergeList`, `listKey`, `effectiveProtocol` in `pkg/sbxenv/merge.go`; port item formatting in `build.go` |
 | `TestLaunchListsMatchTheReferenceModelExhaustively` | `listStrategy` replace path and null inheritance in `merge.go` |
 | `TestScalarAndMapMergeMatchTheReferenceModelExhaustively` | map merge in `merge.go` |
-| `FuzzStrictRedactionNeverEchoesValues` | `redactor` in `redact.go`, display forms (`vnode.disp`, read by `vnode.show` in `vnode.go`) set in `resolve.go` and `kits.go`, every formatter in `build.go`, messages in `analyze.go` and `kits.go` |
+| `FuzzStrictRedactionNeverEchoesValues` | `redactor` in `redact.go`, display forms (`vnode.disp`, read by `vnode.show` in `vnode.go`) set in `resolve.go` and `kits.go`, every formatter in `build.go` (including the methods and paths of a `network-policy@2` entry, kept as display forms by `parseNetPolicy` in `netpolicy.go`), messages in `analyze.go` and `kits.go` |
 
 Not covered: `mcp.servers` and `additionalWorkspaces` keyed merges share `mergeList` but only ports are enumerated; kit `args` merging; the redaction of literal structure (paths, ports, domains written directly in a file), which is shown by design.
 
