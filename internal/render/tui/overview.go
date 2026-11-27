@@ -76,6 +76,9 @@ func (m *Model) buildOverview() {
 	info := func(text string) {
 		m.manifest = append(m.manifest, manifestLine{kind: lineInfo, label: text, row: -1})
 	}
+	// shown records the items some row stands for, so a risky setting no
+	// section covers still gets a row below.
+	shown := map[*sbxenv.Item]bool{}
 	// entry adds a setting that stands for items. Its detail is the
 	// riskiest item, so the explanation agrees with the row's mark.
 	entry := func(label, declared string, items ...*sbxenv.Item) {
@@ -117,6 +120,9 @@ func (m *Model) buildOverview() {
 					l.sev = d.Severity
 				}
 			}
+		}
+		for _, it := range items {
+			shown[it] = true
 		}
 		rows = append(rows, r)
 		l.row = len(rows) - 1
@@ -359,6 +365,29 @@ func (m *Model) buildOverview() {
 		}
 		for _, it := range inside {
 			entry("sandbox 内で実行", it.Value, it)
+		}
+	}
+
+	// A setting rated medium or above that no section above stands for
+	// (sandboxOptions.writableEnvFiles, ...) still gets a row, so the
+	// summary's counts never point at nothing on this screen.
+	var other []*sbxenv.Item
+	for i := range m.plan.Items {
+		if it := &m.plan.Items[i]; !shown[it] && it.Risk.Rank() >= sbxenv.SeverityMedium.Rank() {
+			other = append(other, it)
+		}
+	}
+	if len(other) > 0 {
+		section("その他の危険度のある設定")
+		for _, it := range other {
+			// The label column is short: a kit's capability is named by its
+			// kit, and the sandboxOptions. prefix says little the setting's
+			// own name does not.
+			label := strings.TrimPrefix(it.ID, "sandboxOptions.")
+			if it.Kit != "" {
+				label = "Kit " + it.Kit
+			}
+			entry(label, it.Value, it)
 		}
 	}
 

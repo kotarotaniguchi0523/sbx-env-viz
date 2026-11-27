@@ -2870,3 +2870,20 @@ func TestTUIOverviewSummaryCountsFindingsAndDriftsByLevel(t *testing.T) {
 	// Assert: high counts the high ones, medium the medium ones; low is in neither.
 	u.wantRe(`^ ✗ 最重要・高 2    ! 中 4    ズレ 4 `)
 }
+
+func TestTUIOverviewListsARiskySettingNoSectionCovers(t *testing.T) {
+	t.Parallel()
+	// Arrange: writableEnvFiles is rated high but belongs to no section.
+	p := &sbxenv.Plan{Items: []sbxenv.Item{{ID: "sandboxOptions.writableEnvFiles", Path: "sandboxOptions.writableEnvFiles", Value: "true", Risk: sbxenv.SeverityHigh}}}
+	m := tui.New(p, true)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	u := &ui{t: t, m: m}
+
+	// Assert: regression; the summary counted it while the manifest said
+	// （表示できる設定がありません）.
+	u.want("その他の危険度のある設定")
+	u.wantRe(`^ ✗  writableEnvFiles +true *$`)
+	if u.has("表示できる設定がありません") {
+		t.Errorf("a counted setting had no row:\n%s", u.text())
+	}
+}

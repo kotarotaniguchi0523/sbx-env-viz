@@ -43,8 +43,8 @@
 │ ✗  PC 上で実行         ./hooks/load-secrets.sh                                                                                   │
 │    sandbox 内で実行    sh -c ln -sf /home/agent/.history ${{ kit.env.HOME }}/.hist                                               │
 │                                                                                                                                  │
-│                                                                                                                                  │
-│                                                                                                                                  │
+│ その他の危険度のある設定                                                                                                         │
+│ !  Kit egress          io.example/telemetry@2                                                                                    │
 │                                                                                                                                  │
 │                                                                                                                                  │
 │                                                                                                                                  │
