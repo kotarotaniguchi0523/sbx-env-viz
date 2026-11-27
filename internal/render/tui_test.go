@@ -1441,7 +1441,8 @@ func TestTUIOverviewClaimsAMatchOnlyForWhatWasCompared(t *testing.T) {
 		want     string
 	}{
 		{nil, "照合なし"},
-		{[]string{"workspace"}, "一致"},
+		// sbx ls reports the host path only, so that is all that matches.
+		{[]string{"workspace"}, "パスは一致"},
 	} {
 		cmp := &live.Comparison{Checked: checked, Compared: tc.compared}
 
@@ -1577,4 +1578,21 @@ func TestTUITitleBarKeepsTheTabsBesideALongName(t *testing.T) {
 	}
 	u.clickOn("4 ファイル", 0)
 	u.wantView("ファイル")
+}
+
+func TestTUIOverviewGroupMatchesOnlyWhenEveryRuleWasCompared(t *testing.T) {
+	t.Parallel()
+	// Arrange: two runtime rules; sbx confirmed one (the other belongs to
+	// a skipped optional group).
+	rule := func(host string) sbxenv.Item {
+		return sbxenv.Item{ID: "kit:net/network-policy@1/runtime.allow/" + host, Path: "cap:network-policy@1", Value: host, Risk: sbxenv.SeverityLow}
+	}
+	p := &sbxenv.Plan{Items: []sbxenv.Item{rule("active.test"), rule("skipped.test")}}
+	cmp := &live.Comparison{Checked: []string{"通信の許可・拒否"}, Compared: []string{"kit:net/network-policy@1/runtime.allow/active.test"}}
+
+	// Act
+	u := targetUI(t, 120, 40, live.Target{Name: "web", State: "稼働中", Plan: p, Sandbox: &live.Sandbox{Name: "web"}, Comparison: cmp})
+
+	// Assert: regression; one confirmed rule confirmed the whole row.
+	u.wantRe(`^ {4}許可（実行中） +2 件  active\.test、skipped\.test +照合なし *$`)
 }

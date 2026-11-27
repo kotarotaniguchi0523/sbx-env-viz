@@ -81,10 +81,11 @@ func (m *Model) buildOverview() {
 		}
 		r.sev = l.sev
 		if cmp != nil {
-			// 一致 only for what was held against sbx's output: an area
-			// being checked does not confirm every item in it.
+			// 一致 only when every item the row stands for was held
+			// against sbx's output: an area being checked, or one rule of
+			// a group, does not confirm the rest.
 			l.check = checkSkip
-			if slices.ContainsFunc(items, func(it *sbxenv.Item) bool { return m.compared[it.ID] }) {
+			if len(items) > 0 && !slices.ContainsFunc(items, func(it *sbxenv.Item) bool { return !m.compared[it.ID] }) {
 				l.check = checkMatch
 			}
 			for i := range m.drifts {
@@ -105,6 +106,13 @@ func (m *Model) buildOverview() {
 		rows = append(rows, r)
 		l.row = len(rows) - 1
 		m.manifest = append(m.manifest, l)
+	}
+	// pathOnly qualifies the match of the entry just added: sbx ls reports
+	// a mount's host path only, not its mode or its place in the sandbox.
+	pathOnly := func() {
+		if l := &m.manifest[len(m.manifest)-1]; l.check == checkMatch {
+			l.actual = "パスは一致"
+		}
 	}
 	items := func(match func(*sbxenv.Item) bool) []*sbxenv.Item {
 		var out []*sbxenv.Item
@@ -196,6 +204,7 @@ func (m *Model) buildOverview() {
 				mode = "コピーして使う"
 			}
 			entry("ワークスペース", it.Value+"（"+mode+"）", it)
+			pathOnly()
 		}
 		for _, it := range extra {
 			mode := "読み書き"
@@ -203,6 +212,7 @@ func (m *Model) buildOverview() {
 				mode = "読み取り専用"
 			}
 			entry("追加フォルダ", it.Value+"（"+mode+"）", it)
+			pathOnly()
 		}
 		for _, it := range kitMounts {
 			entry("Kit 用フォルダ", it.Value, it)
@@ -590,6 +600,9 @@ func (m *Model) scrollOverview(delta int, moved bool) {
 func actualText(l manifestLine) string {
 	switch l.check {
 	case checkMatch:
+		if l.actual != "" {
+			return l.actual
+		}
 		return "一致"
 	case checkDrift:
 		return l.actual

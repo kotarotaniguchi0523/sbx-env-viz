@@ -46,7 +46,7 @@ func TestAutoDetectListsEverySandboxAndDeclaration(t *testing.T) {
 		s.expect(want)
 	}
 	for _, row := range []string{`ズレ 2\s+印なしでも問題がないとは限りません`, `項目\s+宣言（sbxenv\.yaml）\s+実体（sbx）`,
-		`名前\s+web-app\s+照合なし`, `エージェント\s+claude\s+codex`, `ワークスペース\s+~/proj/web-app（読み書き）\s+一致`,
+		`名前\s+web-app\s+照合なし`, `エージェント\s+claude\s+codex`, `ワークスペース\s+~/proj/web-app（読み書き）\s+パスは一致`,
 		`通信の許可・拒否\s+（宣言なし）\s+許可: manual\.example\.com`} {
 		s.expectMatch(row)
 	}

@@ -11,7 +11,7 @@
 │ !  エージェント      claude                                                                                                           codex                    │
 │                                                                                                                                                                │
 │ フォルダの共有                                                                                                                                                 │
-│ !  ワークスペース    ~/proj/web-app（読み書き）                                                                                       一致                     │
+│ !  ワークスペース    ~/proj/web-app（読み書き）                                                                                       パスは一致               │
 │                                                                                                                                                                │
 │ ポート公開                                                                                                                                                     │
 │    ポート            loopback:4000 -> sandbox:3000/tcp4                                                                               一致                     │
