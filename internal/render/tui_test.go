@@ -924,10 +924,10 @@ func TestTUIOverviewIsAManifestTable(t *testing.T) {
 
 	// Assert: one row per declared setting, marked in the margin.
 	u.wantRe(`^ {4}エージェント +claude`, `^ !  ワークスペース +~/proj（読み書き）`, `^ ✗  ポート +0\.0\.0\.0:ephemeral -> sandbox:3000/tcp4`,
-		`^ {4}許可（実行中） +1 件  api\.example\.com`, `^ ✗  PC 上で実行 +echo hi`, `^ {4}playwright +リモート（中身は「4 ファイル」で確認）`)
+		`^ {4}許可（実行中） +1 件  api\.example\.com`, `^ ✗  PC 上で実行 +echo hi`, `^ {4}playwright +リモート（中身は読んでいない。理由は「4 ファイル」で確認）`)
 	// The declared values line up in one column.
 	cols := map[int]bool{}
-	for _, v := range []string{"claude", "~/proj（読み書き）", "echo hi", "リモート（中身は"} {
+	for _, v := range []string{"claude", "~/proj（読み書き）", "echo hi", "リモート（中身は読んでいない"} {
 		x, _ := u.find(v, 4)
 		cols[x] = true
 	}
@@ -2144,7 +2144,7 @@ func TestTUIOverviewDoesNotCallALocalZipKitRemote(t *testing.T) {
 	u := &ui{t: t, m: m}
 
 	// Assert: regression; a local archive read as remote.
-	u.wantRe(`^ {4}bundle +ZIP（展開していない。「4 ファイル」で確認） *$`)
+	u.wantRe(`^ {4}bundle +ZIP（中身は読んでいない。理由は「4 ファイル」で確認） *$`)
 }
 
 func TestTUITitleBarKeepsTheStateOfALongNamedSandbox(t *testing.T) {

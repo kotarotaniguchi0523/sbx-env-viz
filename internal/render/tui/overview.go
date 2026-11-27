@@ -221,9 +221,9 @@ func (m *Model) buildOverview() {
 				switch field(it, "kind") {
 				case "zip":
 					// A ZIP kit is a local archive this tool does not unpack.
-					state = "ZIP（展開していない。「4 ファイル」で確認）"
+					state = "ZIP（中身は読んでいない。理由は「4 ファイル」で確認）"
 				case "oci", "git":
-					state = "リモート（中身は「4 ファイル」で確認）"
+					state = "リモート（中身は読んでいない。理由は「4 ファイル」で確認）"
 				default:
 					state = "未展開（読み込めない）"
 				}

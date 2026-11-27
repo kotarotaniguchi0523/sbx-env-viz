@@ -420,7 +420,7 @@ func TestOverviewIsTheDefaultScreenAsAManifest(t *testing.T) {
 			t.Errorf("section %q is not a bold heading line", section)
 		}
 	}
-	for _, entry := range []string{`名前\s+web-app`, `playwright\s+リモート（中身は「4 ファイル」で確認）`, `MCP docs\s+リモート（URL に接続）`,
+	for _, entry := range []string{`名前\s+web-app`, `playwright\s+リモート（中身は読んでいない。理由は「4 ファイル」で確認）`, `MCP docs\s+リモート（URL に接続）`,
 		`禁止（実行中）\s+1 件  telemetry\.example\.com`, `✗  PC 上で実行\s+\./hooks/load-secrets\.sh`} {
 		s.expectMatch(entry)
 	}
