@@ -792,3 +792,53 @@ func BenchmarkCompareMissingPorts(b *testing.B) {
 		})
 	}
 }
+
+// --- hand-built comparisons --------------------------------------------------
+
+// strictPlan is a strictly redacted plan with the given declaration and
+// items, as Resolve would leave it.
+func strictPlan(d *sbxenv.Declared, items ...sbxenv.Item) *sbxenv.Plan {
+	return &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactStrict}, Declared: d, Items: items}
+}
+
+func TestStrictRedactionHidesALivePortThatMayCarryAnArgument(t *testing.T) {
+	t.Parallel()
+	// Arrange: the declared UDP port comes from an argument (3000); sbx
+	// publishes TCP 3000, which matches nothing declared.
+	p := strictPlan(&sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "ports[<redacted>/udp]", SandboxPort: 3000, HostPort: 4000, Protocol: "udp", Redacted: true}}},
+		sbxenv.Item{ID: "ports[<redacted>/udp]", Value: "<redacted>"})
+	sb := &live.Sandbox{Ports: []live.Port{{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 3000, Protocol: "tcp"}}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; the extra port printed the hidden number.
+	d, ok := drift(&c, "宣言にないポート")
+	if !ok || d.Actual != "<redacted>" {
+		t.Errorf("drift = %+v (%v)", d, c.Drifts)
+	}
+}
+
+func TestStrictRedactionHidesALiveRuleForAHiddenHost(t *testing.T) {
+	t.Parallel()
+	// Arrange: a Kit denies a host set by an argument; someone allowed the
+	// same host by hand.
+	p := strictPlan(&sbxenv.Declared{Network: []sbxenv.DeclaredRule{{ItemID: "r1", Phase: "runtime", Decision: "deny", Host: "acme.example.com"}}},
+		sbxenv.Item{ID: "r1", Value: "runtime deny <redacted>.example.com"})
+	sb := &live.Sandbox{RulesKnown: true, Rules: []live.Rule{
+		{Decision: "allow", Resource: "acme.example.com", CreatedVia: "added"},
+		{Decision: "allow", Resource: "other.example.com", CreatedVia: "added"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; 許可: acme.example.com revealed the argument.
+	var actuals []string
+	for _, d := range c.Drifts {
+		actuals = append(actuals, d.Actual)
+	}
+	if got := strings.Join(actuals, " "); strings.Contains(got, "acme") || !strings.Contains(got, "許可: <redacted>") || !strings.Contains(got, "許可: other.example.com") {
+		t.Errorf("drifts = %v", actuals)
+	}
+}

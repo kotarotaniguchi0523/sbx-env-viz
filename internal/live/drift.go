@@ -2,6 +2,7 @@ package live
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -89,6 +90,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		return labels[id]
 	}
 	add := func(x Drift) { c.Drifts = append(c.Drifts, x) }
+	strict := p.Meta.Redaction == "" || p.Meta.Redaction == sbxenv.RedactStrict
 
 	// Agent.
 	if d.Agent != "" && sb.Agent != "" {
@@ -208,6 +210,9 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 					Actual: actual, Fix: fixRecreate, Severity: sev, ItemID: dp.ItemID, Source: srcLs})
 			}
 		}
+		// Under strict redaction a port set by an argument is hidden, and
+		// a live port the files do not match may carry the same number.
+		hidePorts := strict && slices.ContainsFunc(d.Ports, func(dp sbxenv.DeclaredPort) bool { return dp.Redacted })
 		for i, lp := range sb.Ports {
 			if used[i] {
 				continue
@@ -216,7 +221,11 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			if isAll(lp.HostIP) {
 				sev = sbxenv.SeverityHigh
 			}
-			add(Drift{Kind: "ポート公開", Title: "宣言にないポートが公開されている", Declared: "（宣言なし）", Actual: portLabel(lp),
+			actual := portLabel(lp)
+			if hidePorts {
+				actual = "<redacted>"
+			}
+			add(Drift{Kind: "ポート公開", Title: "宣言にないポートが公開されている", Declared: "（宣言なし）", Actual: actual,
 				Fix:      "Kit が公開したポート（空きポートが自動で割り当てられます）か、sbx ports で手動公開したものです。不要なら sbx ports --unpublish で外せます。",
 				Severity: sev, Source: srcLs})
 		}
@@ -241,21 +250,33 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				kitVisible = true
 			}
 		}
+		// A host the plan hides (set by an argument) stays hidden when sbx
+		// has a rule for it that the files do not declare.
+		hidden := map[string]bool{}
+		for _, r := range d.Network {
+			if strict && !strings.Contains(strings.ToLower(item(r.ItemID)), r.Host) {
+				hidden[r.Host] = true
+			}
+		}
 		for _, r := range sb.Rules {
 			manual := r.CreatedVia == "added" || r.CreatedVia == "approval"
 			if !manual || declared[r.Decision+" "+r.Resource] {
 				continue
+			}
+			resource := r.Resource
+			if hidden[strings.ToLower(resource)] {
+				resource = "<redacted>"
 			}
 			how := "sbx policy allow などで手動追加"
 			if r.CreatedVia == "approval" {
 				how = "通信の承認プロンプトで許可"
 			}
 			if r.Decision == "allow" {
-				add(Drift{Kind: "通信の許可・拒否", Title: "宣言にない通信許可がある（" + how + "）", Declared: "（宣言なし）", Actual: "許可: " + r.Resource,
+				add(Drift{Kind: "通信の許可・拒否", Title: "宣言にない通信許可がある（" + how + "）", Declared: "（宣言なし）", Actual: "許可: " + resource,
 					Fix:      "不要なら sbx policy rm network で削除します。必要なら Kit の network-policy に書いて宣言に含めると、どこで許可したかが分かります。",
 					Severity: sbxenv.SeverityMedium, Source: "sbx policy ls <name> --json"})
 			} else {
-				add(Drift{Kind: "通信の許可・拒否", Title: "宣言にない通信の拒否がある", Declared: "（宣言なし）", Actual: "拒否: " + r.Resource,
+				add(Drift{Kind: "通信の許可・拒否", Title: "宣言にない通信の拒否がある", Declared: "（宣言なし）", Actual: "拒否: " + resource,
 					Fix: "手動で追加した拒否ルールです。意図したものか確認してください。", Severity: sbxenv.SeverityLow, Source: "sbx policy ls <name> --json"})
 			}
 		}
