@@ -35,7 +35,7 @@ sandbox を起動する前に、最終設定・セキュリティ境界・出典
 </picture>
 
 > [!NOTE]
-> **`sbx` v0.54.0** を前提としています（[`.github/sbx-version`](.github/sbx-version)）。静的解析の範囲外（リモート kit、`:dev` テンプレート、ホスト共通ポリシー、未知の capability）は `--text` / `--json` の **Coverage** に毎回出力され、TUI では `4 ファイル` に `未展開` として表示されます。
+> **`sbx` v0.54.0** を前提としています（[`.github/sbx-version`](.github/sbx-version)）。静的解析の範囲外（リモート kit、`:dev` テンプレート、ホスト共通ポリシー、未知の capability）は `--text` / `--json` の **Coverage** に毎回出力されます。TUI では、ファイルが指しているもの（リモート kit、`:dev` テンプレート、未知の capability）を `4 ファイル` に `未展開` として表示し、どの実行にも共通する前提（ホスト共通ポリシー、組み込みのエージェント、保存済みのシークレット）はヘルプ（`?`）で説明します。
 
 ## インストール
 

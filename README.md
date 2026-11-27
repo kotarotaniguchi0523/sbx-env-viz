@@ -35,7 +35,7 @@ Inspect effective config, security boundaries, provenance, and live drift before
 </picture>
 
 > [!NOTE]
-> Targets **`sbx` v0.54.0** ([`.github/sbx-version`](.github/sbx-version)). Items outside static analysis (remote kits, `:dev` templates, host-wide policies, unknown capabilities) are always reported under **Coverage** in `--text` / `--json` and marked `未展開` in `4 ファイル`.
+> Targets **`sbx` v0.54.0** ([`.github/sbx-version`](.github/sbx-version)). Items outside static analysis (remote kits, `:dev` templates, host-wide policies, unknown capabilities) are always reported under **Coverage** in `--text` / `--json`; those a file names (remote kits, `:dev` templates, unknown capabilities) are also marked `未展開` in `4 ファイル`, and the premises every run shares (host-wide policies, the built-in agent, stored secrets) are explained in the help (`?`).
 
 ## Installation
 
