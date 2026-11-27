@@ -1847,3 +1847,50 @@ func TestARowWithoutAProtocolConfirmsNoTransport(t *testing.T) {
 		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
 	}
 }
+
+func TestAProtocolLessRowIsNeitherADriftNorAMatch(t *testing.T) {
+	t.Parallel()
+	bare := live.Port{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80}
+	for name, tc := range map[string]struct {
+		decl  sbxenv.DeclaredPort
+		ports [][]live.Port
+	}{
+		// 80/udp against a row of unknown transport: neither missing nor
+		// undeclared, only unconfirmed.
+		"udp": {sbxenv.DeclaredPort{ItemID: "p", SandboxPort: 80, Protocol: "udp"}, [][]live.Port{{bare}}},
+		// A bare IPv6 row is no companion for a dual tcp port.
+		"companion": {sbxenv.DeclaredPort{ItemID: "p", SandboxPort: 80, Protocol: "tcp"}, [][]live.Port{
+			{{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp4"}, {HostIP: "::1", HostPort: 5000, SandboxPort: 80}},
+			{{HostIP: "::1", HostPort: 5000, SandboxPort: 80}, {HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp4"}},
+		}},
+	} {
+		for _, order := range tc.ports {
+			// Act
+			p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{tc.decl}}}
+			c := live.Compare(p, &live.Sandbox{Ports: order}, &live.Snapshot{}, nil)
+
+			// Assert: regression; udp drifted twice, and the bare IPv6 row
+			// confirmed the dual port in one order only.
+			if slices.Contains(c.Compared, "p") || name == "udp" && len(c.Drifts) > 0 {
+				t.Errorf("%s %v: compared %v, drifts %v", name, order, c.Compared, c.Drifts)
+			}
+		}
+	}
+}
+
+func TestAPortPrefersARowThatStatesItsProtocol(t *testing.T) {
+	t.Parallel()
+	// Arrange: an ephemeral 80/tcp4; sbx lists 5000 bare and 5001 as tcp4.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{{ItemID: "v4", SandboxPort: 80, Protocol: "tcp4"}}}}
+	bare := live.Port{HostIP: "127.0.0.1", HostPort: 5000, SandboxPort: 80}
+	tcp4 := live.Port{HostIP: "127.0.0.1", HostPort: 5001, SandboxPort: 80, Protocol: "tcp4"}
+	for _, order := range [][]live.Port{{bare, tcp4}, {tcp4, bare}} {
+		// Act
+		c := live.Compare(p, &live.Sandbox{Ports: order}, &live.Snapshot{}, nil)
+
+		// Assert: regression; with 5000 first the port stayed unconfirmed.
+		if !slices.Contains(c.Compared, "v4") {
+			t.Errorf("order %v: compared %v, drifts %v", order, c.Compared, c.Drifts)
+		}
+	}
+}

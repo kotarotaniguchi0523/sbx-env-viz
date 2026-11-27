@@ -187,8 +187,10 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		// address and a row showing its family, its address, its family,
 		// then any. Declarations that can claim an exact host port go
 		// first, then those that fix a family, then the rest.
+		// A row without a protocol may carry either transport, so it can
+		// pair with tcp or udp; it confirms neither (below).
 		compatible := func(dp sbxenv.DeclaredPort, lp Port) bool {
-			return lp.SandboxPort == dp.SandboxPort && baseProto(lp.Protocol) == baseProto(dp.Protocol) &&
+			return lp.SandboxPort == dp.SandboxPort && (lp.Protocol == "" || baseProto(lp.Protocol) == baseProto(dp.Protocol)) &&
 				sameFamily(portFamily(lp.Protocol, lp.HostIP), portFamily(dp.Protocol, dp.HostIP))
 		}
 		// companion finds the row of the other family that, with lp, makes
@@ -198,7 +200,7 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		companion := func(dp sbxenv.DeclaredPort, lp Port, skip func(int) bool) int {
 			other := map[string]string{"4": "6", "6": "4"}[portFamily(lp.Protocol, lp.HostIP)]
 			for i, x := range sb.Ports {
-				if other != "" && !skip(i) && x.SandboxPort == lp.SandboxPort && x.HostPort == lp.HostPort &&
+				if other != "" && !skip(i) && x.Protocol != "" && x.SandboxPort == lp.SandboxPort && x.HostPort == lp.HostPort &&
 					baseProto(x.Protocol) == baseProto(lp.Protocol) && portFamily(x.Protocol, x.HostIP) == other && sameIP(dp.HostIP, x.HostIP) {
 					return i
 				}
@@ -219,9 +221,10 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 			// port declared for both (tcp, no address) that is a row for both
 			// too, which is also the only one that can confirm it.
 			shows := portFamily(lp.Protocol, lp.HostIP) == portFamily(dp.Protocol, dp.HostIP)
-			// A row without a protocol says nothing of its families, so it
-			// cannot show a port declared for both (nor confirm it below).
-			if lp.Protocol == "" && portFamily(dp.Protocol, dp.HostIP) == "" {
+			// A row without a protocol says nothing of its transport (nor,
+			// for a port declared for both, its families), so it shows
+			// nothing and comes after a row that can confirm the port.
+			if lp.Protocol == "" {
 				shows = false
 			}
 			// A row of one family with its companion shows both, as a row
