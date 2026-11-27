@@ -181,8 +181,13 @@ func TestCollectFallsBackWhenTheDaemonFails(t *testing.T) {
 	s := live.Collect(context.Background(), r)
 
 	// Assert
-	if s.Available || !strings.Contains(s.Problem, "デーモンが停止") || !strings.Contains(s.Problem, "cannot connect") {
+	if s.Available || !strings.Contains(s.Problem, "デーモンが停止") || !strings.Contains(s.Reason(sbxenv.RedactHome), "cannot connect") {
 		t.Errorf("snapshot = %+v", s)
+	}
+	// sbx's own text can name paths (a socket under a project), so strict
+	// redaction leaves it out.
+	if strings.Contains(s.Reason(sbxenv.RedactStrict), "cannot connect") {
+		t.Errorf("strict reason = %q", s.Reason(sbxenv.RedactStrict))
 	}
 }
 
@@ -1377,5 +1382,28 @@ func TestAnEphemeralPortTakesTheOnlyListenerBeforeAFixedMismatch(t *testing.T) {
 	// Assert: regression; fixed "changed to 5000" and eph went missing.
 	if len(c.Drifts) != 1 || c.Drifts[0].ItemID != "fixed" || c.Drifts[0].Title != "宣言したポートが公開されていない" {
 		t.Errorf("drifts %v", c.Drifts)
+	}
+}
+
+func TestStrictRedactionHidesUnknownLiveWords(t *testing.T) {
+	t.Parallel()
+	// Arrange: an MCP server of another kind whose status is free text.
+	p := strictPlan(&sbxenv.Declared{MCP: []sbxenv.DeclaredMCP{{ItemID: "m", Name: "docs", Shown: "docs", Remote: true}}}, sbxenv.Item{ID: "m", Value: "url: <redacted>"})
+	snap := &live.Snapshot{MCPKnown: true, MCP: []live.MCPServer{{Name: "docs", Type: "command", Transport: "stdio", Status: "error: /work/canary/run.sock"}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{}, snap, nil)
+
+	// Assert
+	for _, d := range c.Drifts {
+		if strings.Contains(d.Actual, "canary") || strings.Contains(d.Actual, "stdio") {
+			t.Errorf("drift copies sbx's words: %+v", d)
+		}
+	}
+	if got := live.ShownState("migrating:/work/canary", sbxenv.RedactStrict); got != "状態不明" {
+		t.Errorf("unknown state = %q", got)
+	}
+	if got := live.ShownState("running", sbxenv.RedactStrict); got != "稼働中" {
+		t.Errorf("known state = %q", got)
 	}
 }

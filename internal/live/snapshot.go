@@ -17,8 +17,11 @@ import (
 type Snapshot struct {
 	// Available is true when `sbx ls --json` answered.
 	Available bool
-	// Problem explains in Japanese why live data is missing or partial.
+	// Problem explains in Japanese why live data is missing or partial;
+	// Detail is sbx's own error text, which may carry paths and is so
+	// left out under strict redaction (see Reason).
 	Problem   string
+	Detail    string
 	Sandboxes []Sandbox
 	MCP       []MCPServer
 	// MCPKnown is true when `sbx mcp ls --json` answered.
@@ -115,6 +118,15 @@ func CollectMatched(ctx context.Context, r Runner, d *sbxenv.Declared) Snapshot 
 	return s
 }
 
+// Reason is Problem with sbx's error text, which is left out under strict
+// redaction (mode, where empty means strict), since it can name paths.
+func (s Snapshot) Reason(mode sbxenv.Redaction) string {
+	if s.Detail == "" || mode == "" || mode == sbxenv.RedactStrict {
+		return s.Problem
+	}
+	return s.Problem + " " + s.Detail
+}
+
 func listSandboxes(ctx context.Context, r Runner) Snapshot {
 	var s Snapshot
 	if r == nil {
@@ -126,12 +138,14 @@ func listSandboxes(ctx context.Context, r Runner) Snapshot {
 		s.Problem = "sbx コマンドが見つからないため、稼働中の sandbox は表示していません（設定ファイルだけを解析しています）。"
 		return s
 	case err != nil:
-		s.Problem = "sbx から sandbox の一覧を取得できませんでした（デーモンが停止している可能性があります）。設定ファイルだけを解析しています: " + clean(err.Error())
+		s.Problem = "sbx から sandbox の一覧を取得できませんでした（デーモンが停止している可能性があります）。設定ファイルだけを解析しています。"
+		s.Detail = clean(err.Error())
 		return s
 	}
 	s.Sandboxes, err = parseList(out)
 	if err != nil {
-		s.Problem = "sbx ls --json の出力を読めませんでした。設定ファイルだけを解析しています: " + clean(err.Error())
+		s.Problem = "sbx ls --json の出力を読めませんでした。設定ファイルだけを解析しています。"
+		s.Detail = clean(err.Error())
 		return s
 	}
 	s.Available = true

@@ -356,7 +356,7 @@ func run(args []string, e env) int {
 			},
 		})
 		if len(targets) > 0 {
-			line, err := tui.RunTargets(targets, snap.Problem, e.stdin, e.stdout)
+			line, err := tui.RunTargets(targets, snap.Reason(redaction), e.stdin, e.stdout)
 			if err != nil {
 				fmt.Fprintf(e.stderr, "sbxray: %s\n", shorten(err.Error()))
 				return exitUsage
@@ -453,7 +453,7 @@ func threshold(failOn string, p *sbxenv.Plan, cmp *live.Comparison) int {
 // carries the reason when sbx gave no answer or no sandbox matches.
 func liveTarget(plan *sbxenv.Plan, r live.Runner, show live.Paths) *live.Target {
 	snap := live.CollectMatched(context.Background(), r, plan.Declared)
-	t := &live.Target{Name: "（宣言）", State: "宣言", Plan: plan, Err: snap.Problem}
+	t := &live.Target{Name: "（宣言）", State: "宣言", Plan: plan, Err: snap.Reason(plan.Meta.Redaction)}
 	if plan.Declared != nil && plan.Declared.Name != "" {
 		for _, it := range plan.Items {
 			if it.ID == "name" {
@@ -470,9 +470,14 @@ func liveTarget(plan *sbxenv.Plan, r live.Runner, show live.Paths) *live.Target 
 		sb := snap.Sandboxes[0]
 		cmp := live.Compare(plan, &sb, &snap, show)
 		if plan.Declared == nil || sb.Name != plan.Declared.Name {
+			// sbx's name, paired by workspace; under strict redaction it
+			// is hidden like every value sbx reports.
 			t.Name = sb.Name
+			if r := plan.Meta.Redaction; r == "" || r == sbxenv.RedactStrict {
+				t.Name = "<redacted>-1"
+			}
 		}
-		t.State, t.Sandbox, t.Comparison = live.StateLabel(sb.Status), &sb, &cmp
+		t.State, t.Sandbox, t.Comparison = live.ShownState(sb.Status, plan.Meta.Redaction), &sb, &cmp
 	}
 	return t
 }

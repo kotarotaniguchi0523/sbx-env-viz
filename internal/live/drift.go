@@ -512,13 +512,13 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 				c.Compared = append(c.Compared, m.ItemID)
 				if remote := row.Type == "remote"; remote != m.Remote {
 					add(Drift{Kind: "MCP サーバー", Title: "同じ名前の MCP サーバーが、宣言と違う種類で登録されている", Declared: item(m.ItemID),
-						Actual: "種類: " + row.Type + "（" + orDefault(row.Transport, "接続方式不明") + "）",
+						Actual: "種類: " + shown(row.Type) + "（" + shown(orDefault(row.Transport, "接続方式不明")) + "）",
 						Fix:    "別の設定で登録された可能性があります。sbx mcp inspect " + m.Shown + " で確認してください。", Severity: sbxenv.SeverityMedium,
 						ItemID: m.ItemID, Source: "sbx mcp ls --json"})
 				}
 			}
 			if st := row.Status; needsAuth(st) {
-				add(Drift{Kind: "MCP サーバー", Title: "MCP サーバーは登録済みだが使える状態ではない", Declared: item(m.ItemID), Actual: "状態: " + st,
+				add(Drift{Kind: "MCP サーバー", Title: "MCP サーバーは登録済みだが使える状態ではない", Declared: item(m.ItemID), Actual: "状態: " + shown(st),
 					Fix: "認証が必要な場合は sbx mcp auth " + m.Shown + " を実行してください。詳しくは sbx mcp inspect " + m.Shown + " で確認できます。", Severity: sbxenv.SeverityLow,
 					ItemID: m.ItemID, Source: "sbx mcp ls --json"})
 			}

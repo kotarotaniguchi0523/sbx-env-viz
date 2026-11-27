@@ -113,7 +113,7 @@ func Discover(ctx context.Context, req DiscoverRequest) ([]Target, Snapshot) {
 			if p.Declared.Name == "" {
 				t.Name = sb.Name
 			}
-			t.State = StateLabel(sb.Status)
+			t.State = ShownState(sb.Status, req.Redaction)
 			cmp := Compare(p, &sb, &snap, show)
 			t.Comparison = &cmp
 		} else if snap.Available {
@@ -151,7 +151,7 @@ func Discover(ctx context.Context, req DiscoverRequest) ([]Target, Snapshot) {
 				sb.Agent = "<redacted>"
 			}
 		}
-		targets = append(targets, Target{Name: sb.Name, State: StateLabel(sb.Status) + "・宣言ファイル未検出", Sandbox: &sb})
+		targets = append(targets, Target{Name: sb.Name, State: ShownState(sb.Status, req.Redaction) + "・宣言ファイル未検出", Sandbox: &sb})
 	}
 	rank := func(t Target) int {
 		switch {
@@ -289,6 +289,17 @@ func StateLabel(status string) string {
 		return "状態不明"
 	}
 	return status
+}
+
+// ShownState is StateLabel under the redaction mode: a status sbx reports
+// that is not one of the known words is shown as 状態不明 under strict
+// redaction, since it is copied from sbx verbatim.
+func ShownState(status string, mode sbxenv.Redaction) string {
+	label := StateLabel(status)
+	if label == status && status != "" && (mode == "" || mode == sbxenv.RedactStrict) {
+		return "状態不明"
+	}
+	return label
 }
 
 // shownMounts is mounts with each path as a person reads it: a sandbox no

@@ -790,3 +790,25 @@ func TestActionableErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestLiveJSONHidesASandboxNamePairedByWorkspace(t *testing.T) {
+	t.Parallel()
+	// Arrange: no name is declared, so the sandbox is found by its workspace.
+	s := newSandbox(t)
+	ws := filepath.Join(s.work, "ws")
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s.write(t, "sbxenv.yaml", strings.Replace(liveEnv, "name: web-app\n", "", 1)+"workspace: ./ws\n")
+	quoted, _ := json.Marshal(ws)
+	path, _ := s.fakeSbx(t, `"workspaces":[]`, `"workspaces":[`+string(quoted)+`]`)
+
+	// Act
+	r := s.runPath(t, path, "--json", "--live")
+
+	// Assert: regression; live.sandbox carried sbx's raw name.
+	l, _ := r.json(t)["live"].(map[string]any)
+	if l["sandbox"] != "<redacted>-1" || strings.Contains(r.stdout, "web-app") {
+		t.Errorf("live = %v", l)
+	}
+}

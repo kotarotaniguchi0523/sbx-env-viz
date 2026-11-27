@@ -415,7 +415,11 @@ func (m *Model) liveOnly(sb *live.Sandbox, section func(string), info func(strin
 	section("sbx の sandbox（宣言ファイル未検出）")
 	info("この sandbox を宣言した sbxenv*.yaml が、カレントディレクトリとワークスペースの近くに見つかりませんでした。")
 	info("エージェント: " + orNone(sb.Agent))
-	info("状態: " + live.StateLabel(sb.Status))
+	state := live.StateLabel(sb.Status)
+	if sb.Redacted {
+		state = live.ShownState(sb.Status, sbxenv.RedactStrict)
+	}
+	info("状態: " + state)
 	for _, w := range sb.Workspaces {
 		info("ワークスペース: " + w.Path)
 	}
