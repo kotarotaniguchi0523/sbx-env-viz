@@ -149,6 +149,9 @@ func (m *Model) resetFilters() {
 
 func (m *Model) multi() bool { return len(m.targets) > 0 }
 
+// switchable reports whether there is another target to switch to.
+func (m *Model) switchable() bool { return len(m.targets) > 1 }
+
 func (m *Model) target() *live.Target {
 	if !m.multi() {
 		return nil
@@ -616,15 +619,15 @@ func (m *Model) key(k string) (tea.Model, tea.Cmd) {
 	case "?":
 		m.help, m.hScroll = true, 0
 	case "s":
-		if m.multi() {
+		if m.switchable() {
 			m.picker, m.pCursor = true, m.tIdx
 		}
 	case ">", ".":
-		if m.multi() {
+		if m.switchable() {
 			m.setTarget((m.tIdx + 1) % len(m.targets))
 		}
 	case "<", ",":
-		if m.multi() {
+		if m.switchable() {
 			m.setTarget((m.tIdx + len(m.targets) - 1) % len(m.targets))
 		}
 	case "1", "2", "3", "4":

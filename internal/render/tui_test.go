@@ -3316,3 +3316,20 @@ func TestTUIPickerShowsWholeStatesAndAnswersItsLastColumn(t *testing.T) {
 		t.Errorf("title bar = %q", u.lines()[0])
 	}
 }
+
+func TestTUISingleTargetOffersNoSwitch(t *testing.T) {
+	t.Parallel()
+	// Arrange: sbxray <file> --live hands the TUI one target.
+	p, _ := newPlan(t, sbxenv.RedactHome)
+	u := targetUI(t, 100, 30, live.Target{Name: "web", State: "宣言", Plan: p})
+
+	// Act
+	footer := u.footer()
+	u.press("s")
+
+	// Assert: regression; the footer offered s 対象 and s opened a picker
+	// of one row that said the target had no file.
+	if strings.Contains(footer, "対象") || u.has("（設定ファイルなし）") {
+		t.Errorf("footer %q\n%s", footer, u.text())
+	}
+}

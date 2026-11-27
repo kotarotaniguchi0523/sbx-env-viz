@@ -87,7 +87,7 @@ func (m *Model) Render() string {
 	}
 	m.zones = nil
 	lines := []string{m.titleBar(w)}
-	if len(m.targets) > 1 {
+	if m.switchable() {
 		if bar, ok := m.targetBar(w, len(lines)); ok {
 			lines = append(lines, bar)
 		}
@@ -153,7 +153,7 @@ func (m *Model) titleBar(w int) string {
 	}
 	if t := m.target(); t != nil {
 		state = "  " + t.State
-		if len(m.targets) > 1 {
+		if m.switchable() {
 			if _, ok := m.targetBar(w, 1); !ok {
 				pos = fmt.Sprintf(" %d/%d", m.tIdx+1, len(m.targets))
 			}
@@ -404,7 +404,7 @@ func (m *Model) statusBar(w int) string {
 		if m.view != viewOverview {
 			keys = append(keys, [2]string{"f", "絞り込み"})
 		}
-		if m.multi() {
+		if m.switchable() {
 			keys = append(keys, [2]string{"s", "対象"})
 		}
 	}
