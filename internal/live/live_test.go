@@ -1255,3 +1255,27 @@ func TestPortPairingKeepsAnExactMatchWhenAFreeListenerWillDo(t *testing.T) {
 		t.Errorf("drifts %v", c.Drifts)
 	}
 }
+
+func TestPortPairingSettlesASmallGroupByTryingEveryAssignment(t *testing.T) {
+	t.Parallel()
+	// Arrange: 80/tcp4 ephemeral and 4000 -> 80/tcp on loopback; sbx has
+	// 127.0.0.1:4000, [::1]:4000 and 192.0.2.1:5000, in that order.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{Ports: []sbxenv.DeclaredPort{
+		{ItemID: "v4", SandboxPort: 80, Protocol: "tcp4"},
+		{ItemID: "fixed", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+	}}}
+	sb := &live.Sandbox{Ports: []live.Port{
+		{HostIP: "127.0.0.1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+		{HostIP: "::1", HostPort: 4000, SandboxPort: 80, Protocol: "tcp"},
+		{HostIP: "192.0.2.1", HostPort: 5000, SandboxPort: 80, Protocol: "tcp"},
+	}}
+
+	// Act
+	c := live.Compare(p, sb, &live.Snapshot{}, nil)
+
+	// Assert: regression; fixed took 127.0.0.1:4000 and tcp4 the far
+	// listener, an invented address change. Only 192.0.2.1:5000 is extra.
+	if len(c.Drifts) != 1 || c.Drifts[0].Title != "宣言にないポートが公開されている" {
+		t.Errorf("drifts %v", c.Drifts)
+	}
+}

@@ -260,6 +260,63 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		for _, j := range order {
 			claim(j, make([]bool, len(sb.Ports)))
 		}
+		// The matching pairs as many as it can, but its first choices can
+		// still cost an exact pair (one declaration on a listener another
+		// needed exactly). A sandbox port with a few declarations, as real
+		// ones have, is settled by trying every assignment: the most pairs,
+		// then the least total distance.
+		type group struct{ decls, lists []int }
+		groups := map[string]*group{}
+		key := func(port int, proto string) string { return fmt.Sprint(port, "/", baseProto(proto)) }
+		for j, dp := range d.Ports {
+			k := key(dp.SandboxPort, dp.Protocol)
+			if groups[k] == nil {
+				groups[k] = &group{}
+			}
+			groups[k].decls = append(groups[k].decls, j)
+		}
+		for i, lp := range sb.Ports {
+			if g := groups[key(lp.SandboxPort, lp.Protocol)]; g != nil {
+				g.lists = append(g.lists, i)
+			}
+		}
+		for _, g := range groups {
+			if len(g.decls) < 2 || len(g.decls) > 5 || len(g.lists) > 6 {
+				continue
+			}
+			best, bestN, bestCost := []int(nil), -1, 0
+			cur := make([]int, len(g.decls))
+			taken := map[int]bool{}
+			var try func(k, n, cost int)
+			try = func(k, n, cost int) {
+				if k == len(g.decls) {
+					if n > bestN || n == bestN && cost < bestCost {
+						best, bestN, bestCost = slices.Clone(cur), n, cost
+					}
+					return
+				}
+				dp := d.Ports[g.decls[k]]
+				for _, i := range g.lists {
+					if !taken[i] && compatible(dp, sb.Ports[i]) {
+						taken[i], cur[k] = true, i
+						try(k+1, n+1, cost+distance(dp, sb.Ports[i]))
+						taken[i] = false
+					}
+				}
+				cur[k] = -1
+				try(k+1, n, cost)
+			}
+			try(0, 0, 0)
+			for _, i := range g.lists {
+				owner[i] = -1
+			}
+			for k, j := range g.decls {
+				pair[j] = best[k]
+				if best[k] >= 0 {
+					owner[best[k]] = j
+				}
+			}
+		}
 		used := map[int]bool{}
 		for i, j := range owner {
 			used[i] = j >= 0
