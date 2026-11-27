@@ -1588,3 +1588,17 @@ func TestADualStackPortIsNotConfirmedByAnIPv4Row(t *testing.T) {
 		t.Errorf("compared %v, drifts %v", c.Compared, c.Drifts)
 	}
 }
+
+func TestASkippedCommandMCPServerIsNotCompared(t *testing.T) {
+	t.Parallel()
+	// Arrange: --skip-host-commands keeps the command server from running.
+	p := &sbxenv.Plan{Meta: sbxenv.Meta{Redaction: sbxenv.RedactHome}, Declared: &sbxenv.Declared{MCP: []sbxenv.DeclaredMCP{{ItemID: "m", Name: "local", Shown: "local", Skipped: true}}}}
+
+	// Act
+	c := live.Compare(p, &live.Sandbox{}, &live.Snapshot{MCPKnown: true}, nil)
+
+	// Assert: regression; it read as not registered, with advice to recreate.
+	if len(c.Drifts) > 0 || slices.Contains(c.Compared, "m") || !strings.Contains(strings.Join(c.Skipped, ""), "--skip-host-commands") {
+		t.Errorf("compared %v, drifts %v, skipped %v", c.Compared, c.Drifts, c.Skipped)
+	}
+}

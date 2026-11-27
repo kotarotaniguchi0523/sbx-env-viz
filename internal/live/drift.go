@@ -493,7 +493,12 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 		c.Skipped = append(c.Skipped, "sbx mcp ls の結果を取得できなかったため、MCP サーバーは比較していません。")
 	default:
 		c.Checked = append(c.Checked, "MCP サーバー")
+		skipped := false
 		for _, m := range d.MCP {
+			if m.Skipped {
+				skipped = true
+				continue
+			}
 			var row *MCPServer
 			for i := range snap.MCP {
 				if snap.MCP[i].Name == m.Name {
@@ -525,6 +530,9 @@ func Compare(p *sbxenv.Plan, sb *Sandbox, snap *Snapshot, show Paths) Comparison
 					Fix: "認証が必要な場合は sbx mcp auth " + m.Shown + " を実行してください。詳しくは sbx mcp inspect " + m.Shown + " で確認できます。", Severity: sbxenv.SeverityLow,
 					ItemID: m.ItemID, Source: "sbx mcp ls --json"})
 			}
+		}
+		if skipped {
+			c.Skipped = append(c.Skipped, "--skip-host-commands で起動しないコマンド型の MCP サーバーは比較していません。")
 		}
 	}
 	c.Skipped = append(c.Skipped, "メモリ・CPU・lifecycle の実行履歴などは sbx の一覧から取得できないため比較していません。")

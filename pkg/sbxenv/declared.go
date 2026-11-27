@@ -58,6 +58,9 @@ type DeclaredMCP struct {
 	Name   string
 	Shown  string
 	Remote bool
+	// Skipped marks a command server --skip-host-commands keeps from
+	// running, so its registration says nothing about the declaration.
+	Skipped bool
 }
 
 // DeclaredRule is one network-policy entry of an expanded, selected kit.
@@ -137,7 +140,8 @@ func (rs *resolver) declared() *Declared {
 		if name == "" {
 			continue
 		}
-		d.MCP = append(d.MCP, DeclaredMCP{ItemID: id, Name: name, Shown: shown, Remote: e.has("url")})
+		d.MCP = append(d.MCP, DeclaredMCP{ItemID: id, Name: name, Shown: shown, Remote: e.has("url"),
+			Skipped: e.has("command") && rs.opts.SkipHostCommands})
 	}
 	for _, e := range rs.net.entries {
 		if e.cap.skipped || e.host == nil || e.itemID == "" {
